@@ -10,9 +10,30 @@ describe('Server Health and API Endpoints', () => {
     expect(res.body.system).toBe('Velan AI College Platform');
   });
 
-  it('POST /api/auth/login validates credentials correctly with username Vel', async () => {
+  it('GET /api/health also returns healthy status', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('healthy');
+  });
+
+  it('POST /api/auth/login validates credentials correctly with lowercase username vel', async () => {
     const res = await request(app)
       .post('/api/auth/login')
+      .send({
+        identifier: 'vel',
+        password: process.env.ADMIN_PASSWORD || 'elite minds',
+        deviceId: 'dev_test_runner',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toBeDefined();
+    expect(res.body.user.role).toBe('ADMIN');
+    expect(res.body.token).toBeDefined();
+  });
+
+  it('POST /auth/login (root mounted) also works with username Vel', async () => {
+    const res = await request(app)
+      .post('/auth/login')
       .send({
         identifier: 'Vel',
         password: process.env.ADMIN_PASSWORD || 'elite minds',
@@ -22,7 +43,6 @@ describe('Server Health and API Endpoints', () => {
     expect(res.status).toBe(200);
     expect(res.body.user).toBeDefined();
     expect(res.body.user.role).toBe('ADMIN');
-    expect(res.body.token).toBeDefined();
   });
 
   it('POST /api/auth/login rejects invalid password', async () => {

@@ -99,10 +99,16 @@ export const LoginPage: React.FC = () => {
         navigate('/student');
       }
     } catch (err: any) {
-      if (err.message?.includes('DEVICE_LOCKED') || err.message?.includes('linked to another device')) {
+      const serverError =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Authentication failed. Please verify your credentials.';
+
+      if (serverError?.includes('DEVICE_LOCKED') || serverError?.includes('linked to another device')) {
         setShowDeviceLockBlocked(true);
       } else {
-        setErrorMessage(err.message || 'Invalid credentials');
+        setErrorMessage(serverError);
       }
     } finally {
       setIsLoading(false);

@@ -47,7 +47,7 @@ app.set('io', io);
 setupSocketHandlers(io);
 
 // Health check endpoint for Render Web Service
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   res.status(200).json({
     status: 'healthy',
     system: 'Velan AI College Platform',
@@ -56,8 +56,9 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Mount API routes
+// Mount API routes both under /api and root /
 app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 // Start Server (only if not running under tests)
 if (process.env.NODE_ENV !== 'test') {

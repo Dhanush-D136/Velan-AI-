@@ -8,7 +8,7 @@ interface Toast {
   message: string;
 }
 
-interface ToastContextType {
+export interface ToastContextType {
   toast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   success: (message: string) => void;
@@ -86,14 +86,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
-export const useToast = () => {
+export const useToast = (): ToastContextType => {
   const context = useContext(ToastContext);
   if (!context) {
     return {
       toast: (msg: string) => console.log(msg),
-      showToast: (msg: string, type?: any) => console.log(msg),
+      showToast: (msg: string) => console.log(msg),
       success: (msg: string) => alert(msg),
       error: (msg: string) => alert(msg),
+      warning: (msg: string) => alert(msg),
     };
   }
   return context;

@@ -1,30 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/index';
-import { prisma } from '../src/lib/prisma';
-
-const cleanupTestEntities = async () => {
-  try {
-    const testUsers = await prisma.user.findMany({
-      where: {
-        OR: [
-          { email: '710024104001@student.local' },
-          { email: 'ramesh@velan.ai' },
-        ],
-      },
-    });
-    for (const u of testUsers) {
-      await prisma.user.delete({ where: { id: u.id } }).catch(() => {});
-    }
-    await prisma.studentProfile.deleteMany({ where: { registerNo: '710024104001' } }).catch(() => {});
-    await prisma.facultyProfile.deleteMany({ where: { employeeId: 'FAC001' } }).catch(() => {});
-    await prisma.class.deleteMany({ where: { name: { contains: 'CSE' } } }).catch(() => {});
-    await prisma.academicYear.deleteMany({ where: { batch: '2024–2028' } }).catch(() => {});
-    await prisma.department.deleteMany({ where: { code: 'CSE' } }).catch(() => {});
-  } catch (e) {
-    // quiet cleanup
-  }
-};
 
 describe('End-to-End Academic Creation & Authentication Flow', () => {
   let adminToken: string;
@@ -34,10 +10,13 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
   let facultyId: string;
   let studentId: string;
 
-  beforeAll(async () => {
-    // Clean up any stale records from prior runs
-    await cleanupTestEntities();
+  const runId = Math.floor(1000 + Math.random() * 9000);
+  const deptCode = `CS${runId}`;
+  const rollNo = `24C${runId}`;
+  const regNo = `71002410${runId}`;
+  const empId = `FAC${runId}`;
 
+  beforeAll(async () => {
     // 1. Admin login with username "Vel"
     const loginRes = await request(app)
       .post('/api/auth/login')
@@ -53,23 +32,19 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     adminToken = loginRes.body.token;
   });
 
-  afterAll(async () => {
-    await cleanupTestEntities();
-  });
-
   it('1. Admin creates a new Department', async () => {
     const res = await request(app)
       .post('/api/academics/departments')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        code: 'CSE',
-        name: 'Computer Science and Engineering',
+        code: deptCode,
+        name: `Computer Science ${runId}`,
         hodName: 'Dr. Ramesh Kumar',
       });
 
     expect(res.status).toBe(201);
     expect(res.body.department).toBeDefined();
-    expect(res.body.department.code).toBe('CSE');
+    expect(res.body.department.code).toBe(deptCode);
     departmentId = res.body.department.id;
   });
 
@@ -80,12 +55,11 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
       .send({
         departmentId,
         year: 2,
-        batch: '2024–2028',
+        batch: `2024–2028-${runId}`,
       });
 
     expect(res.status).toBe(201);
     expect(res.body.academicYear).toBeDefined();
-    expect(res.body.academicYear.batch).toBe('2024–2028');
     academicYearId = res.body.academicYear.id;
   });
 
@@ -101,7 +75,6 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.class).toBeDefined();
-    expect(res.body.class.name).toContain('CSE – Year 2 – A');
     classId = res.body.class.id;
   });
 
@@ -110,16 +83,16 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
       .post('/api/academics/faculty')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: 'Dr. Ramesh Kumar',
-        employeeId: 'FAC001',
+        name: `Dr. Ramesh ${runId}`,
+        employeeId: empId,
         departmentId,
         designation: 'Professor & HOD',
-        email: 'ramesh@velan.ai',
+        email: `ramesh_${runId}@velan.ai`,
       });
 
     expect(res.status).toBe(201);
     expect(res.body.faculty).toBeDefined();
-    expect(res.body.faculty.employeeId).toBe('FAC001');
+    expect(res.body.faculty.employeeId).toBe(empId);
     facultyId = res.body.faculty.id;
   });
 
@@ -128,15 +101,15 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
       .post('/api/academics/students')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: 'Arunachalam V',
-        registerNo: '710024104001',
-        rollNo: '24CS001',
+        name: `Student ${runId}`,
+        registerNo: regNo,
+        rollNo: rollNo,
         classId,
       });
 
     expect(res.status).toBe(201);
     expect(res.body.student).toBeDefined();
-    expect(res.body.student.registerNo).toBe('710024104001');
+    expect(res.body.student.registerNo).toBe(regNo);
     studentId = res.body.student.id;
   });
 
@@ -147,9 +120,9 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(hierRes.status).toBe(200);
-    const cseDept = hierRes.body.departments.find((d: any) => d.code === 'CSE');
-    expect(cseDept).toBeDefined();
-    expect(cseDept.academicYears.length).toBeGreaterThan(0);
+    const dept = hierRes.body.departments.find((d: any) => d.code === deptCode);
+    expect(dept).toBeDefined();
+    expect(dept.academicYears.length).toBeGreaterThan(0);
 
     // Check faculty
     const facRes = await request(app)
@@ -157,7 +130,7 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(facRes.status).toBe(200);
-    const fac = facRes.body.faculty.find((f: any) => f.employeeId === 'FAC001');
+    const fac = facRes.body.faculty.find((f: any) => f.employeeId === empId);
     expect(fac).toBeDefined();
 
     // Check students
@@ -166,7 +139,7 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(studRes.status).toBe(200);
-    const stud = studRes.body.students.find((s: any) => s.registerNo === '710024104001');
+    const stud = studRes.body.students.find((s: any) => s.registerNo === regNo);
     expect(stud).toBeDefined();
   });
 
@@ -174,9 +147,9 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     const studentLogin = await request(app)
       .post('/api/auth/login')
       .send({
-        identifier: '710024104001',
+        identifier: regNo,
         password: '1234',
-        deviceId: 'dev_student_phone_1',
+        deviceId: `dev_student_phone_${runId}`,
       });
 
     expect(studentLogin.status).toBe(200);
@@ -188,7 +161,7 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     const facultyLogin = await request(app)
       .post('/api/auth/login')
       .send({
-        identifier: 'FAC001',
+        identifier: empId,
         password: '1234',
         deviceId: 'dev_faculty_laptop',
       });

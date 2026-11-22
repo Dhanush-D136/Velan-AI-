@@ -505,72 +505,22 @@ export const getStudentExcelTemplate = async (req: Request, res: Response) => {
 // Bulk Import Students from Excel
 export const importStudentsFromExcel = async (req: Request, res: Response) => {
   try {
-    let classId = req.body.classId;
-    let isPreview = req.query.preview === 'true' || req.body.preview === 'true' || req.body.preview === true;
-    let rawStudents: any[] = [];
-
-    // Parse from multipart file if provided
-    if (req.file) {
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(req.file.buffer);
-      const worksheet = workbook.worksheets[0];
-      if (!worksheet) return res.status(400).json({ error: 'Excel sheet is empty or invalid' });
-
-      // Detect header columns in first row
-      const headerMap: { [col: number]: string } = {};
-      const headerRow = worksheet.getRow(1);
-      headerRow.eachCell((cell, colNumber) => {
-        const val = String(cell.value || '').trim().toUpperCase();
-        if (val.includes('ROLL')) headerMap[colNumber] = 'rollNo';
-        else if (val.includes('REG')) headerMap[colNumber] = 'registerNo';
-        else if (val.includes('NAME')) headerMap[colNumber] = 'name';
-      });
-
-      worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
-        const item: any = {};
-        row.eachCell((cell, colNumber) => {
-          const field = headerMap[colNumber];
-          if (field) {
-            // Check if cell is formula or object
-            let cellVal = cell.value;
-            if (cellVal && typeof cellVal === 'object' && 'result' in cellVal) {
-              cellVal = (cellVal as any).result;
-            }
-            item[field] = String(cellVal || '').trim();
-          }
-        });
-        if (item.rollNo || item.registerNo || item.name) {
-          rawStudents.push(item);
-        }
-      });
-    } else if (req.body.students) {
-      if (typeof req.body.students === 'string') {
-        try {
-          rawStudents = JSON.parse(req.body.students);
-        } catch (e) {
-          rawStudents = [];
-        }
-      } else if (Array.isArray(req.body.students)) {
-        rawStudents = req.body.students;
-      }
-    }
-
+    const { classId, students: rawStudents } = req.body;
     if (!classId) return res.status(400).json({ error: 'Class ID is required' });
     if (!Array.isArray(rawStudents) || rawStudents.length === 0) {
-      return res.status(400).json({ error: 'No student rows found in file' });
+      return res.status(400).json({ error: 'No student rows provided' });
     }
 
     const cls = await prisma.class.findUnique({ where: { id: classId } });
     if (!cls) return res.status(404).json({ error: 'Class not found' });
 
+    const defaultPasswordHash = await bcrypt.hash('1234', 10);
+    const successList: any[] = [];
+    const errorList: { row: number; rollNo: string; registerNo: string; error: string }[] = [];
+
     const existingRegNos = new Set(
       (await prisma.studentProfile.findMany({ select: { registerNo: true } })).map((s) => s.registerNo)
     );
-
-    const validRows: any[] = [];
-    const errorList: { row: number; rollNo: string; registerNo: string; name: string; error: string }[] = [];
-    const seenInFile = new Set<string>();
 
     for (let i = 0; i < rawStudents.length; i++) {
       const row = rawStudents[i];
@@ -579,46 +529,20 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
       const name = String(row['STUDENT NAME'] || row['name'] || row['studentName'] || '').trim();
 
       if (!rollNo || !registerNo || !name) {
-        errorList.push({ row: i + 1, rollNo, registerNo, name, error: 'Missing Roll Number, Register Number, or Name' });
+        errorList.push({ row: i + 1, rollNo, registerNo, error: 'Missing Roll Number, Register Number, or Name' });
         continue;
       }
-
-      if (seenInFile.has(registerNo)) {
-        errorList.push({ row: i + 1, rollNo, registerNo, name, error: 'Duplicate Register Number in uploaded file' });
-        continue;
-      }
-      seenInFile.add(registerNo);
 
       if (existingRegNos.has(registerNo)) {
-        errorList.push({ row: i + 1, rollNo, registerNo, name, error: 'Register Number already exists in database' });
+        errorList.push({ row: i + 1, rollNo, registerNo, error: 'Register Number already exists in database' });
         continue;
       }
 
-      validRows.push({ rollNo, registerNo, name });
-    }
-
-    // If preview mode, return validated analysis without committing to DB
-    if (isPreview) {
-      return res.json({
-        preview: true,
-        totalRows: rawStudents.length,
-        validCount: validRows.length,
-        errorCount: errorList.length,
-        validRows,
-        errors: errorList,
-      });
-    }
-
-    // Commit to database
-    const defaultPasswordHash = await bcrypt.hash('1234', 10);
-    const successList: any[] = [];
-
-    for (const validItem of validRows) {
       try {
         const user = await prisma.user.create({
           data: {
-            name: validItem.name,
-            email: `${validItem.registerNo.toLowerCase()}@student.local`,
+            name,
+            email: `${registerNo.toLowerCase()}@student.local`,
             passwordHash: defaultPasswordHash,
             role: 'STUDENT',
             status: 'ACTIVE',
@@ -629,22 +553,16 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
         const profile = await prisma.studentProfile.create({
           data: {
             userId: user.id,
-            registerNo: validItem.registerNo,
-            rollNo: validItem.rollNo,
+            registerNo,
+            rollNo,
             classId,
           },
         });
 
-        existingRegNos.add(validItem.registerNo);
+        existingRegNos.add(registerNo);
         successList.push(profile);
       } catch (err: any) {
-        errorList.push({
-          row: 0,
-          rollNo: validItem.rollNo,
-          registerNo: validItem.registerNo,
-          name: validItem.name,
-          error: 'Failed to create student account: ' + (err.message || 'database error'),
-        });
+        errorList.push({ row: i + 1, rollNo, registerNo, error: 'Failed to create student account' });
       }
     }
 

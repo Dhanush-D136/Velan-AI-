@@ -23,16 +23,29 @@ export const login = async (req: Request, res: Response) => {
 
     const { identifier, password, deviceId, deviceLabel, platform } = parseResult.data;
     const cleanId = identifier.trim();
+    const lowerId = cleanId.toLowerCase();
+    const upperId = cleanId.toUpperCase();
+    const titleId = cleanId.charAt(0).toUpperCase() + cleanId.slice(1);
 
-    // 1. Resolve user by: Username (Vel), Register No, Roll No, Employee ID, or Email
+    // 1. Resolve user by: Username (Vel / vel), Register No, Roll No, Employee ID, or Email (case-insensitive)
     let user = await prisma.user.findFirst({
       where: {
         OR: [
           { username: cleanId },
+          { username: lowerId },
+          { username: upperId },
+          { username: titleId },
           { email: cleanId },
+          { email: lowerId },
           { studentProfile: { registerNo: cleanId } },
+          { studentProfile: { registerNo: upperId } },
+          { studentProfile: { registerNo: lowerId } },
           { studentProfile: { rollNo: cleanId } },
+          { studentProfile: { rollNo: upperId } },
+          { studentProfile: { rollNo: lowerId } },
           { facultyProfile: { employeeId: cleanId } },
+          { facultyProfile: { employeeId: upperId } },
+          { facultyProfile: { employeeId: lowerId } },
         ],
       },
       include: {
@@ -81,16 +94,32 @@ export const login = async (req: Request, res: Response) => {
           });
         }
       } else {
-        // First login: bind this device
-        await prisma.userDevice.create({
-          data: {
-            userId: user.id,
-            deviceId,
-            label: deviceLabel || 'Primary Device',
-            platform: platform || 'Web',
-            status: 'ACTIVE',
-          },
-        });
+        // First login: check if deviceId is already claimed by another user
+        const existingDevice = await prisma.userDevice.findUnique({ where: { deviceId } });
+        if (existingDevice) {
+          if (existingDevice.userId !== user.id) {
+            return res.status(403).json({
+              code: 'DEVICE_LOCKED',
+              error: 'This hardware device is already registered to another student account.',
+              boundDeviceId: existingDevice.deviceId,
+            });
+          } else {
+            await prisma.userDevice.update({
+              where: { id: existingDevice.id },
+              data: { status: 'ACTIVE', lastUsedAt: new Date() },
+            });
+          }
+        } else {
+          await prisma.userDevice.create({
+            data: {
+              userId: user.id,
+              deviceId,
+              label: deviceLabel || 'Primary Device',
+              platform: platform || 'Web',
+              status: 'ACTIVE',
+            },
+          });
+        }
       }
     }
 
