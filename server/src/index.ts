@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import { prisma } from './lib/prisma';
 import { apiRouter } from './routes';
 import { setupSocketHandlers } from './sockets';
 
@@ -72,10 +73,39 @@ const io = new Server(server, {
 app.set('io', io);
 setupSocketHandlers(io);
 
-// Health check endpoint for Render Web Service
-app.get(['/health', '/api/health'], (req: Request, res: Response) => {
+// Welcome endpoint
+app.get('/', (req: Request, res: Response) => {
   res.status(200).json({
-    status: 'healthy',
+    system: 'Velan AI College Platform API',
+    status: 'online',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      api: '/api',
+      auth: '/api/auth/login',
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Health check endpoint for Render Web Service
+app.get(['/health', '/api/health'], async (req: Request, res: Response) => {
+  let dbStatus = 'healthy';
+  let dbError: string | null = null;
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (err: any) {
+    dbStatus = 'unreachable';
+    dbError = err?.message || String(err);
+  }
+
+  const isHealthy = dbStatus === 'healthy';
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'healthy' : 'degraded',
+    database: {
+      status: dbStatus,
+      error: dbError,
+    },
     system: 'Velan AI College Platform',
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.round(process.uptime()),

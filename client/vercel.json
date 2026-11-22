@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://velanai-glyp.onrender.com/api/:path*"
+    },
+    {
+      "source": "/auth/:path*",
+      "destination": "https://velanai-glyp.onrender.com/auth/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://velanai-glyp.onrender.com/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
