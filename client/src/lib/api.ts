@@ -1,10 +1,13 @@
 import axios from 'axios';
 
 // Resolve base URL: check VITE_API_URL or default to localhost:5000/api in browser
-const defaultBaseURL =
-  typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'http://localhost:5000/api'
-    : '/api';
+const isLocal =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '0.0.0.0');
+
+const defaultBaseURL = isLocal ? 'http://localhost:5000/api' : '/api';
 
 const baseURL = (import.meta as any).env?.VITE_API_URL || defaultBaseURL;
 
