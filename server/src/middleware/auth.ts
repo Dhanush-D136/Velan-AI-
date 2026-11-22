@@ -4,7 +4,8 @@ import { prisma } from '../lib/prisma';
 
 export interface AuthenticatedUser {
   id: string;
-  email: string;
+  email?: string | null;
+  username?: string | null;
   role: string;
   status: string;
   name: string;
@@ -59,6 +60,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     req.user = {
       id: user.id,
       email: user.email,
+      username: user.username,
       role: user.role,
       status: user.status,
       name: user.name,
