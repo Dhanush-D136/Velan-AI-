@@ -7,7 +7,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-white text-content font-sans;
+    @apply bg-white text-content font-sans antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
   h1, h2, h3, h4, h5, h6 {
@@ -15,12 +15,42 @@
   }
 }
 
+/* Continuous Animated Gradient Background for Login Page */
+@keyframes gradient-blend {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-gradient-bg {
+  background: linear-gradient(-45deg, #4338ca, #2563eb, #0d9488, #db2777, #7c3aed);
+  background-size: 350% 350%;
+  animation: gradient-blend 16s ease infinite;
+}
+
+/* Subtle Static Geometric Dotted Grid for Portal Backgrounds */
+.portal-pattern-grid {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.18) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.portal-pattern-dots {
+  background-image: radial-gradient(rgba(99, 102, 241, 0.12) 1.5px, transparent 1.5px);
+  background-size: 32px 32px;
+}
+
 /* Glass card & micro-interactions */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid rgba(226, 232, 240, 0.85);
 }
 
 .glass-panel-hover {

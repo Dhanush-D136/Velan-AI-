@@ -12,7 +12,7 @@ import { TimetableBuilder } from './features/admin/TimetableBuilder';
 import { FacultyManagement } from './features/admin/FacultyManagement';
 import { StudentManagement } from './features/admin/StudentManagement';
 import { AcademicsManagement } from './features/admin/AcademicsManagement';
-import { DeviceRequestsPage } from './features/admin/DeviceRequestsPage';
+import { AdminRequestsPage } from './features/admin/AdminRequestsPage';
 import { ReportsPage } from './features/admin/ReportsPage';
 
 // Faculty Screens
@@ -70,7 +70,8 @@ export default function App() {
           <Route path="/admin/faculty" element={<FacultyManagement />} />
           <Route path="/admin/students" element={<StudentManagement />} />
           <Route path="/admin/academics" element={<AcademicsManagement />} />
-          <Route path="/admin/devices" element={<DeviceRequestsPage />} />
+          <Route path="/admin/requests" element={<AdminRequestsPage />} />
+          <Route path="/admin/devices" element={<AdminRequestsPage />} />
           <Route path="/admin/reports" element={<ReportsPage />} />
 
           {/* Faculty Routes */}

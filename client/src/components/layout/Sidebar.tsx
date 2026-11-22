@@ -39,7 +39,7 @@ export const Sidebar: React.FC = () => {
           { to: '/admin/faculty', label: 'Faculty Directory', icon: <Users className="w-5 h-5" /> },
           { to: '/admin/students', label: 'Students Directory', icon: <GraduationCap className="w-5 h-5" /> },
           { to: '/admin/academics', label: 'Classes & Subjects', icon: <BookOpen className="w-5 h-5" /> },
-          { to: '/admin/devices', label: 'Device Requests', icon: <ClipboardList className="w-5 h-5" /> },
+          { to: '/admin/requests', label: 'Requests & Approvals', icon: <ClipboardList className="w-5 h-5" /> },
           { to: '/admin/reports', label: 'Reports & Excel', icon: <FileSpreadsheet className="w-5 h-5" /> },
           { to: '/chat', label: 'Class Chat', icon: <MessageSquare className="w-5 h-5" /> },
           { to: '/ai-insights', label: 'AI Intelligence', icon: <Sparkles className="w-5 h-5" /> },

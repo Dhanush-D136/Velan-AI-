@@ -16,3 +16,7 @@ yarn-error.log*
 .prisma/
 client/dist
 server/dist
+client/android/.gradle/
+client/android/app/build/
+*.tsbuildinfo
+Thumbs.db

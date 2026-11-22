@@ -1,5 +1,4 @@
-// Prisma Schema for Velan AI (Local Development & Zero-Config SQLite)
-// See schema.postgresql.prisma for Supabase / Render Production PostgreSQL deployment
+// Prisma Schema for Velan AI (Universal College Management & GPS Attendance Platform)
 
 generator client {
   provider = "prisma-client-js"
@@ -12,29 +11,32 @@ datasource db {
 
 model User {
   id                 String               @id @default(uuid())
-  email              String               @unique
+  username           String?              @unique // Admin login "Vel"
+  email              String?              @unique
   passwordHash       String
   name               String
   phone              String?
   avatarUrl          String?
   role               String               @default("STUDENT") // ADMIN, FACULTY, STUDENT
   status             String               @default("ACTIVE")  // ACTIVE, INACTIVE, SUSPENDED
-  mustChangePassword Boolean              @default(false)
+  mustChangePassword Boolean              @default(true)
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
-  facultyProfile     FacultyProfile?
-  studentProfile     StudentProfile?
-  devices            UserDevice[]
-  deviceRequests     DeviceChangeRequest[]
-  notifications      Notification[]
-  pushSubscriptions  PushSubscription[]
-  sentMessages       ChatMessage[]
-  leaveRequests      LeaveRequest[]
-  auditLogs          AuditLog[]
-  feedbacks          Feedback[]
-  fees               Fee[]
+  facultyProfile        FacultyProfile?
+  studentProfile        StudentProfile?
+  devices               UserDevice[]
+  deviceRequests        DeviceChangeRequest[]
+  passwordResetRequests PasswordResetRequest[]
+  notifications         Notification[]
+  pushSubscriptions     PushSubscription[]
+  sentMessages          ChatMessage[]
+  leaveRequests         LeaveRequest[]
+  auditLogs             AuditLog[]
+  feedbacks             Feedback[]
+  fees                  Fee[]
 
+  @@index([username])
   @@index([email])
   @@index([role])
 }
@@ -72,6 +74,21 @@ model DeviceChangeRequest {
   @@index([status])
 }
 
+model PasswordResetRequest {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identifier  String    // username / registerNo / employeeId
+  status      String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestedAt DateTime  @default(now())
+  decidedAt   DateTime?
+  decidedBy   String?
+
+  @@index([userId])
+  @@index([status])
+  @@index([identifier])
+}
+
 model Department {
   id            String         @id @default(uuid())
   code          String         @unique // CSE, ECE, MECH
@@ -90,7 +107,7 @@ model AcademicYear {
   departmentId String
   department   Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   year         Int         // 1, 2, 3, 4
-  batch        String      // 2023-2027
+  batch        String      // 2024-2028
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -128,7 +145,7 @@ model FacultyProfile {
   id             String         @id @default(uuid())
   userId         String         @unique
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employeeId     String         @unique
+  employeeId     String         @unique // Login identifier
   departmentId   String
   department     Department     @relation(fields: [departmentId], references: [id])
   designation    String         // Professor, Associate Professor, Assistant Professor
@@ -147,20 +164,48 @@ model StudentProfile {
   id             String         @id @default(uuid())
   userId         String         @unique
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  registerNo     String         @unique
-  rollNo         String
+  registerNo     String         @unique // Primary login identifier
+  rollNo         String         // Secondary login identifier
   classId        String
   class          Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
-  parentPhone    String?
+  
+  // Completed profile fields
+  personalEmail  String?
+  phone          String?
+  dob            DateTime?
+  gender         String?        // Male, Female, Other
+  bloodGroup     String?        // A+, B+, O+, AB+, etc.
+  address        String?
+  guardianName   String?
+  guardianPhone  String?
+  photoUrl       String?
+  isProfileLocked Boolean       @default(false)
+  canEditProfile Boolean        @default(false)
+
   enrolledAt     DateTime       @default(now())
 
-  attendanceRecords AttendanceRecord[]
-  submissions       Submission[]
-  marks             Mark[]
+  attendanceRecords   AttendanceRecord[]
+  submissions         Submission[]
+  marks               Mark[]
+  profileEditRequests ProfileEditRequest[]
 
   @@unique([classId, rollNo])
   @@index([classId])
   @@index([registerNo])
+}
+
+model ProfileEditRequest {
+  id          String         @id @default(uuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  reason      String
+  status      String         @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestedAt DateTime       @default(now())
+  decidedAt   DateTime?
+  decidedBy   String?
+
+  @@index([studentId])
+  @@index([status])
 }
 
 model Subject {

@@ -59,11 +59,13 @@ app.get('/health', (req, res) => {
 // Mount API routes
 app.use('/api', apiRouter);
 
-// Start Server
-server.listen(PORT, () => {
-  console.log(`🚀 Velan AI Server active on port ${PORT}`);
-  console.log(`📡 Socket.IO real-time hub listening`);
-  console.log(`🌐 Client Origin locked to: ${CLIENT_ORIGIN}`);
-});
+// Start Server (only if not running under tests)
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, () => {
+    console.log(`🚀 Velan AI Server active on port ${PORT}`);
+    console.log(`📡 Socket.IO real-time hub listening`);
+    console.log(`🌐 Client Origin locked to: ${CLIENT_ORIGIN}`);
+  });
+}
 
 export { app, server, io };

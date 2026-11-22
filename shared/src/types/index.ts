@@ -69,7 +69,8 @@ export enum ChatMessageType {
 
 export interface UserSummary {
   id: string;
-  email: string;
+  username?: string | null;
+  email?: string | null;
   role: UserRole;
   status: UserStatus;
   mustChangePassword: boolean;
@@ -90,8 +91,17 @@ export interface UserSummary {
     classId: string;
     className?: string;
     departmentName?: string;
-    semester?: number;
-    parentPhone?: string | null;
+    personalEmail?: string | null;
+    phone?: string | null;
+    dob?: string | null;
+    gender?: string | null;
+    bloodGroup?: string | null;
+    address?: string | null;
+    guardianName?: string | null;
+    guardianPhone?: string | null;
+    photoUrl?: string | null;
+    isProfileLocked: boolean;
+    canEditProfile: boolean;
   } | null;
 }
 

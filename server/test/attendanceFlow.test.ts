@@ -10,18 +10,17 @@ describe('Server Health and API Endpoints', () => {
     expect(res.body.system).toBe('Velan AI College Platform');
   });
 
-  it('POST /api/auth/login validates credentials correctly', async () => {
+  it('POST /api/auth/login validates credentials correctly with username Vel', async () => {
     const res = await request(app)
       .post('/api/auth/login')
       .send({
-        email: 'admin@velan.ai',
-        password: 'Admin@123',
+        identifier: 'Vel',
+        password: process.env.ADMIN_PASSWORD || 'elite minds',
         deviceId: 'dev_test_runner',
       });
 
     expect(res.status).toBe(200);
     expect(res.body.user).toBeDefined();
-    expect(res.body.user.email).toBe('admin@velan.ai');
     expect(res.body.user.role).toBe('ADMIN');
     expect(res.body.token).toBeDefined();
   });
@@ -30,7 +29,7 @@ describe('Server Health and API Endpoints', () => {
     const res = await request(app)
       .post('/api/auth/login')
       .send({
-        email: 'admin@velan.ai',
+        identifier: 'Vel',
         password: 'WrongPassword@999',
         deviceId: 'dev_test_runner',
       });

@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { AttendanceMode, AttendanceStatus, DayOfWeek, SubjectType, UserRole } from '../types';
 
 export const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  identifier: z.string().min(1, 'Please enter your username, Register Number, or Employee ID'),
+  password: z.string().min(1, 'Please enter your password'),
   deviceId: z.string().min(1, 'Device identifier is required'),
   deviceLabel: z.string().optional(),
   platform: z.string().optional(),
@@ -11,7 +11,32 @@ export const loginSchema = z.object({
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+  newPassword: z
+    .string()
+    .min(1, 'Password cannot be empty')
+    .refine((val) => val !== '1234', {
+      message: 'Password cannot stay 1234. Please choose a new password.',
+    }),
+});
+
+export const completeProfileSchema = z.object({
+  personalEmail: z.string().email('Please enter a valid email address'),
+  phone: z.string().min(5, 'Please enter a valid phone number'),
+  dob: z.string().min(1, 'Date of birth is required'),
+  gender: z.string().min(1, 'Gender is required'),
+  bloodGroup: z.string().min(1, 'Blood group is required'),
+  address: z.string().min(3, 'Address is required'),
+  guardianName: z.string().min(2, 'Parent or guardian name is required'),
+  guardianPhone: z.string().min(5, 'Parent or guardian phone is required'),
+  photoUrl: z.string().optional().nullable(),
+});
+
+export const requestProfileEditSchema = z.object({
+  reason: z.string().min(5, 'Please provide a clear reason for profile edit permission'),
+});
+
+export const requestPasswordResetSchema = z.object({
+  identifier: z.string().min(1, 'Please enter your username, Register Number, or Employee ID'),
 });
 
 export const startAttendanceSessionSchema = z.object({
@@ -47,7 +72,7 @@ export const manualAttendanceSchema = z.object({
 });
 
 export const deviceChangeRequestSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().min(1),
   newDeviceId: z.string().min(1),
   deviceLabel: z.string().optional(),
   platform: z.string().optional(),
@@ -66,45 +91,54 @@ export const timetableSlotCreateSchema = z.object({
   isLabBlock: z.boolean().optional().default(false),
 });
 
-export const facultyCreateSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(2),
-  phone: z.string().optional(),
-  employeeId: z.string().min(1),
-  departmentId: z.string().min(1),
-  designation: z.string().min(1),
+export const departmentCreateSchema = z.object({
+  code: z.string().min(2, 'Department code must be at least 2 characters (e.g. CSE)').toUpperCase(),
+  name: z.string().min(3, 'Department name is required'),
+  hodName: z.string().optional(),
 });
 
-export const studentCreateSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(2),
-  phone: z.string().optional(),
-  registerNo: z.string().min(1),
-  rollNo: z.string().min(1),
-  classId: z.string().min(1),
-  parentPhone: z.string().optional(),
+export const academicYearCreateSchema = z.object({
+  departmentId: z.string().min(1, 'Department is required'),
+  year: z.number().int().min(1).max(5),
+  batch: z.string().min(4, 'Batch is required (e.g. 2024–2028)'),
 });
 
 export const classCreateSchema = z.object({
-  academicYearId: z.string().min(1),
-  section: z.string().min(1),
-  advisorId: z.string().optional().nullable(),
+  academicYearId: z.string().min(1, 'Academic Year is required'),
+  section: z.string().min(1, 'Section is required (e.g. A, B)').toUpperCase(),
   roomNumber: z.string().optional().nullable(),
+  advisorId: z.string().optional().nullable(),
 });
 
 export const subjectCreateSchema = z.object({
-  departmentId: z.string().min(1),
+  departmentId: z.string().min(1, 'Department is required'),
   year: z.number().int().min(1).max(5),
-  code: z.string().min(2),
-  name: z.string().min(2),
+  code: z.string().min(2, 'Subject code is required (e.g. CS301)').toUpperCase(),
+  name: z.string().min(2, 'Subject title is required'),
   type: z.nativeEnum(SubjectType).default(SubjectType.THEORY),
   credits: z.number().int().min(1).max(10).default(3),
 });
 
 export const classSubjectAssignSchema = z.object({
-  classId: z.string().min(1),
-  subjectId: z.string().min(1),
-  facultyId: z.string().min(1),
+  classId: z.string().min(1, 'Class is required'),
+  subjectId: z.string().min(1, 'Subject is required'),
+  facultyId: z.string().min(1, 'Faculty is required'),
+});
+
+export const facultyCreateSchema = z.object({
+  name: z.string().min(2, 'Faculty name is required'),
+  employeeId: z.string().min(2, 'Employee ID is required (e.g. FAC001)').toUpperCase(),
+  departmentId: z.string().min(1, 'Department is required'),
+  designation: z.string().min(2, 'Designation is required'),
+  email: z.string().email().optional().or(z.literal('')),
+  phone: z.string().optional(),
+});
+
+export const studentCreateSchema = z.object({
+  name: z.string().min(2, 'Student name is required'),
+  registerNo: z.string().min(2, 'Register Number is required'),
+  rollNo: z.string().min(2, 'Roll Number is required'),
+  classId: z.string().min(1, 'Class is required'),
 });
 
 export const chatMessageSchema = z.object({

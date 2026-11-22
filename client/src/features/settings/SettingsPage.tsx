@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Switch } from '@/components/ui/Switch';
 import { Input } from '@/components/ui/Input';
 import { useAuthStore } from '@/stores/authStore';
+import { useToast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
 import {
   Smartphone,
   ShieldCheck,
@@ -14,14 +16,52 @@ import {
   Building,
   KeyRound,
   RotateCcw,
+  Save,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
   const { user, deviceId } = useAuthStore();
+  const { showToast } = useToast();
+
   const [webPushEnabled, setWebPushEnabled] = useState(true);
   const [gpsHighAccuracy, setGpsHighAccuracy] = useState(true);
   const [quietHours, setQuietHours] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+
+  // Institution settings (Universal - blank by default)
+  const [institutionName, setInstitutionName] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      setIsLoadingSettings(true);
+      try {
+        const res = await api.get('/api/settings');
+        setInstitutionName(res.data.settings?.INSTITUTION_NAME || '');
+      } catch (err: any) {
+        console.error('Failed to load settings', err);
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const handleSaveInstitution = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSettings(true);
+    try {
+      const res = await api.put('/api/settings', {
+        institutionName: institutionName.trim(),
+      });
+      showToast(res.data.message || 'Institution settings updated successfully', 'success');
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to save settings', 'error');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -33,6 +73,51 @@ export const SettingsPage: React.FC = () => {
           Device lock bindings, campus geofence configurations, and notification preferences.
         </p>
       </div>
+
+      {/* Institution Name Configuration (Admin only) */}
+      {user?.role === 'ADMIN' && (
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 rounded-2xl bg-brand-50 text-brand-600">
+              <Building className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-heading font-bold text-base text-content">
+                Institution Branding & Identity
+              </h3>
+              <p className="text-xs text-content-secondary">
+                Universal deployment: leave blank for generic portal, or specify your college/university name to display on reports and dashboards.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveInstitution} className="space-y-4">
+            <Input
+              label="Institution Name (Optional)"
+              placeholder="e.g. National Institute of Technology (Blank by default)"
+              value={institutionName}
+              onChange={(e) => setInstitutionName(e.target.value)}
+            />
+
+            <div className="flex items-center justify-between pt-2 border-t border-border">
+              <span className="text-xs text-content-muted">
+                {institutionName.trim()
+                  ? `Active brand: "${institutionName.trim()}"`
+                  : 'Universal mode active (no institution name displayed).'}
+              </span>
+              <Button
+                type="submit"
+                size="sm"
+                leftIcon={<Save className="w-4 h-4" />}
+                isLoading={isSavingSettings}
+                disabled={isSavingSettings}
+              >
+                Save Settings
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       {/* Hardware Device Lock Binding Details */}
       <Card>

@@ -1,19 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { BottomBar } from './BottomBar';
 import { Modal } from '@/components/ui/Modal';
-import { Command, Search, Sparkles, CalendarCheck2, Users, FileText } from 'lucide-react';
+import { Command, Search, Sparkles, CalendarCheck2, Users, FileText, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { api } from '@/lib/api';
 
 export const AppLayout: React.FC = () => {
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isServerWaking, setIsServerWaking] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuthStore();
+
+  // Free-tier server wake-up monitor
+  useEffect(() => {
+    let isCancelled = false;
+    let timer: any = null;
+
+    const checkServerHealth = async () => {
+      try {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 2500)
+        );
+        await Promise.race([api.get('/health'), timeoutPromise]);
+        if (!isCancelled) setIsServerWaking(false);
+      } catch (e) {
+        if (!isCancelled) {
+          setIsServerWaking(true);
+          timer = setTimeout(checkServerHealth, 3000);
+        }
+      }
+    };
+
+    checkServerHealth();
+
+    return () => {
+      isCancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   // Listen for Ctrl+K / Cmd+K
   React.useEffect(() => {
@@ -42,6 +72,14 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white flex flex-col antialiased">
+      {/* Calm free-tier waking up server banner */}
+      {isServerWaking && (
+        <div className="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2 shadow-sm animate-pulse z-50">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span>Waking up server, please wait…</span>
+        </div>
+      )}
+
       <div className="flex-1 flex max-w-[1920px] w-full mx-auto">
         {/* Desktop Floating Sidebar */}
         <Sidebar />
@@ -53,7 +91,7 @@ export const AppLayout: React.FC = () => {
             onOpenNotifications={() => setIsNotificationOpen(true)}
           />
 
-          <main className="flex-1 px-4 sm:px-8 py-6">
+          <main className="flex-1 px-4 sm:px-8 py-6 portal-pattern-grid">
             <Outlet />
           </main>
         </div>

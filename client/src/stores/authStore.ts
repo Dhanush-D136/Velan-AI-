@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { UserRole, UserSummary } from '@velan/shared';
+import { getOrCreateDeviceId, syncNativeDeviceId } from '@/lib/device';
 
 interface AuthState {
   user: UserSummary | null;
@@ -12,15 +13,8 @@ interface AuthState {
   getDeviceId: () => string;
 }
 
-// Generate or retrieve persistent unique device ID for device lock
-const getOrCreateDeviceId = (): string => {
-  let id = localStorage.getItem('velan_device_id');
-  if (!id) {
-    id = 'dev_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now().toString(36);
-    localStorage.setItem('velan_device_id', id);
-  }
-  return id;
-};
+// Kick off native device id synchronization if on Capacitor
+syncNativeDeviceId();
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,

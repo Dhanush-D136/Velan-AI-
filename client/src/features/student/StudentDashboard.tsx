@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressRing } from '@/components/ui/ProgressRing';
+import { Modal } from '@/components/ui/Modal';
+import { useAuthStore } from '@/stores/authStore';
+import { StudentProfileCompletion } from './StudentProfileCompletion';
 import {
   CalendarCheck2,
   Clock,
@@ -14,14 +17,64 @@ import {
   CheckCircle2,
   Calendar,
   AlertTriangle,
+  UserCheck,
+  Lock,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const StudentDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  const isProfileLocked = !!user?.studentProfile?.isProfileLocked;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Welcome & Profile Status Header */}
+      <div className="p-6 rounded-3xl bg-white border border-border shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
+            Welcome back, {user?.name || 'Student'} 👋
+          </h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="font-mono text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-200">
+              Roll: {user?.studentProfile?.rollNo || '—'}
+            </span>
+            <span className="font-mono text-xs text-content-secondary">
+              Reg: {user?.studentProfile?.registerNo || '—'}
+            </span>
+          </div>
+        </div>
+
+        <Button
+          variant={isProfileLocked ? 'secondary' : 'primary'}
+          size="sm"
+          leftIcon={isProfileLocked ? <Lock className="w-3.5 h-3.5 text-emerald-600" /> : <UserCheck className="w-3.5 h-3.5" />}
+          onClick={() => setIsProfileModalOpen(true)}
+        >
+          {isProfileLocked ? 'View Locked Profile' : 'Complete Profile'}
+        </Button>
+      </div>
+
+      {/* Incomplete Profile Alert Banner */}
+      {!isProfileLocked && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <h4 className="font-bold">Institutional Profile Incomplete</h4>
+              <p className="text-amber-800 text-[11px] mt-0.5">
+                Please complete your personal and guardian details. Once saved, your profile will be locked for security.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" onClick={() => setIsProfileModalOpen(true)}>
+            Complete Details
+          </Button>
+        </div>
+      )}
+
       {/* Active Attendance Broadcast Banner (Alert when Faculty opens session) */}
       <div className="p-5 rounded-3xl bg-brand-gradient text-white shadow-glass relative overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
         <div className="flex items-center gap-4">
@@ -187,6 +240,16 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      {/* Profile Completion / Dossier Modal */}
+      <Modal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        title="Student Profile Details"
+        description="View or complete your institutional student records."
+      >
+        <StudentProfileCompletion onComplete={() => setIsProfileModalOpen(false)} />
+      </Modal>
     </div>
   );
 };

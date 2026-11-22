@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressRing } from '@/components/ui/ProgressRing';
+import { useAuthStore } from '@/stores/authStore';
+import { api } from '@/lib/api';
 import {
   Users,
   GraduationCap,
@@ -29,6 +31,20 @@ import {
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const [institutionName, setInstitutionName] = useState('');
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await api.get('/api/settings');
+        setInstitutionName(res.data.settings?.INSTITUTION_NAME || '');
+      } catch (e) {
+        // quiet fallback
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const deptAttendanceData = [
     { dept: 'CSE', attendance: 92 },
@@ -52,10 +68,10 @@ export const AdminDashboard: React.FC = () => {
             </span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-heading font-extrabold tracking-tight">
-            Velan Engineering College
+            Welcome back, {user?.name || 'Administrator'} 👋
           </h1>
-          <p className="text-sm text-white/80 mt-1 max-w-xl">
-            Real-time GPS geofence analytics, timetable slot verification, and campus AI intelligence.
+          <p className="text-sm text-white/90 mt-1 max-w-xl font-medium">
+            {institutionName ? `${institutionName} • ` : ''}Real-time GPS geofence analytics, timetable slot verification, and campus AI intelligence.
           </p>
         </div>
 

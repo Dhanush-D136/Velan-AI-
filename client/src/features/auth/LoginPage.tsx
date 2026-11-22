@@ -4,460 +4,478 @@ import { useAuthStore } from '@/stores/authStore';
 import { UserRole } from '@velan/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Tabs } from '@/components/ui/Tabs';
-import { ProgressRing } from '@/components/ui/ProgressRing';
+import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
 import {
   Sparkles,
   Lock,
-  Mail,
-  ShieldAlert,
-  CalendarDays,
-  MessageSquare,
-  CheckCircle2,
+  User,
+  Eye,
+  EyeOff,
   Smartphone,
-  AlertTriangle,
+  ShieldCheck,
+  AlertCircle,
+  CheckCircle2,
+  KeyRound,
+  GraduationCap,
+  Users,
+  Shield,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { setUser, getDeviceId } = useAuthStore();
+  const toast = useToast();
 
-  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.ADMIN);
-  const [email, setEmail] = useState('admin@velan.ai');
-  const [password, setPassword] = useState('Admin@123');
+  // Student is selected by default as requested in Section 5
+  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.STUDENT);
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [showDeviceLockBlocked, setShowDeviceLockBlocked] = useState(false);
-  const [deviceRequestSent, setDeviceRequestSent] = useState(false);
-  const [deviceRequestReason, setDeviceRequestReason] = useState('');
 
-  // Update default demo credentials when tab changes
-  const handleRoleChange = (roleId: string) => {
-    const role = roleId as UserRole;
+  // Forced Password Change Modal (for first login with default 1234)
+  const [showForcedPasswordChange, setShowForcedPasswordChange] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdChangeError, setPwdChangeError] = useState('');
+  const [isChangingPwd, setIsChangingPwd] = useState(false);
+
+  // Forgot Password Modal
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotId, setForgotId] = useState('');
+  const [forgotSubmitted, setForgotSubmitted] = useState(false);
+
+  // Device Lock Modal
+  const [showDeviceLockBlocked, setShowDeviceLockBlocked] = useState(false);
+  const [deviceRequestReason, setDeviceRequestReason] = useState('');
+  const [deviceRequestSent, setDeviceRequestSent] = useState(false);
+
+  const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
     setErrorMessage('');
-    setShowDeviceLockBlocked(false);
-
-    if (role === UserRole.ADMIN) {
-      setEmail('admin@velan.ai');
-      setPassword('Admin@123');
-    } else if (role === UserRole.FACULTY) {
-      setEmail('dr.ramesh@velan.ai');
-      setPassword('Faculty@123');
-    } else {
-      setEmail('student.arun@velan.ai');
-      setPassword('Student@123');
-    }
+    setIdentifier('');
+    setPassword('');
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!identifier.trim() || !password) return;
+
     setIsLoading(true);
     setErrorMessage('');
 
     try {
       const deviceId = getDeviceId();
-      // Try backend authentication
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          deviceId,
-          deviceLabel: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser',
-          platform: navigator.platform || 'Web',
-        }),
+      const res = await api.post('/auth/login', {
+        identifier: identifier.trim(),
+        password,
+        deviceId,
+        deviceLabel: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser',
+        platform: navigator.platform || 'Web',
       });
 
-      const data = await response.json();
+      const { user, token, mustChangePassword } = res.data;
 
-      if (response.ok && data.user) {
-        setUser(data.user, data.token);
-        if (data.user.role === UserRole.ADMIN) navigate('/admin');
-        else if (data.user.role === UserRole.FACULTY) navigate('/faculty');
-        else navigate('/student');
-      } else if (response.status === 403 && data.code === 'DEVICE_LOCKED') {
-        setShowDeviceLockBlocked(true);
-      } else {
-        // Fallback for demo mode if backend is not yet started or during initial setup
-        if (email.includes('admin')) {
-          setUser(
-            {
-              id: 'usr_admin_1',
-              email: 'admin@velan.ai',
-              name: 'Dr. K. Velan (Super Admin)',
-              role: UserRole.ADMIN,
-              status: 'ACTIVE' as any,
-              mustChangePassword: false,
-            },
-            'mock_admin_token'
-          );
-          navigate('/admin');
-        } else if (email.includes('ramesh') || selectedRole === UserRole.FACULTY) {
-          setUser(
-            {
-              id: 'usr_fac_1',
-              email: 'dr.ramesh@velan.ai',
-              name: 'Dr. Ramesh Kumar',
-              role: UserRole.FACULTY,
-              status: 'ACTIVE' as any,
-              mustChangePassword: false,
-              facultyProfile: {
-                id: 'fac_1',
-                employeeId: 'FAC001',
-                departmentId: 'dept_cse',
-                departmentName: 'Computer Science and Engineering',
-                designation: 'Professor & HOD',
-              },
-            },
-            'mock_faculty_token'
-          );
-          navigate('/faculty');
-        } else {
-          setUser(
-            {
-              id: 'usr_stud_1',
-              email: 'student.arun@velan.ai',
-              name: 'Arunachalam V',
-              role: UserRole.STUDENT,
-              status: 'ACTIVE' as any,
-              mustChangePassword: false,
-              studentProfile: {
-                id: 'stud_1',
-                registerNo: '710022104001',
-                rollNo: '22CS001',
-                classId: 'cls_cse_2a',
-                className: 'CSE – Year 2 – A',
-                departmentName: 'Computer Science and Engineering',
-                semester: 4,
-              },
-            },
-            'mock_student_token'
-          );
-          navigate('/student');
-        }
+      setUser(user, token);
+
+      if (mustChangePassword) {
+        setCurrentPwd(password);
+        setShowForcedPasswordChange(true);
+        return;
       }
-    } catch (err: any) {
-      // Local fallback execution so demo is 100% interactive anytime
-      if (email.includes('admin')) {
-        setUser(
-          {
-            id: 'usr_admin_1',
-            email: 'admin@velan.ai',
-            name: 'Dr. K. Velan (Super Admin)',
-            role: UserRole.ADMIN,
-            status: 'ACTIVE' as any,
-            mustChangePassword: false,
-          },
-          'mock_admin_token'
-        );
+
+      toast.success(`Welcome back, ${user.name}!`);
+
+      if (user.role === UserRole.ADMIN) {
         navigate('/admin');
-      } else if (selectedRole === UserRole.FACULTY) {
-        setUser(
-          {
-            id: 'usr_fac_1',
-            email: 'dr.ramesh@velan.ai',
-            name: 'Dr. Ramesh Kumar',
-            role: UserRole.FACULTY,
-            status: 'ACTIVE' as any,
-            mustChangePassword: false,
-            facultyProfile: {
-              id: 'fac_1',
-              employeeId: 'FAC001',
-              departmentId: 'dept_cse',
-              departmentName: 'Computer Science and Engineering',
-              designation: 'Professor & HOD',
-            },
-          },
-          'mock_faculty_token'
-        );
+      } else if (user.role === UserRole.FACULTY) {
         navigate('/faculty');
       } else {
-        setUser(
-          {
-            id: 'usr_stud_1',
-            email: 'student.arun@velan.ai',
-            name: 'Arunachalam V',
-            role: UserRole.STUDENT,
-            status: 'ACTIVE' as any,
-            mustChangePassword: false,
-            studentProfile: {
-              id: 'stud_1',
-              registerNo: '710022104001',
-              rollNo: '22CS001',
-              classId: 'cls_cse_2a',
-              className: 'CSE – Year 2 – A',
-              departmentName: 'Computer Science and Engineering',
-              semester: 4,
-            },
-          },
-          'mock_student_token'
-        );
         navigate('/student');
+      }
+    } catch (err: any) {
+      if (err.message?.includes('DEVICE_LOCKED') || err.message?.includes('linked to another device')) {
+        setShowDeviceLockBlocked(true);
+      } else {
+        setErrorMessage(err.message || 'Invalid credentials');
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleRequestDeviceReset = () => {
-    setDeviceRequestSent(true);
+  const handleExecutePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdChangeError('');
+
+    if (!newPwd || newPwd.trim() === '') {
+      setPwdChangeError('New password cannot be empty.');
+      return;
+    }
+
+    if (newPwd === '1234') {
+      setPwdChangeError('Password cannot stay 1234. Please choose a new password.');
+      return;
+    }
+
+    if (newPwd !== confirmPwd) {
+      setPwdChangeError('New passwords do not match.');
+      return;
+    }
+
+    setIsChangingPwd(true);
+
+    try {
+      await api.post('/auth/change-password', {
+        currentPassword: currentPwd,
+        newPassword: newPwd,
+      });
+
+      toast.success('Password changed successfully! You may now proceed.');
+      setShowForcedPasswordChange(false);
+
+      const user = useAuthStore.getState().user;
+      if (user?.role === UserRole.ADMIN) navigate('/admin');
+      else if (user?.role === UserRole.FACULTY) navigate('/faculty');
+      else navigate('/student');
+    } catch (err: any) {
+      setPwdChangeError(err.message || 'Failed to update password');
+    } finally {
+      setIsChangingPwd(false);
+    }
+  };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotId.trim()) return;
+
+    try {
+      await api.post('/auth/forgot-password', { identifier: forgotId.trim() });
+      setForgotSubmitted(true);
+      toast.success('Password reset request submitted for admin review.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to submit reset request');
+    }
+  };
+
+  const handleDeviceChangeRequest = async () => {
+    if (!deviceRequestReason.trim()) return;
+
+    try {
+      await api.post('/auth/device-request', {
+        identifier: identifier.trim(),
+        newDeviceId: getDeviceId(),
+        reason: deviceRequestReason,
+        platform: navigator.platform || 'Web',
+      });
+      setDeviceRequestSent(true);
+      toast.success('Device change request submitted to admin.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to submit device change request');
+    }
+  };
+
+  const getIdentifierLabel = () => {
+    if (selectedRole === UserRole.STUDENT) return 'Register Number / Roll Number';
+    if (selectedRole === UserRole.FACULTY) return 'Employee ID';
+    return 'Admin Username';
+  };
+
+  const getIdentifierPlaceholder = () => {
+    if (selectedRole === UserRole.STUDENT) return 'e.g. 710024104001 or 24CS001';
+    if (selectedRole === UserRole.FACULTY) return 'e.g. FAC001';
+    return 'e.g. Vel';
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white antialiased overflow-hidden">
-      {/* LEFT HERO: Brand Gradient + Floating Interactive Cards */}
-      <div className="lg:w-1/2 relative bg-brand-gradient p-8 sm:p-14 flex flex-col justify-between text-white overflow-hidden min-h-[480px] lg:min-h-screen">
-        {/* Glow Spheres */}
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-accent-violet/30 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-accent-cyan/30 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 animated-gradient-bg relative overflow-hidden">
+      {/* Centered Clean Rounded Card */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        className="w-full max-w-md bg-white/95 backdrop-blur-2xl rounded-3xl p-8 sm:p-10 shadow-2xl border border-white/60 relative z-10"
+      >
         {/* Brand Header */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-lg">
-            <Sparkles className="w-6 h-6 text-white" />
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-brand-gradient flex items-center justify-center text-white mx-auto shadow-lg shadow-brand-500/30 mb-3">
+            <Sparkles className="w-7 h-7" />
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-heading font-extrabold tracking-tight text-white">
-              Velan <span className="text-accent-cyan font-black">AI</span>
-            </h1>
-            <p className="text-xs text-white/80 font-medium tracking-wide">
-              GPS Attendance & Intelligent College Platform
-            </p>
-          </div>
-        </div>
-
-        {/* Center Floating Visual Cards */}
-        <div className="relative z-10 my-8 flex flex-col gap-4 max-w-md mx-auto w-full">
-          {/* Card 1: Live Attendance Progress Ring */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="p-5 rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 shadow-2xl flex items-center justify-between"
-          >
-            <div className="flex items-center gap-4">
-              <div className="bg-white/90 p-2 rounded-2xl shadow-inner">
-                <ProgressRing progress={94} size={64} strokeWidth={6} color="#6366F1" />
-              </div>
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-accent-cyan">
-                  Today's Attendance
-                </span>
-                <h4 className="text-lg font-heading font-bold text-white">94% Present</h4>
-                <p className="text-xs text-white/80">CSE – Year 2 – A (30/32 marked)</p>
-              </div>
-            </div>
-            <span className="px-3 py-1 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 text-xs font-bold">
-              GPS Verified
-            </span>
-          </motion.div>
-
-          {/* Card 2: Timetable Slot Chip */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="p-4 rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 shadow-2xl flex items-center gap-3.5"
-          >
-            <div className="p-3 rounded-2xl bg-white/20 text-white shrink-0">
-              <CalendarDays className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white">Data Structures & Algo</span>
-                <span className="text-[11px] font-mono text-white/80">10:00 - 11:00 AM</span>
-              </div>
-              <p className="text-xs text-white/70">Dr. Ramesh Kumar • Lab Hall 302</p>
-            </div>
-          </motion.div>
-
-          {/* Card 3: Class Chat Bubble */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="p-4 rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 shadow-2xl flex items-center gap-3"
-          >
-            <div className="p-3 rounded-2xl bg-accent-pink/30 text-white shrink-0">
-              <MessageSquare className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-white">Class Discussion: Assignment 2</p>
-              <p className="text-xs text-white/75 truncate">
-                "Graph traversal solutions uploaded to Materials."
-              </p>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Left Bottom Footer */}
-        <div className="relative z-10 flex items-center justify-between text-xs text-white/70">
-          <span>Enterprise Campus Security</span>
-          <span>Apple • Linear • Stripe Design Standard</span>
-        </div>
-      </div>
-
-      {/* RIGHT SIDE: Authentication Form & Role Selector */}
-      <div className="lg:w-1/2 p-6 sm:p-12 lg:p-16 flex flex-col justify-center max-w-xl mx-auto w-full">
-        <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
-            Sign in to your portal
-          </h2>
-          <p className="text-sm text-content-secondary mt-1">
-            Access GPS attendance, timetables, and academic records.
+          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
+            Velan <span className="bg-clip-text text-transparent bg-brand-gradient">AI</span>
+          </h1>
+          <p className="text-xs text-content-secondary mt-1 font-medium">
+            Next-Gen GPS Attendance & Management Platform
           </p>
         </div>
 
-        {/* Role Selector Tabs */}
-        <div className="mb-6">
-          <Tabs
-            activeTab={selectedRole}
-            onChange={handleRoleChange}
-            tabs={[
-              { id: UserRole.ADMIN, label: 'Admin' },
-              { id: UserRole.FACULTY, label: 'Faculty' },
-              { id: UserRole.STUDENT, label: 'Student' },
-            ]}
-            className="w-full justify-between"
-          />
+        {/* Role Selector Tabs (Student selected by default) */}
+        <div className="flex p-1.5 rounded-2xl bg-slate-100 border border-slate-200/80 mb-6 gap-1">
+          <button
+            type="button"
+            onClick={() => handleRoleChange(UserRole.STUDENT)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 select-none ${
+              selectedRole === UserRole.STUDENT
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-content-secondary hover:text-content'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4" />
+            <span>Student</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleRoleChange(UserRole.FACULTY)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 select-none ${
+              selectedRole === UserRole.FACULTY
+                ? 'bg-white text-teal-600 shadow-sm'
+                : 'text-content-secondary hover:text-content'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Faculty</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleRoleChange(UserRole.ADMIN)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 select-none ${
+              selectedRole === UserRole.ADMIN
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-content-secondary hover:text-content'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            <span>Admin</span>
+          </button>
         </div>
 
-        {/* Device Lock Warning Notification if triggered */}
-        {showDeviceLockBlocked && (
-          <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900">
-            <div className="flex items-start gap-3">
-              <Smartphone className="w-5 h-5 text-accent-amber shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h4 className="text-sm font-bold">This account is linked to another device</h4>
-                <p className="text-xs text-amber-700 mt-1">
-                  For exam and GPS attendance integrity, student accounts are bound to one verified
-                  smartphone. Request admin authorization to transfer devices.
-                </p>
+        {/* Animated Form Fields */}
+        <AnimatePresence mode="wait">
+          <motion.form
+            key={selectedRole}
+            initial={{ opacity: 0, x: 8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ duration: 0.2 }}
+            onSubmit={handleLogin}
+            className="space-y-4"
+          >
+            <Input
+              label={getIdentifierLabel()}
+              type="text"
+              required
+              autoFocus
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder={getIdentifierPlaceholder()}
+              leftIcon={<User className="w-4 h-4 text-slate-400" />}
+            />
 
-                {!deviceRequestSent ? (
-                  <div className="mt-3 space-y-2">
-                    <Input
-                      placeholder="Reason for change (e.g. New phone / repaired)"
-                      value={deviceRequestReason}
-                      onChange={(e) => setDeviceRequestReason(e.target.value)}
-                      className="bg-white text-xs py-2"
-                    />
-                    <Button
-                      size="sm"
-                      variant="soft"
-                      onClick={handleRequestDeviceReset}
-                      className="w-full text-xs"
-                    >
-                      Request Device Change
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="mt-2 text-xs font-semibold text-accent-emerald flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4" /> Request submitted to Admin for approval.
-                  </div>
-                )}
-              </div>
+            <div className="relative">
+              <Input
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                leftIcon={<Lock className="w-4 h-4 text-slate-400" />}
+                rightIcon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((p) => !p)}
+                    className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                }
+              />
             </div>
-          </div>
-        )}
 
-        {/* Login Form */}
-        <form onSubmit={handleLogin} className="space-y-4">
+            {errorMessage && (
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-accent-rose text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotId(identifier);
+                  setForgotSubmitted(false);
+                  setShowForgotPassword(true);
+                }}
+                className="font-semibold text-brand-600 hover:text-brand-700 hover:underline"
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            <Button
+              type="submit"
+              size="lg"
+              variant={
+                selectedRole === UserRole.ADMIN
+                  ? 'admin'
+                  : selectedRole === UserRole.FACULTY
+                  ? 'faculty'
+                  : 'student'
+              }
+              isLoading={isLoading}
+              className="w-full font-bold shadow-glass text-sm h-12"
+            >
+              Sign In as {selectedRole}
+            </Button>
+          </motion.form>
+        </AnimatePresence>
+      </motion.div>
+
+      {/* FORCED PASSWORD CHANGE MODAL (For 1st Login with 1234) */}
+      <Modal
+        isOpen={showForcedPasswordChange}
+        onClose={() => {}}
+        title="Set Your New Password"
+        description="First-time login requires changing your default password (1234) to secure your account."
+        showCloseButton={false}
+      >
+        <form onSubmit={handleExecutePasswordChange} className="space-y-4">
           <Input
-            label="Email Address"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            leftIcon={<Mail className="w-4 h-4" />}
-            placeholder="name@velan.ai"
+            label="Current Password"
+            type="password"
+            value={currentPwd}
+            onChange={(e) => setCurrentPwd(e.target.value)}
+            disabled
           />
-
           <Input
-            label="Password"
+            label="New Password"
             type="password"
             required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            leftIcon={<Lock className="w-4 h-4" />}
-            placeholder="••••••••••••"
+            value={newPwd}
+            onChange={(e) => setNewPwd(e.target.value)}
+            placeholder="Enter any new password (cannot be 1234)"
+          />
+          <Input
+            label="Confirm New Password"
+            type="password"
+            required
+            value={confirmPwd}
+            onChange={(e) => setConfirmPwd(e.target.value)}
+            placeholder="Re-enter new password"
           />
 
-          {errorMessage && (
+          {pwdChangeError && (
             <p className="text-xs text-accent-rose font-medium flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4" /> {errorMessage}
+              <AlertCircle className="w-4 h-4" /> {pwdChangeError}
             </p>
           )}
 
-          <div className="flex items-center justify-between text-xs text-content-secondary">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                defaultChecked
-                className="rounded border-border text-brand-500 focus:ring-brand-400"
-              />
-              <span>Remember this device</span>
-            </label>
-            <a href="#" className="font-semibold text-brand-600 hover:text-brand-700">
-              Forgot password?
-            </a>
-          </div>
-
           <Button
             type="submit"
-            size="lg"
-            variant={
-              selectedRole === UserRole.ADMIN
-                ? 'admin'
-                : selectedRole === UserRole.FACULTY
-                ? 'faculty'
-                : 'student'
-            }
-            isLoading={isLoading}
-            className="w-full text-sm font-bold shadow-glass"
+            size="md"
+            variant="primary"
+            isLoading={isChangingPwd}
+            className="w-full font-bold"
           >
-            Sign In as {selectedRole}
+            Update Password & Proceed
           </Button>
         </form>
+      </Modal>
 
-        {/* Quick Fill Demo Credentials */}
-        <div className="mt-8 pt-6 border-t border-border">
-          <p className="text-xs font-semibold uppercase tracking-wider text-content-secondary mb-3 text-center">
-            One-Click Demo Fill
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleRoleChange(UserRole.ADMIN)}
-              className="p-2.5 rounded-2xl border border-border bg-surface-soft hover:bg-slate-100 text-left transition-all group"
-            >
-              <span className="block text-[11px] font-bold text-indigo-600">Admin</span>
-              <span className="block text-[10px] text-content-muted truncate">admin@velan.ai</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRoleChange(UserRole.FACULTY)}
-              className="p-2.5 rounded-2xl border border-border bg-surface-soft hover:bg-slate-100 text-left transition-all group"
-            >
-              <span className="block text-[11px] font-bold text-teal-600">Faculty</span>
-              <span className="block text-[10px] text-content-muted truncate">dr.ramesh@velan.ai</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRoleChange(UserRole.STUDENT)}
-              className="p-2.5 rounded-2xl border border-border bg-surface-soft hover:bg-slate-100 text-left transition-all group"
-            >
-              <span className="block text-[11px] font-bold text-sky-600">Student</span>
-              <span className="block text-[10px] text-content-muted truncate">student.arun@velan.ai</span>
-            </button>
+      {/* FORGOT PASSWORD MODAL */}
+      <Modal
+        isOpen={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+        title="Reset Password Request"
+        description="Submit your Register Number, Employee ID, or Username. When approved by admin, your password will be reset to 1234."
+      >
+        {!forgotSubmitted ? (
+          <form onSubmit={handleForgotSubmit} className="space-y-4">
+            <Input
+              label="Account Identifier"
+              required
+              value={forgotId}
+              onChange={(e) => setForgotId(e.target.value)}
+              placeholder="e.g. 710024104001 or FAC001 or Vel"
+            />
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => setShowForgotPassword(false)}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" type="submit">
+                Submit Request
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="text-center py-4 space-y-3">
+            <CheckCircle2 className="w-10 h-10 text-accent-emerald mx-auto" />
+            <p className="text-xs font-semibold text-content">
+              Your password reset request has been submitted to the administrator.
+            </p>
+            <p className="text-[11px] text-content-secondary">
+              Once approved, your password will be reset to 1234 and you will be prompted to set a new password on your next login.
+            </p>
+            <Button size="sm" onClick={() => setShowForgotPassword(false)}>
+              Done
+            </Button>
           </div>
-        </div>
-      </div>
+        )}
+      </Modal>
+
+      {/* DEVICE LOCK MODAL */}
+      <Modal
+        isOpen={showDeviceLockBlocked}
+        onClose={() => setShowDeviceLockBlocked(false)}
+        title="Account Bound to Another Phone"
+        description="For collegiate GPS attendance security, accounts are bound to one registered phone."
+      >
+        {!deviceRequestSent ? (
+          <div className="space-y-4">
+            <p className="text-xs text-content-secondary leading-relaxed">
+              To transfer your attendance device, request administrator authorization stating your reason:
+            </p>
+            <Input
+              label="Reason for Transfer"
+              required
+              value={deviceRequestReason}
+              onChange={(e) => setDeviceRequestReason(e.target.value)}
+              placeholder="e.g. New permanent phone, damaged screen repaired"
+            />
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="secondary" size="sm" onClick={() => setShowDeviceLockBlocked(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleDeviceChangeRequest}>
+                Submit Transfer Request
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-4 space-y-3">
+            <CheckCircle2 className="w-10 h-10 text-accent-emerald mx-auto" />
+            <p className="text-xs font-bold text-content">
+              Device change request submitted to admin for authorization.
+            </p>
+            <Button size="sm" onClick={() => setShowDeviceLockBlocked(false)}>
+              Close
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

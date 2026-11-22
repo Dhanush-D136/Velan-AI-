@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { StatCard } from '@/components/ui/StatCard';
 import { ProgressRing } from '@/components/ui/ProgressRing';
+import { useAuthStore } from '@/stores/authStore';
 import {
   CalendarCheck2,
   Clock,
@@ -19,6 +20,7 @@ import { useNavigate } from 'react-router-dom';
 
 export const FacultyDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
 
   const todayTimeline = [
     {
@@ -59,10 +61,11 @@ export const FacultyDashboard: React.FC = () => {
             Faculty Teaching Hub
           </span>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold mt-2">
-            Welcome, Dr. Ramesh Kumar
+            Welcome back, {user?.name || 'Faculty Member'} 👋
           </h1>
-          <p className="text-xs sm:text-sm text-white/80 mt-1">
-            Department of Computer Science and Engineering • Professor & HOD
+          <p className="text-xs sm:text-sm text-white/90 mt-1 font-medium">
+            {user?.facultyProfile?.designation || 'Teaching Faculty'}
+            {user?.facultyProfile?.employeeId ? ` • Employee ID: ${user.facultyProfile.employeeId}` : ''}
           </p>
         </div>
 
