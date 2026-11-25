@@ -24,8 +24,8 @@ export const Avatar: React.FC<AvatarProps> = ({
     xl: 'w-16 h-16 text-xl',
   };
 
-  const getInitials = (str: string) => {
-    const parts = str.trim().split(/\s+/);
+  const getInitials = (str?: string) => {
+    const parts = (str || 'U').trim().split(/\s+/);
     if (parts.length >= 2) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }

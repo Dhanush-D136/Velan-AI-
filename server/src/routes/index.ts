@@ -1,5 +1,11 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticateToken, requireRole } from '../middleware/auth';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 import * as authCtrl from '../controllers/authController';
 import * as attCtrl from '../controllers/attendanceController';
 import * as ttCtrl from '../controllers/timetableController';
@@ -72,7 +78,7 @@ apiRouter.put('/academics/students/:id', authenticateToken, requireRole('ADMIN')
 apiRouter.delete('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteStudent);
 apiRouter.post('/academics/students/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetStudentPassword);
 apiRouter.get('/academics/students/template', authenticateToken, acadCtrl.getStudentExcelTemplate);
-apiRouter.post('/academics/students/import-excel', authenticateToken, requireRole('ADMIN'), acadCtrl.importStudentsFromExcel);
+apiRouter.post('/academics/students/import-excel', authenticateToken, requireRole('ADMIN'), upload.single('file'), acadCtrl.importStudentsFromExcel);
 
 // ==========================================
 // ADMIN REQUESTS QUEUE (PASSWORD, PROFILE, DEVICE)

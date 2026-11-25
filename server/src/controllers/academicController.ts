@@ -835,47 +835,142 @@ export const getStudentExcelTemplate = async (req: Request, res: Response) => {
   }
 };
 
-// Bulk Import Students from Excel
+// Bulk Import Students from Excel (supports ?preview=true and multipart/form-data file upload OR JSON students array)
 export const importStudentsFromExcel = async (req: Request, res: Response) => {
   try {
-    const { classId, students: rawStudents } = req.body;
+    const classId = req.body?.classId || (req.query?.classId as string);
+    const isPreview = req.query?.preview === 'true';
+
     if (!classId) return res.status(400).json({ error: 'Class ID is required' });
-    if (!Array.isArray(rawStudents) || rawStudents.length === 0) {
-      return res.status(400).json({ error: 'No student rows provided' });
-    }
 
     const cls = await prisma.class.findUnique({ where: { id: classId } });
     if (!cls) return res.status(404).json({ error: 'Class not found' });
 
-    const defaultPasswordHash = await bcrypt.hash('1234', 10);
-    const successList: any[] = [];
-    const errorList: { row: number; rollNo: string; registerNo: string; error: string }[] = [];
+    let rawStudents: any[] = Array.isArray(req.body?.students) ? req.body.students : [];
+
+    // Parse uploaded .xlsx file if present
+    if ((req as any).file?.buffer) {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load((req as any).file.buffer);
+      const sheet = workbook.worksheets[0];
+      if (!sheet) {
+        return res.status(400).json({ error: 'Uploaded Excel file has no worksheets' });
+      }
+
+      const headers: string[] = [];
+      sheet.getRow(1).eachCell((cell, colNumber) => {
+        headers[colNumber] = String(cell.value || '').trim().toUpperCase();
+      });
+
+      sheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // skip header row
+        const rowObj: Record<string, any> = {};
+        let hasValue = false;
+        row.eachCell((cell, colNumber) => {
+          const val = cell.text !== undefined ? cell.text : String(cell.value ?? '');
+          if (val.trim()) hasValue = true;
+          const headerName = headers[colNumber];
+          if (headerName) rowObj[headerName] = val.trim();
+          // Also capture positional fallback (Col 1=Roll, Col 2=Reg, Col 3=Name, Col 4=Phone)
+          rowObj[`__col${colNumber}`] = val.trim();
+        });
+        if (hasValue) rawStudents.push(rowObj);
+      });
+    }
+
+    if (!Array.isArray(rawStudents) || rawStudents.length === 0) {
+      return res.status(400).json({ error: 'No student rows found in the uploaded file' });
+    }
 
     const existingRegNos = new Set(
-      (await prisma.studentProfile.findMany({ select: { registerNo: true } })).map((s) => s.registerNo)
+      (await prisma.studentProfile.findMany({ select: { registerNo: true } })).map((s) =>
+        s.registerNo.toUpperCase()
+      )
     );
+    const existingClassRollNos = new Set(
+      (
+        await prisma.studentProfile.findMany({
+          where: { classId },
+          select: { rollNo: true },
+        })
+      ).map((s) => s.rollNo.toUpperCase())
+    );
+
+    const seenRegsInFile = new Set<string>();
+    const seenRollsInFile = new Set<string>();
+
+    const validRows: { rollNo: string; registerNo: string; name: string; phone?: string }[] = [];
+    const errorList: { row: number; rollNo: string; registerNo: string; name?: string; error: string }[] = [];
 
     for (let i = 0; i < rawStudents.length; i++) {
       const row = rawStudents[i];
-      const rollNo = String(row['ROLL NUMBER'] || row['rollNo'] || '').trim();
-      const registerNo = String(row['REGISTER NUMBER'] || row['registerNo'] || '').trim();
-      const name = String(row['STUDENT NAME'] || row['name'] || row['studentName'] || '').trim();
+      const rollNo = String(
+        row['ROLL NUMBER'] || row['ROLL NO'] || row['rollNo'] || row['__col1'] || ''
+      ).trim();
+      const registerNo = String(
+        row['REGISTER NUMBER'] || row['REGISTER NO'] || row['registerNo'] || row['__col2'] || ''
+      ).trim();
+      const name = String(
+        row['STUDENT NAME'] || row['NAME'] || row['name'] || row['studentName'] || row['__col3'] || ''
+      ).trim();
+      const phone = String(row['PHONE'] || row['MOBILE'] || row['phone'] || row['__col4'] || '').trim() || undefined;
 
       if (!rollNo || !registerNo || !name) {
-        errorList.push({ row: i + 1, rollNo, registerNo, error: 'Missing Roll Number, Register Number, or Name' });
+        errorList.push({
+          row: i + 2,
+          rollNo,
+          registerNo,
+          name,
+          error: 'Missing Roll Number, Register Number, or Student Name',
+        });
         continue;
       }
 
-      if (existingRegNos.has(registerNo)) {
-        errorList.push({ row: i + 1, rollNo, registerNo, error: 'Register Number already exists in database' });
+      const regUpper = registerNo.toUpperCase();
+      const rollUpper = rollNo.toUpperCase();
+
+      if (existingRegNos.has(regUpper)) {
+        errorList.push({ row: i + 2, rollNo, registerNo, name, error: 'Register Number already exists in DB' });
+        continue;
+      }
+      if (seenRegsInFile.has(regUpper)) {
+        errorList.push({ row: i + 2, rollNo, registerNo, name, error: 'Duplicate Register Number in file' });
+        continue;
+      }
+      if (existingClassRollNos.has(rollUpper)) {
+        errorList.push({ row: i + 2, rollNo, registerNo, name, error: 'Roll Number already exists in this class' });
+        continue;
+      }
+      if (seenRollsInFile.has(rollUpper)) {
+        errorList.push({ row: i + 2, rollNo, registerNo, name, error: 'Duplicate Roll Number in file' });
         continue;
       }
 
-      try {
-        const user = await prisma.user.create({
+      seenRegsInFile.add(regUpper);
+      seenRollsInFile.add(rollUpper);
+      validRows.push({ rollNo, registerNo, name, phone });
+    }
+
+    if (isPreview) {
+      return res.json({
+        totalRows: rawStudents.length,
+        validCount: validRows.length,
+        errorCount: errorList.length,
+        validRows,
+        errors: errorList,
+      });
+    }
+
+    const defaultPasswordHash = await bcrypt.hash('1234', 10);
+    const createdProfiles: any[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const item of validRows) {
+        const user = await tx.user.create({
           data: {
-            name,
-            email: `${registerNo.toLowerCase()}@student.local`,
+            name: item.name,
+            email: `${item.registerNo.toLowerCase()}@student.local`,
+            phone: item.phone || null,
             passwordHash: defaultPasswordHash,
             role: 'STUDENT',
             status: 'ACTIVE',
@@ -883,26 +978,24 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
           },
         });
 
-        const profile = await prisma.studentProfile.create({
+        const profile = await tx.studentProfile.create({
           data: {
             userId: user.id,
-            registerNo,
-            rollNo,
+            registerNo: item.registerNo,
+            rollNo: item.rollNo,
             classId,
+            phone: item.phone || null,
           },
         });
-
-        existingRegNos.add(registerNo);
-        successList.push(profile);
-      } catch (err: any) {
-        errorList.push({ row: i + 1, rollNo, registerNo, error: 'Failed to create student account' });
+        createdProfiles.push(profile);
       }
-    }
+    });
 
+    emitDataUpdate(req, 'students');
     return res.json({
-      message: `Import completed: ${successList.length} students created, ${errorList.length} rows skipped.`,
+      message: `Import completed: ${createdProfiles.length} student(s) created, ${errorList.length} row(s) skipped.`,
       totalProcessed: rawStudents.length,
-      successCount: successList.length,
+      successCount: createdProfiles.length,
       errorCount: errorList.length,
       errors: errorList,
     });

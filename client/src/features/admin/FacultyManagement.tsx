@@ -14,17 +14,34 @@ import { Plus, Search, KeyRound, Trash2, Users, AlertCircle } from 'lucide-react
 
 interface FacultyMember {
   id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
   employeeId: string;
   departmentId: string;
   designation: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    status: string;
+  };
   department?: {
     id: string;
     name: string;
     code: string;
   };
+  classSubjects?: {
+    id: string;
+    subject: {
+      name: string;
+      code: string;
+    };
+    class: {
+      name: string;
+    };
+  }[];
   assignedSubjects?: {
     id: string;
     subject: {
@@ -122,18 +139,20 @@ export const FacultyManagement: React.FC = () => {
   };
 
   const handleResetPassword = async (fac: FacultyMember) => {
-    if (!confirm(`Reset password for ${fac.name} (${fac.employeeId}) to 1234?`)) return;
+    const facName = fac.user?.name || fac.name || fac.employeeId;
+    if (!confirm(`Reset password for ${facName} (${fac.employeeId}) to 1234?`)) return;
 
     try {
       const res = await api.post(`/api/academics/faculty/${fac.id}/reset-password`);
       showToast(res.data.message || 'Password reset to 1234 successfully', 'success');
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to reset password', 'error');
+      showToast(err.response?.data?.error || err.response?.data?.message || 'Failed to reset password', 'error');
     }
   };
 
   const handleDeleteFaculty = async (fac: FacultyMember) => {
-    if (!confirm(`Are you sure you want to delete faculty member ${fac.name}? This will remove their user account.`))
+    const facName = fac.user?.name || fac.name || fac.employeeId;
+    if (!confirm(`Are you sure you want to delete faculty member ${facName}? This will remove their user account.`))
       return;
 
     try {
@@ -145,26 +164,35 @@ export const FacultyManagement: React.FC = () => {
     }
   };
 
-  const filteredFaculty = facultyList.filter(
-    (f) =>
-      f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (f.email && f.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      f.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const getFacName = (f: FacultyMember) => f.user?.name || f.name || 'Faculty';
+  const getFacEmail = (f: FacultyMember) => f.user?.email || f.email || '';
+  const getFacPhone = (f: FacultyMember) => f.user?.phone || f.phone || '';
+
+  const filteredFaculty = facultyList.filter((f) => {
+    const q = searchTerm.toLowerCase();
+    return (
+      getFacName(f).toLowerCase().includes(q) ||
+      getFacEmail(f).toLowerCase().includes(q) ||
+      (f.employeeId || '').toLowerCase().includes(q)
+    );
+  });
 
   const columns: Column<FacultyMember>[] = [
     {
       key: 'name',
       header: 'Faculty Member',
-      render: (f) => (
-        <div className="flex items-center gap-3">
-          <Avatar name={f.name} size="md" />
-          <div>
-            <h4 className="font-bold text-content text-sm">{f.name}</h4>
-            <span className="text-[11px] text-content-secondary font-mono">{f.employeeId}</span>
+      render: (f) => {
+        const displayName = getFacName(f);
+        return (
+          <div className="flex items-center gap-3">
+            <Avatar name={displayName} size="md" />
+            <div>
+              <h4 className="font-bold text-content text-sm">{displayName}</h4>
+              <span className="text-[11px] text-content-secondary font-mono">{f.employeeId}</span>
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       key: 'department',
@@ -182,7 +210,7 @@ export const FacultyManagement: React.FC = () => {
       key: 'assignedSubjects',
       header: 'Assigned Teaching Subjects',
       render: (f) => {
-        const subs = f.assignedSubjects || [];
+        const subs = f.classSubjects || f.assignedSubjects || [];
         if (subs.length === 0) {
           return <span className="text-xs text-content-muted italic">No subjects assigned</span>;
         }
@@ -193,7 +221,7 @@ export const FacultyManagement: React.FC = () => {
                 key={s.id}
                 className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-50 text-brand-700 border border-brand-200"
               >
-                {s.subject.name} ({s.class.name})
+                {s.subject?.name} ({s.class?.name})
               </span>
             ))}
           </div>
@@ -205,8 +233,8 @@ export const FacultyManagement: React.FC = () => {
       header: 'Contact',
       render: (f) => (
         <div className="text-xs text-content-secondary space-y-0.5">
-          <span className="block font-mono">{f.email || '—'}</span>
-          <span className="block font-mono text-[11px]">{f.phone || '—'}</span>
+          <span className="block font-mono">{getFacEmail(f) || '—'}</span>
+          <span className="block font-mono text-[11px]">{getFacPhone(f) || '—'}</span>
         </div>
       ),
     },

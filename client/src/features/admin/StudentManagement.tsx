@@ -256,9 +256,7 @@ export const StudentManagement: React.FC = () => {
       formData.append('file', selectedFile);
       formData.append('classId', importClassId);
 
-      const res = await api.post('/api/academics/students/import-excel?preview=true', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post('/api/academics/students/import-excel?preview=true', formData);
       setPreviewData(res.data);
       if (res.data.validCount === 0) {
         showToast('No valid rows found in the uploaded spreadsheet', 'warning');
@@ -281,9 +279,7 @@ export const StudentManagement: React.FC = () => {
       formData.append('file', selectedFile);
       formData.append('classId', importClassId);
 
-      const res = await api.post('/api/academics/students/import-excel', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post('/api/academics/students/import-excel', formData);
       showToast(res.data.message || 'Students imported successfully!', 'success');
       setIsImportModalOpen(false);
       setSelectedFile(null);
