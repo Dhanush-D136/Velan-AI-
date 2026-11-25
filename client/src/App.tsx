@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { UserRole } from '@velan/shared';
+import { Sparkles } from 'lucide-react';
 import { LoginPage } from './features/auth/LoginPage';
 import { AppLayout } from './components/layout/AppLayout';
 
@@ -45,7 +46,11 @@ const GenericSubPage: React.FC<{ title: string; subtitle?: string }> = ({ title,
 );
 
 export default function App() {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isHydrating, hydrateSession } = useAuthStore();
+
+  useEffect(() => {
+    hydrateSession();
+  }, [hydrateSession]);
 
   const getDefaultRedirect = () => {
     if (!isAuthenticated || !user) return '/login';
@@ -54,40 +59,67 @@ export default function App() {
     return '/student';
   };
 
+  if (isHydrating) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50/40 to-cyan-50/40 px-4">
+        <div className="relative flex flex-col items-center">
+          <div className="w-20 h-20 rounded-3xl bg-brand-gradient flex items-center justify-center shadow-2xl animate-bounce">
+            <Sparkles className="w-10 h-10 text-white animate-pulse" />
+          </div>
+          <div className="mt-6 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-brand-600 animate-ping" />
+            <h2 className="text-lg font-heading font-extrabold text-content tracking-tight">
+              Velan AI
+            </h2>
+          </div>
+          <p className="text-xs text-content-secondary mt-1.5 font-medium">
+            Restoring your session &amp; syncing live data...
+          </p>
+          <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden mt-4">
+            <div className="h-full w-1/2 bg-brand-gradient rounded-full animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/login"
+          element={isAuthenticated && user ? <Navigate to={getDefaultRedirect()} replace /> : <LoginPage />}
+        />
 
         {/* Protected Application Routes */}
         <Route
-          element={isAuthenticated ? <AppLayout /> : <Navigate to="/login" replace />}
+          element={isAuthenticated && user ? <AppLayout /> : <Navigate to="/login" replace />}
         >
           {/* Admin Routes */}
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/live-attendance" element={<LiveAttendanceMonitor />} />
-          <Route path="/admin/timetable" element={<TimetableBuilder />} />
-          <Route path="/admin/faculty" element={<FacultyManagement />} />
-          <Route path="/admin/students" element={<StudentManagement />} />
-          <Route path="/admin/academics" element={<AcademicsManagement />} />
-          <Route path="/admin/requests" element={<AdminRequestsPage />} />
-          <Route path="/admin/devices" element={<AdminRequestsPage />} />
-          <Route path="/admin/reports" element={<ReportsPage />} />
+          <Route path="/admin" element={user?.role === UserRole.ADMIN ? <AdminDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/live-attendance" element={user?.role === UserRole.ADMIN ? <LiveAttendanceMonitor /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/timetable" element={user?.role === UserRole.ADMIN ? <TimetableBuilder /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/faculty" element={user?.role === UserRole.ADMIN ? <FacultyManagement /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/students" element={user?.role === UserRole.ADMIN ? <StudentManagement /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/academics" element={user?.role === UserRole.ADMIN ? <AcademicsManagement /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/requests" element={user?.role === UserRole.ADMIN ? <AdminRequestsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/devices" element={user?.role === UserRole.ADMIN ? <AdminRequestsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/reports" element={user?.role === UserRole.ADMIN ? <ReportsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
 
           {/* Faculty Routes */}
-          <Route path="/faculty" element={<FacultyDashboard />} />
-          <Route path="/faculty/attendance" element={<FacultyAttendancePage />} />
-          <Route path="/faculty/timetable" element={<TimetableBuilder />} />
+          <Route path="/faculty" element={user?.role === UserRole.FACULTY ? <FacultyDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/faculty/attendance" element={user?.role === UserRole.FACULTY ? <FacultyAttendancePage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/faculty/timetable" element={user?.role === UserRole.FACULTY ? <FacultyDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/classes" element={<GenericSubPage title="My Classes & Students" subtitle="Class roster, individual performance, and remarks" />} />
           <Route path="/faculty/assignments" element={<GenericSubPage title="Assignments Manager" subtitle="Create homework, review submissions & grade" />} />
           <Route path="/faculty/marks" element={<GenericSubPage title="Marks & Internals" subtitle="Semester marks entry and topper/at-risk analytics" />} />
           <Route path="/faculty/materials" element={<GenericSubPage title="Study Materials" subtitle="Lecture notes, question banks, and reference PDFs" />} />
 
           {/* Student Routes */}
-          <Route path="/student" element={<StudentDashboard />} />
-          <Route path="/student/mark-attendance" element={<StudentMarkAttendancePage />} />
-          <Route path="/student/attendance" element={<StudentAttendanceHistoryPage />} />
-          <Route path="/student/timetable" element={<TimetableBuilder />} />
+          <Route path="/student" element={user?.role === UserRole.STUDENT ? <StudentDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/student/mark-attendance" element={user?.role === UserRole.STUDENT ? <StudentMarkAttendancePage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/student/attendance" element={user?.role === UserRole.STUDENT ? <StudentAttendanceHistoryPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/student/timetable" element={user?.role === UserRole.STUDENT ? <StudentDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/student/academics" element={<GenericSubPage title="Academic Records & CGPA" subtitle="Semester marks, CGPA calculator, and grade card" />} />
           <Route path="/student/assignments" element={<GenericSubPage title="My Assignments" subtitle="Pending tasks, deadlines, and upload submissions" />} />
           <Route path="/student/materials" element={<GenericSubPage title="Study Materials Library" subtitle="Course syllabus, notes, and references" />} />
