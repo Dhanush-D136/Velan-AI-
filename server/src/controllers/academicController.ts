@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { prisma } from '../lib/prisma';
@@ -962,40 +963,60 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
     }
 
     const defaultPasswordHash = await bcrypt.hash('1234', 10);
-    const createdProfiles: any[] = [];
 
-    await prisma.$transaction(async (tx) => {
-      for (const item of validRows) {
-        const user = await tx.user.create({
-          data: {
-            name: item.name,
-            email: `${item.registerNo.toLowerCase()}@student.local`,
-            phone: item.phone || null,
-            passwordHash: defaultPasswordHash,
-            role: 'STUDENT',
-            status: 'ACTIVE',
-            mustChangePassword: true,
-          },
-        });
+    const existingEmails = new Set(
+      (await prisma.user.findMany({ select: { email: true } }))
+        .map((u) => u.email?.toLowerCase())
+        .filter(Boolean) as string[]
+    );
 
-        const profile = await tx.studentProfile.create({
-          data: {
-            userId: user.id,
-            registerNo: item.registerNo,
-            rollNo: item.rollNo,
-            classId,
-            phone: item.phone || null,
-          },
-        });
-        createdProfiles.push(profile);
+    const usersToCreate: any[] = [];
+    const profilesToCreate: any[] = [];
+
+    for (const item of validRows) {
+      let email = `${item.registerNo.toLowerCase()}@student.local`;
+      if (existingEmails.has(email)) {
+        email = `${item.registerNo.toLowerCase()}.${Date.now()}@student.local`;
       }
-    });
+      existingEmails.add(email);
+
+      const userId = crypto.randomUUID();
+      usersToCreate.push({
+        id: userId,
+        name: item.name,
+        email,
+        phone: item.phone || null,
+        passwordHash: defaultPasswordHash,
+        role: 'STUDENT',
+        status: 'ACTIVE',
+        mustChangePassword: true,
+      });
+
+      profilesToCreate.push({
+        id: crypto.randomUUID(),
+        userId,
+        registerNo: item.registerNo,
+        rollNo: item.rollNo,
+        classId,
+        phone: item.phone || null,
+      });
+    }
+
+    if (usersToCreate.length > 0) {
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.user.createMany({ data: usersToCreate });
+          await tx.studentProfile.createMany({ data: profilesToCreate });
+        },
+        { timeout: 60000, maxWait: 10000 }
+      );
+    }
 
     emitDataUpdate(req, 'students');
     return res.json({
-      message: `Import completed: ${createdProfiles.length} student(s) created, ${errorList.length} row(s) skipped.`,
+      message: `Import completed: ${profilesToCreate.length} student(s) created, ${errorList.length} row(s) skipped.`,
       totalProcessed: rawStudents.length,
-      successCount: createdProfiles.length,
+      successCount: profilesToCreate.length,
       errorCount: errorList.length,
       errors: errorList,
     });
