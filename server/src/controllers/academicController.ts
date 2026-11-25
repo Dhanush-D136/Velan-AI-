@@ -1539,27 +1539,42 @@ export const updateBellSchedule = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Periods array is required' });
     }
 
-    for (const item of periods) {
+    const validated: { periodNumber: number; name: string; startTime: string; endTime: string; isBreak: boolean }[] = [];
+    for (let idx = 0; idx < periods.length; idx++) {
+      const item = { ...periods[idx], periodNumber: idx + 1 };
       const parsed = bellScheduleItemSchema.safeParse(item);
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.errors[0].message });
       }
-      await prisma.bellSchedule.upsert({
-        where: { periodNumber: parsed.data.periodNumber },
-        update: {
-          name: parsed.data.name,
-          startTime: parsed.data.startTime,
-          endTime: parsed.data.endTime,
-          isBreak: parsed.data.isBreak,
-        },
-        create: parsed.data,
+      validated.push({
+        periodNumber: parsed.data.periodNumber,
+        name: parsed.data.name,
+        startTime: parsed.data.startTime,
+        endTime: parsed.data.endTime,
+        isBreak: !!parsed.data.isBreak,
       });
     }
 
+    await prisma.$transaction(async (tx) => {
+      await tx.bellSchedule.deleteMany({});
+      await tx.bellSchedule.createMany({ data: validated });
+
+      // Sync existing timetable slots across all departments with updated start/end times
+      for (const p of validated) {
+        if (!p.isBreak) {
+          await tx.timetableSlot.updateMany({
+            where: { periodNumber: p.periodNumber },
+            data: { startTime: p.startTime, endTime: p.endTime },
+          });
+        }
+      }
+    });
+
     const updated = await prisma.bellSchedule.findMany({ orderBy: { periodNumber: 'asc' } });
     emitDataUpdate(req, 'bell-schedule');
-    return res.json({ message: 'Period timings updated successfully', periods: updated });
+    return res.json({ message: 'College-wide bell schedule & breaks updated successfully', periods: updated });
   } catch (error: any) {
+    console.error('updateBellSchedule error:', error);
     return res.status(500).json({ error: 'Failed to update period schedule' });
   }
 };

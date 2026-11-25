@@ -15,6 +15,8 @@ import {
   AlertTriangle,
   Printer,
   Trash2,
+  Clock,
+  Coffee,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -114,6 +116,76 @@ export const TimetableBuilder: React.FC = () => {
     fetchMeta();
     fetchClassTimetable();
   });
+
+  // Bell schedule (college-wide period & break timings)
+  const [isBellModalOpen, setIsBellModalOpen] = useState(false);
+  const [editablePeriods, setEditablePeriods] = useState<any[]>([]);
+  const [isSavingBell, setIsSavingBell] = useState(false);
+
+  const openBellModal = () => {
+    setEditablePeriods(periods.map((p) => ({ ...p })));
+    setIsBellModalOpen(true);
+  };
+
+  const handleBellRowChange = (idx: number, field: string, value: any) => {
+    setEditablePeriods((prev) =>
+      prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const handleAddBellRow = (type: 'PERIOD' | 'BREAK' | 'LUNCH') => {
+    if (editablePeriods.length >= 15) {
+      showToast('Maximum 15 schedule slots allowed.', 'error');
+      return;
+    }
+    const last = editablePeriods[editablePeriods.length - 1];
+    const startTime = last?.endTime || '09:00';
+    const nextPeriodNum = editablePeriods.filter((p) => !p.isBreak).length + 1;
+    const label =
+      type === 'LUNCH' ? 'Lunch Break' : type === 'BREAK' ? 'Short Break' : `Period ${nextPeriodNum}`;
+    setEditablePeriods((prev) => [
+      ...prev,
+      {
+        periodNumber: prev.length + 1,
+        name: label,
+        startTime,
+        endTime: startTime,
+        isBreak: type !== 'PERIOD',
+      },
+    ]);
+  };
+
+  const handleRemoveBellRow = (idx: number) => {
+    setEditablePeriods((prev) =>
+      prev.filter((_, i) => i !== idx).map((row, i) => ({ ...row, periodNumber: i + 1 }))
+    );
+  };
+
+  const handleSaveBellSchedule = async () => {
+    if (editablePeriods.length === 0) {
+      showToast('At least one period is required.', 'error');
+      return;
+    }
+    setIsSavingBell(true);
+    try {
+      const payload = editablePeriods.map((p, idx) => ({
+        periodNumber: idx + 1,
+        name: p.name.trim() || `Slot ${idx + 1}`,
+        startTime: p.startTime,
+        endTime: p.endTime,
+        isBreak: !!p.isBreak,
+      }));
+      const res = await api.put('/api/settings/bell-schedule', { periods: payload });
+      setPeriods(res.data.periods || payload);
+      setIsBellModalOpen(false);
+      showToast('College-wide timings & breaks updated for all departments!', 'success');
+      fetchClassTimetable();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to save bell schedule', 'error');
+    } finally {
+      setIsSavingBell(false);
+    }
+  };
 
   const handleSlotClick = (day: DayOfWeek, periodNumber: number) => {
     setActiveCell({ day, periodNumber });
@@ -235,7 +307,7 @@ export const TimetableBuilder: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedClassId}
             onChange={(e) => setSelectedClassId(e.target.value)}
@@ -247,6 +319,15 @@ export const TimetableBuilder: React.FC = () => {
               </option>
             ))}
           </select>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<Clock className="w-4 h-4 text-brand-600" />}
+            onClick={openBellModal}
+          >
+            College Timings &amp; Breaks
+          </Button>
 
           <Button
             variant="secondary"
@@ -271,9 +352,13 @@ export const TimetableBuilder: React.FC = () => {
                 {periods.map((p) => (
                   <th
                     key={p.periodNumber}
-                    className="p-3 text-center border-r border-border last:border-r-0"
+                    className={`p-3 text-center border-r border-border last:border-r-0 ${
+                      p.isBreak ? 'bg-amber-50/80 min-w-[90px]' : ''
+                    }`}
                   >
-                    <span className="text-xs font-bold text-content block">{p.name}</span>
+                    <span className={`text-xs font-bold block ${p.isBreak ? 'text-amber-800' : 'text-content'}`}>
+                      {p.name}
+                    </span>
                     <span className="text-[10px] text-content-muted font-mono">
                       {p.startTime} - {p.endTime}
                     </span>
@@ -288,6 +373,21 @@ export const TimetableBuilder: React.FC = () => {
                     {day.label}
                   </td>
                   {periods.map((p) => {
+                    if (p.isBreak) {
+                      return (
+                        <td
+                          key={`${day.key}-${p.periodNumber}`}
+                          className="p-2 border-r border-border last:border-r-0 bg-amber-50/40 text-center align-middle"
+                        >
+                          <div className="flex flex-col items-center justify-center gap-1 text-amber-700/80">
+                            <Coffee className="w-4 h-4" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">
+                              {p.name}
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    }
                     const slot = slots.find(
                       (s) => s.dayOfWeek === day.key && s.periodNumber === p.periodNumber
                     );
@@ -442,6 +542,96 @@ export const TimetableBuilder: React.FC = () => {
                 Save Slot
               </Button>
             </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* College-Wide Bell Schedule & Break/Lunch Modal */}
+      <Modal
+        isOpen={isBellModalOpen}
+        onClose={() => setIsBellModalOpen(false)}
+        title="College-Wide Timings, Break & Lunch"
+        description="Configure periods, short breaks, and lunch once — applies automatically to all departments and classes."
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => handleAddBellRow('PERIOD')}>
+              Add Period
+            </Button>
+            <Button size="sm" variant="secondary" leftIcon={<Coffee className="w-3.5 h-3.5" />} onClick={() => handleAddBellRow('BREAK')}>
+              Add Break
+            </Button>
+            <Button size="sm" variant="secondary" leftIcon={<Coffee className="w-3.5 h-3.5" />} onClick={() => handleAddBellRow('LUNCH')}>
+              Add Lunch
+            </Button>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+            {editablePeriods.map((row, idx) => (
+              <div
+                key={idx}
+                className={`p-3 rounded-2xl border grid grid-cols-12 gap-2 items-center ${
+                  row.isBreak ? 'bg-amber-50/70 border-amber-200' : 'bg-surface-soft border-border'
+                }`}
+              >
+                <div className="col-span-4">
+                  <input
+                    type="text"
+                    value={row.name}
+                    onChange={(e) => handleBellRowChange(idx, 'name', e.target.value)}
+                    placeholder="Label (e.g. Period 1 / Break)"
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <select
+                    value={row.isBreak ? 'BREAK' : 'PERIOD'}
+                    onChange={(e) => handleBellRowChange(idx, 'isBreak', e.target.value === 'BREAK')}
+                    className="w-full px-2 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold outline-none"
+                  >
+                    <option value="PERIOD">Period</option>
+                    <option value="BREAK">Break / Lunch</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <input
+                    type="time"
+                    value={row.startTime}
+                    onChange={(e) => handleBellRowChange(idx, 'startTime', e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-xl border border-border bg-white text-xs font-mono outline-none"
+                  />
+                </div>
+                <div className="col-span-1 text-center text-xs text-content-muted">to</div>
+                <div className="col-span-2">
+                  <input
+                    type="time"
+                    value={row.endTime}
+                    onChange={(e) => handleBellRowChange(idx, 'endTime', e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-xl border border-border bg-white text-xs font-mono outline-none"
+                  />
+                </div>
+                <div className="col-span-1 text-right">
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveBellRow(idx)}
+                    className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100"
+                    title="Remove slot"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-4 flex items-center justify-end gap-2 border-t border-border">
+            <Button variant="secondary" size="sm" onClick={() => setIsBellModalOpen(false)} disabled={isSavingBell}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleSaveBellSchedule} isLoading={isSavingBell} disabled={isSavingBell}>
+              Save College Schedule
+            </Button>
           </div>
         </div>
       </Modal>

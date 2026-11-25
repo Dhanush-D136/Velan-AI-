@@ -161,7 +161,7 @@ export const studentUpdateSchema = z.object({
 });
 
 export const bellScheduleItemSchema = z.object({
-  periodNumber: z.number().int().min(1).max(10),
+  periodNumber: z.number().int().min(1).max(15),
   name: z.string().min(1),
   startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:mm)'),
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:mm)'),
