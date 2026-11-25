@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { UserRole } from '@velan/shared';
-import { Sparkles } from 'lucide-react';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { clsx } from 'clsx';
 import { getRoleNavItems } from './navConfig';
 
@@ -15,9 +15,7 @@ export const Sidebar: React.FC = () => {
     <aside className="hidden lg:flex flex-col w-72 h-[calc(100vh-2rem)] sticky top-4 my-4 ml-4 bg-white/90 backdrop-blur-xl border border-border rounded-3xl shadow-glass overflow-hidden z-20 shrink-0">
       {/* Brand Header */}
       <div className="flex items-center gap-3 px-6 py-6 border-b border-border/80">
-        <div className="w-10 h-10 rounded-2xl bg-brand-gradient flex items-center justify-center text-white shadow-md shadow-brand-500/25 shrink-0">
-          <Sparkles className="w-5 h-5" />
-        </div>
+        <BrandLogo size="md" />
         <div>
           <h2 className="font-heading font-extrabold text-xl tracking-tight text-content flex items-center gap-1.5">
             Velan <span className="bg-clip-text text-transparent bg-brand-gradient">AI</span>

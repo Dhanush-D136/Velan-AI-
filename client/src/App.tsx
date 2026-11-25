@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { UserRole } from '@velan/shared';
-import { Sparkles } from 'lucide-react';
+import { BrandLogo } from './components/ui/BrandLogo';
 import { LoginPage } from './features/auth/LoginPage';
 import { AppLayout } from './components/layout/AppLayout';
 
@@ -64,9 +64,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50/40 to-cyan-50/40 px-4">
         <div className="relative flex flex-col items-center">
-          <div className="w-20 h-20 rounded-3xl bg-brand-gradient flex items-center justify-center shadow-2xl animate-bounce">
-            <Sparkles className="w-10 h-10 text-white animate-pulse" />
-          </div>
+          <BrandLogo size="xl" animated />
           <div className="mt-6 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-brand-600 animate-ping" />
             <h2 className="text-lg font-heading font-extrabold text-content tracking-tight">

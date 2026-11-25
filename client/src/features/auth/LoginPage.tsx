@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { api } from '@/lib/api';
 import {
   Sparkles,
@@ -209,8 +210,8 @@ export const LoginPage: React.FC = () => {
       >
         {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-brand-gradient flex items-center justify-center text-white mx-auto shadow-lg shadow-brand-500/30 mb-3">
-            <Sparkles className="w-7 h-7" />
+          <div className="flex justify-center mb-3">
+            <BrandLogo size="lg" animated />
           </div>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
             Velan <span className="bg-clip-text text-transparent bg-brand-gradient">AI</span>

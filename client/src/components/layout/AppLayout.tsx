@@ -6,6 +6,7 @@ import { Header } from './Header';
 import { BottomBar } from './BottomBar';
 import { getRoleNavItems } from './navConfig';
 import { Modal } from '@/components/ui/Modal';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Command, Search, Sparkles, CalendarCheck2, Users, FileText, Loader2, X, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
@@ -133,9 +134,7 @@ export const AppLayout: React.FC = () => {
             >
               <div className="flex items-center justify-between px-5 py-5 border-b border-border">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-2xl bg-brand-gradient flex items-center justify-center text-white shadow-md">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
+                  <BrandLogo size="sm" />
                   <div>
                     <h2 className="font-heading font-extrabold text-lg text-content">Velan AI</h2>
                     <p className="text-[10px] font-bold uppercase text-content-secondary">

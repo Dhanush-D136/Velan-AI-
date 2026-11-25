@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Database } from 'lucide-react';
+import { Database } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 interface DatabaseLoaderProps {
   message?: string;
@@ -20,10 +21,8 @@ export const DatabaseLoader: React.FC<DatabaseLoaderProps> = ({
       className="w-full py-16 px-6 flex flex-col items-center justify-center text-center bg-white/80 backdrop-blur-md border border-border rounded-3xl shadow-subtle"
     >
       <div className="relative flex items-center justify-center mb-5">
-        <div className="w-16 h-16 rounded-2xl bg-brand-gradient flex items-center justify-center text-white shadow-lg animate-pulse">
-          <Sparkles className="w-8 h-8" />
-        </div>
-        <span className="absolute -inset-2 rounded-3xl border-2 border-brand-400/40 animate-ping" />
+        <BrandLogo size="lg" animated />
+        <span className="absolute -inset-2 rounded-3xl border-2 border-brand-400/40 animate-ping pointer-events-none" />
       </div>
 
       <h3 className="text-base font-heading font-bold text-content flex items-center gap-2">
