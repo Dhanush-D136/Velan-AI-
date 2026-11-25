@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
@@ -115,7 +116,15 @@ export const StudentMarkAttendancePage: React.FC = () => {
     );
   };
 
-  if (!isLoading && !activeSession) {
+  if (isLoading) {
+    return (
+      <div className="max-w-xl mx-auto">
+        <DatabaseLoader message="Checking active GPS session..." subtext="Syncing with your class faculty" />
+      </div>
+    );
+  }
+
+  if (!activeSession) {
     return (
       <div className="max-w-xl mx-auto space-y-6">
         <h1 className="text-2xl font-heading font-extrabold text-content">GPS Attendance Check-In</h1>

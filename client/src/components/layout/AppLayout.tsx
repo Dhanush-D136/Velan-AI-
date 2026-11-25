@@ -98,17 +98,14 @@ export const AppLayout: React.FC = () => {
           />
 
           <main className="flex-1 px-4 sm:px-8 py-6 portal-pattern-grid">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={location.pathname}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-              >
-                <Outlet />
-              </motion.div>
-            </AnimatePresence>
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+            >
+              <Outlet />
+            </motion.div>
           </main>
         </div>
       </div>
