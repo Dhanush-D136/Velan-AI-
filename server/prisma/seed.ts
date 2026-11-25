@@ -45,8 +45,13 @@ async function main() {
   await prisma.user.deleteMany({});
 
   // Read admin credentials from environment variables (DO NOT print values to logs)
-  const adminUsername = process.env.ADMIN_USERNAME || 'Vel';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'elite minds';
+  const adminUsername = process.env.ADMIN_USER || process.env.ADMIN_USERNAME || 'Vel';
+  const adminPassword =
+    process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : 'elite minds');
+
+  if (!adminPassword) {
+    throw new Error('ADMIN_PASSWORD environment variable is required in production.');
+  }
 
   console.log(`👤 Seeding Admin account with username: ${adminUsername}`);
   const passwordHash = await bcrypt.hash(adminPassword, 10);

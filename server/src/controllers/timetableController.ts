@@ -139,11 +139,79 @@ export const saveSlot = async (req: Request, res: Response) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`class_${classId}`).emit('timetable:updated', { classId, slot });
+      io.emit('data:updated', { resource: 'timetable', classId });
     }
 
     return res.json({ message: 'Timetable slot saved successfully', slot });
   } catch (error: any) {
     console.error('saveSlot error:', error);
     return res.status(500).json({ error: 'Failed to save timetable slot' });
+  }
+};
+
+// Delete timetable slot (Admin only)
+export const deleteSlot = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const slot = await prisma.timetableSlot.findUnique({ where: { id } });
+    if (!slot) return res.status(404).json({ error: 'Timetable slot not found' });
+
+    await prisma.timetableSlot.delete({ where: { id } });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`class_${slot.classId}`).emit('timetable:updated', { classId: slot.classId, deletedId: id });
+      io.emit('data:updated', { resource: 'timetable', classId: slot.classId });
+    }
+
+    return res.json({ message: 'Timetable slot cleared successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to delete timetable slot' });
+  }
+};
+
+// Faculty read-only "My Timetable" across all assigned classes
+export const getFacultyTimetable = async (req: Request, res: Response) => {
+  try {
+    const faculty = await prisma.facultyProfile.findUnique({
+      where: { userId: req.user!.id },
+    });
+    if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
+
+    const slots = await prisma.timetableSlot.findMany({
+      where: { facultyId: faculty.id },
+      include: {
+        class: true,
+        classSubject: { include: { subject: true } },
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { periodNumber: 'asc' }],
+    });
+
+    return res.json({ slots });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to fetch faculty timetable' });
+  }
+};
+
+// Student read-only timetable for THEIR class only
+export const getStudentTimetable = async (req: Request, res: Response) => {
+  try {
+    const student = await prisma.studentProfile.findUnique({
+      where: { userId: req.user!.id },
+      include: { class: true },
+    });
+    if (!student) return res.status(404).json({ error: 'Student profile not found' });
+
+    const slots = await prisma.timetableSlot.findMany({
+      where: { classId: student.classId },
+      include: {
+        classSubject: { include: { subject: true, faculty: { include: { user: true } } } },
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { periodNumber: 'asc' }],
+    });
+
+    return res.json({ class: student.class, slots });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to fetch student timetable' });
   }
 };

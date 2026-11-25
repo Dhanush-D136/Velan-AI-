@@ -9,12 +9,65 @@ import {
   subjectCreateSchema,
   classSubjectAssignSchema,
   facultyCreateSchema,
+  facultyUpdateSchema,
   studentCreateSchema,
+  studentUpdateSchema,
+  bellScheduleItemSchema,
 } from '@velan/shared';
+
+const emitDataUpdate = (req: Request, resource: string) => {
+  const io = req.app.get('io');
+  if (io) {
+    io.emit('data:updated', { resource, timestamp: new Date().toISOString() });
+  }
+};
 
 // ==========================================
 // 1. ACADEMIC HIERARCHY (DEPARTMENTS, YEARS, CLASSES)
 // ==========================================
+
+export const getDepartments = async (req: Request, res: Response) => {
+  try {
+    const departments = await prisma.department.findMany({
+      include: {
+        academicYears: { include: { classes: true } },
+        _count: { select: { faculty: true, subjects: true } },
+      },
+      orderBy: { code: 'asc' },
+    });
+    return res.json({ departments, data: departments });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to fetch departments' });
+  }
+};
+
+export const getAcademicYears = async (req: Request, res: Response) => {
+  try {
+    const years = await prisma.academicYear.findMany({
+      include: { department: true, classes: true },
+      orderBy: [{ year: 'asc' }],
+    });
+    return res.json({ years, data: years });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to fetch academic years' });
+  }
+};
+
+export const getClasses = async (req: Request, res: Response) => {
+  try {
+    const classes = await prisma.class.findMany({
+      include: {
+        academicYear: { include: { department: true } },
+        advisor: { include: { user: true } },
+        _count: { select: { students: true, classSubjects: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+    return res.json({ classes, data: classes });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to fetch classes' });
+  }
+};
 
 export const getAcademicHierarchy = async (req: Request, res: Response) => {
   try {
@@ -156,17 +209,62 @@ export const createClass = async (req: Request, res: Response) => {
       data: { classId: cls.id },
     });
 
-    return res.status(201).json({ message: 'Class section created successfully', class: cls });
+    emitDataUpdate(req, 'classes');
+    return res.status(201).json({ message: 'Class section created successfully', class: cls, data: cls });
   } catch (error: any) {
     console.error('createClass error:', error);
     return res.status(500).json({ error: 'Failed to create class section' });
   }
 };
 
+export const updateClass = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { section, roomNumber, advisorId } = req.body;
+
+    const existing = await prisma.class.findUnique({
+      where: { id },
+      include: { academicYear: { include: { department: true } } },
+    });
+    if (!existing) return res.status(404).json({ error: 'Class not found' });
+
+    const nextSection = section ? String(section).toUpperCase().trim() : existing.section;
+    const nextName = `${existing.academicYear.department.code} – Year ${existing.academicYear.year} – ${nextSection}`;
+
+    const cls = await prisma.class.update({
+      where: { id },
+      data: {
+        section: nextSection,
+        name: nextName,
+        roomNumber: roomNumber !== undefined ? roomNumber : existing.roomNumber,
+        advisorId: advisorId !== undefined ? advisorId || null : existing.advisorId,
+      },
+    });
+
+    emitDataUpdate(req, 'classes');
+    return res.json({ message: 'Class updated successfully', class: cls, data: cls });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to update class' });
+  }
+};
+
 export const deleteClass = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const studentCount = await prisma.studentProfile.count({ where: { classId: id } });
+    if (studentCount > 0) {
+      return res.status(409).json({
+        error: `Cannot delete class: ${studentCount} student(s) are currently enrolled. Move or remove students first.`,
+      });
+    }
+    const slotCount = await prisma.timetableSlot.count({ where: { classId: id } });
+    if (slotCount > 0) {
+      return res.status(409).json({
+        error: `Cannot delete class: ${slotCount} timetable slot(s) exist for this class. Clear timetable first.`,
+      });
+    }
     await prisma.class.delete({ where: { id } });
+    emitDataUpdate(req, 'classes');
     return res.json({ message: 'Class deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to delete class. Please reassign or delete enrolled students first.' });
@@ -279,11 +377,12 @@ export const getFacultyList = async (req: Request, res: Response) => {
         user: true,
         department: true,
         classSubjects: { include: { subject: true, class: true } },
+        timetableSlots: { include: { class: true } },
       },
       orderBy: { employeeId: 'asc' },
     });
 
-    return res.json({ faculty });
+    return res.json({ faculty, data: faculty });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to fetch faculty list' });
   }
@@ -294,19 +393,24 @@ export const createFaculty = async (req: Request, res: Response) => {
     const parse = facultyCreateSchema.safeParse(req.body);
     if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
 
-    const { name, employeeId, departmentId, designation, phone, email } = parse.data;
+    const { name, employeeId, departmentId, designation, phone, email, password } = parse.data;
 
     const existingEmp = await prisma.facultyProfile.findUnique({ where: { employeeId } });
     if (existingEmp) return res.status(409).json({ error: `Employee ID ${employeeId} already registered.` });
 
-    // Default password is 1234
-    const defaultPasswordHash = await bcrypt.hash('1234', 10);
+    const resolvedEmail = email && email.trim() ? email.trim().toLowerCase() : `${employeeId.toLowerCase()}@faculty.local`;
+    const existingEmail = await prisma.user.findUnique({ where: { email: resolvedEmail } });
+    if (existingEmail) return res.status(409).json({ error: `Email ${resolvedEmail} is already in use.` });
+
+    // Default password is 1234 unless admin explicitly provided an initial password
+    const initialPwd = password && password.trim() ? password.trim() : '1234';
+    const defaultPasswordHash = await bcrypt.hash(initialPwd, 10);
 
     const user = await prisma.user.create({
       data: {
         name,
-        email: email || `${employeeId.toLowerCase()}@faculty.local`,
-        phone,
+        email: resolvedEmail,
+        phone: phone || null,
         passwordHash: defaultPasswordHash,
         role: 'FACULTY',
         status: 'ACTIVE',
@@ -319,14 +423,16 @@ export const createFaculty = async (req: Request, res: Response) => {
         userId: user.id,
         employeeId,
         departmentId,
-        designation,
+        designation: designation || 'Faculty',
       },
       include: { user: true, department: true },
     });
 
+    emitDataUpdate(req, 'faculty');
     return res.status(201).json({
-      message: 'Faculty registered successfully with default password 1234',
+      message: `Faculty registered successfully with initial password ${initialPwd}`,
       faculty: profile,
+      data: profile,
     });
   } catch (error: any) {
     console.error('createFaculty error:', error);
@@ -334,16 +440,174 @@ export const createFaculty = async (req: Request, res: Response) => {
   }
 };
 
+export const updateFaculty = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const parse = facultyUpdateSchema.safeParse(req.body);
+    if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
+
+    const profile = await prisma.facultyProfile.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+    if (!profile) return res.status(404).json({ error: 'Faculty not found' });
+
+    const { name, departmentId, designation, email, phone, status } = parse.data;
+
+    if (email && email.trim().toLowerCase() !== profile.user.email) {
+      const emailTaken = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+      if (emailTaken) return res.status(409).json({ error: `Email ${email} is already in use.` });
+    }
+
+    await prisma.user.update({
+      where: { id: profile.userId },
+      data: {
+        name: name ?? profile.user.name,
+        email: email !== undefined ? (email?.trim().toLowerCase() || profile.user.email) : profile.user.email,
+        phone: phone !== undefined ? phone : profile.user.phone,
+        status: status ?? profile.user.status,
+      },
+    });
+
+    const updated = await prisma.facultyProfile.update({
+      where: { id },
+      data: {
+        departmentId: departmentId ?? profile.departmentId,
+        designation: designation ?? profile.designation,
+      },
+      include: { user: true, department: true },
+    });
+
+    emitDataUpdate(req, 'faculty');
+    return res.json({ message: 'Faculty updated successfully', faculty: updated, data: updated });
+  } catch (error: any) {
+    console.error('updateFaculty error:', error);
+    return res.status(500).json({ error: 'Failed to update faculty member' });
+  }
+};
+
 export const deleteFaculty = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const profile = await prisma.facultyProfile.findUnique({ where: { id } });
+    const profile = await prisma.facultyProfile.findUnique({
+      where: { id },
+      include: {
+        timetableSlots: { include: { class: true } },
+      },
+    });
     if (!profile) return res.status(404).json({ error: 'Faculty not found' });
 
+    if (profile.timetableSlots.length > 0) {
+      const assignedLocations = profile.timetableSlots
+        .slice(0, 5)
+        .map((s) => `${s.class.name} (${s.dayOfWeek} P${s.periodNumber})`)
+        .join(', ');
+      return res.status(409).json({
+        error: `Cannot delete faculty: assigned in timetable (${assignedLocations}). Reassign or clear those slots first.`,
+      });
+    }
+
     await prisma.user.delete({ where: { id: profile.userId } });
+    emitDataUpdate(req, 'faculty');
     return res.json({ message: 'Faculty account deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to delete faculty' });
+  }
+};
+
+export const importFacultyFromExcel = async (req: Request, res: Response) => {
+  try {
+    const { faculty: rawRows } = req.body;
+    if (!Array.isArray(rawRows) || rawRows.length === 0) {
+      return res.status(400).json({ error: 'No faculty rows provided' });
+    }
+
+    const departments = await prisma.department.findMany();
+    const deptByCode = new Map(departments.map((d) => [d.code.toUpperCase(), d]));
+    const deptByName = new Map(departments.map((d) => [d.name.toLowerCase(), d]));
+
+    const existingEmpIds = new Set(
+      (await prisma.facultyProfile.findMany({ select: { employeeId: true } })).map((f) => f.employeeId.toUpperCase())
+    );
+    const existingEmails = new Set(
+      (await prisma.user.findMany({ select: { email: true } }))
+        .map((u) => u.email?.toLowerCase())
+        .filter(Boolean) as string[]
+    );
+
+    const defaultHash = await bcrypt.hash('1234', 10);
+    const created: any[] = [];
+    const errors: { row: number; employeeId: string; error: string }[] = [];
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const employeeId = String(row['Faculty ID'] || row['FACULTY ID'] || row['employeeId'] || '').trim().toUpperCase();
+      const name = String(row['Name'] || row['NAME'] || row['name'] || '').trim();
+      const deptInput = String(row['Department'] || row['DEPARTMENT'] || row['department'] || '').trim();
+      const emailInput = String(row['Email'] || row['EMAIL'] || row['email'] || '').trim().toLowerCase();
+      const phone = String(row['Phone'] || row['PHONE'] || row['phone'] || '').trim() || null;
+
+      if (!employeeId || !name || !deptInput) {
+        errors.push({ row: i + 1, employeeId, error: 'Missing Faculty ID, Name, or Department' });
+        continue;
+      }
+
+      const dept = deptByCode.get(deptInput.toUpperCase()) || deptByName.get(deptInput.toLowerCase());
+      if (!dept) {
+        errors.push({ row: i + 1, employeeId, error: `Unknown department "${deptInput}"` });
+        continue;
+      }
+
+      if (existingEmpIds.has(employeeId)) {
+        errors.push({ row: i + 1, employeeId, error: 'Faculty ID already exists' });
+        continue;
+      }
+
+      const resolvedEmail = emailInput || `${employeeId.toLowerCase()}@faculty.local`;
+      if (existingEmails.has(resolvedEmail)) {
+        errors.push({ row: i + 1, employeeId, error: `Email ${resolvedEmail} already exists` });
+        continue;
+      }
+
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          const user = await tx.user.create({
+            data: {
+              name,
+              email: resolvedEmail,
+              phone,
+              passwordHash: defaultHash,
+              role: 'FACULTY',
+              status: 'ACTIVE',
+              mustChangePassword: true,
+            },
+          });
+          return tx.facultyProfile.create({
+            data: {
+              userId: user.id,
+              employeeId,
+              departmentId: dept.id,
+              designation: 'Faculty',
+            },
+          });
+        });
+        existingEmpIds.add(employeeId);
+        existingEmails.add(resolvedEmail);
+        created.push(result);
+      } catch (err: any) {
+        errors.push({ row: i + 1, employeeId, error: 'Database error creating faculty' });
+      }
+    }
+
+    emitDataUpdate(req, 'faculty');
+    return res.json({
+      message: `Import completed: ${created.length} faculty created, ${errors.length} skipped.`,
+      successCount: created.length,
+      errorCount: errors.length,
+      errors,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to import faculty list' });
   }
 };
 
@@ -386,7 +650,7 @@ export const getStudentsList = async (req: Request, res: Response) => {
       orderBy: { rollNo: 'asc' },
     });
 
-    return res.json({ students });
+    return res.json({ students, data: students });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to fetch students' });
   }
@@ -397,41 +661,110 @@ export const createStudent = async (req: Request, res: Response) => {
     const parse = studentCreateSchema.safeParse(req.body);
     if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
 
-    const { name, registerNo, rollNo, classId } = parse.data;
+    const { name, registerNo, rollNo, classId, phone } = parse.data;
 
     const existingReg = await prisma.studentProfile.findUnique({ where: { registerNo } });
     if (existingReg) return res.status(409).json({ error: `Register Number ${registerNo} already registered.` });
 
+    const existingRoll = await prisma.studentProfile.findUnique({
+      where: { classId_rollNo: { classId, rollNo } },
+    });
+    if (existingRoll) return res.status(409).json({ error: `Roll Number ${rollNo} already exists in this class.` });
+
     const defaultPasswordHash = await bcrypt.hash('1234', 10);
 
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email: `${registerNo.toLowerCase()}@student.local`,
-        passwordHash: defaultPasswordHash,
-        role: 'STUDENT',
-        status: 'ACTIVE',
-        mustChangePassword: true,
-      },
+    const profile = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name,
+          email: `${registerNo.toLowerCase()}@student.local`,
+          phone: phone || null,
+          passwordHash: defaultPasswordHash,
+          role: 'STUDENT',
+          status: 'ACTIVE',
+          mustChangePassword: true,
+        },
+      });
+
+      return tx.studentProfile.create({
+        data: {
+          userId: user.id,
+          registerNo,
+          rollNo,
+          classId,
+          phone: phone || null,
+        },
+        include: { user: true, class: true },
+      });
     });
 
-    const profile = await prisma.studentProfile.create({
-      data: {
-        userId: user.id,
-        registerNo,
-        rollNo,
-        classId,
-      },
-      include: { user: true, class: true },
-    });
-
+    emitDataUpdate(req, 'students');
     return res.status(201).json({
       message: 'Student registered successfully with default password 1234',
       student: profile,
+      data: profile,
     });
   } catch (error: any) {
     console.error('createStudent error:', error);
     return res.status(500).json({ error: 'Failed to create student' });
+  }
+};
+
+export const updateStudent = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const parse = studentUpdateSchema.safeParse(req.body);
+    if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
+
+    const existing = await prisma.studentProfile.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+    if (!existing) return res.status(404).json({ error: 'Student not found' });
+
+    const { name, registerNo, rollNo, classId, phone } = parse.data;
+    const nextClassId = classId ?? existing.classId;
+    const nextRollNo = rollNo ?? existing.rollNo;
+    const nextRegNo = registerNo ?? existing.registerNo;
+
+    if (nextRegNo !== existing.registerNo) {
+      const regTaken = await prisma.studentProfile.findUnique({ where: { registerNo: nextRegNo } });
+      if (regTaken) return res.status(409).json({ error: `Register Number ${nextRegNo} already exists.` });
+    }
+
+    if (nextClassId !== existing.classId || nextRollNo !== existing.rollNo) {
+      const rollTaken = await prisma.studentProfile.findUnique({
+        where: { classId_rollNo: { classId: nextClassId, rollNo: nextRollNo } },
+      });
+      if (rollTaken && rollTaken.id !== id) {
+        return res.status(409).json({ error: `Roll Number ${nextRollNo} already exists in the selected class.` });
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: existing.userId },
+      data: {
+        name: name ?? existing.user.name,
+        phone: phone !== undefined ? phone : existing.user.phone,
+      },
+    });
+
+    const updated = await prisma.studentProfile.update({
+      where: { id },
+      data: {
+        registerNo: nextRegNo,
+        rollNo: nextRollNo,
+        classId: nextClassId,
+        phone: phone !== undefined ? phone : existing.phone,
+      },
+      include: { user: true, class: true },
+    });
+
+    emitDataUpdate(req, 'students');
+    return res.json({ message: 'Student updated successfully', student: updated, data: updated });
+  } catch (error: any) {
+    console.error('updateStudent error:', error);
+    return res.status(500).json({ error: 'Failed to update student' });
   }
 };
 
@@ -814,5 +1147,305 @@ export const updateSystemSettings = async (req: Request, res: Response) => {
     return res.json({ message: 'System settings updated successfully' });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to update settings' });
+  }
+};
+
+// ==========================================
+// 7. ADMIN OVERVIEW DASHBOARD (100% REAL DB STATS)
+// ==========================================
+
+export const getDashboardStats = async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const todayDayOfWeek = dayNames[now.getDay()];
+
+    const [
+      totalStudents,
+      totalFaculty,
+      totalClasses,
+      totalDepartments,
+      todaysSessions,
+      activeSessionsRaw,
+      recentSessionsRaw,
+      todaysSlotsRaw,
+      departments,
+      minThresholdSetting,
+      studentsWithRecords,
+    ] = await Promise.all([
+      prisma.studentProfile.count(),
+      prisma.facultyProfile.count({ where: { user: { status: 'ACTIVE' } } }),
+      prisma.class.count(),
+      prisma.department.count(),
+      prisma.attendanceSession.findMany({
+        where: { createdAt: { gte: startOfDay } },
+        include: { records: true },
+      }),
+      prisma.attendanceSession.findMany({
+        where: { isActive: true, expiresAt: { gt: now } },
+        include: {
+          class: { include: { _count: { select: { students: true } } } },
+          classSubject: { include: { subject: true } },
+          faculty: { include: { user: true } },
+          records: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.attendanceSession.findMany({
+        where: { isActive: false },
+        take: 10,
+        include: {
+          class: true,
+          classSubject: { include: { subject: true } },
+          faculty: { include: { user: true } },
+          records: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.timetableSlot.findMany({
+        where: { dayOfWeek: todayDayOfWeek },
+        include: {
+          class: true,
+          classSubject: { include: { subject: true } },
+          faculty: { include: { user: true } },
+        },
+        orderBy: { periodNumber: 'asc' },
+      }),
+      prisma.department.findMany({
+        include: {
+          academicYears: {
+            include: {
+              classes: {
+                include: {
+                  sessions: { include: { records: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.setting.findUnique({ where: { key: 'MIN_ATTENDANCE_PERCENT' } }),
+      prisma.studentProfile.findMany({
+        include: {
+          user: true,
+          class: true,
+          attendanceRecords: true,
+        },
+      }),
+    ]);
+
+    const minThreshold = Number(minThresholdSetting?.value || 75);
+
+    // Overall attendance today (%)
+    let todayPresent = 0;
+    let todayTotal = 0;
+    todaysSessions.forEach((s) => {
+      s.records.forEach((r) => {
+        todayTotal++;
+        if (r.status === 'PRESENT' || r.status === 'LATE') todayPresent++;
+      });
+    });
+    const overallAttendanceToday = todayTotal > 0 ? Math.round((todayPresent / todayTotal) * 1000) / 10 : 0;
+
+    // Live sessions formatted
+    const liveSessions = activeSessionsRaw.map((s) => {
+      const totalEnrolled = s.class._count.students;
+      const presentCount = s.records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+      const absentCount = s.records.filter((r) => r.status === 'ABSENT').length;
+      const pendingCount = Math.max(0, totalEnrolled - presentCount - absentCount);
+      return {
+        id: s.id,
+        classId: s.classId,
+        className: s.class.name,
+        subjectName: s.classSubject.subject.name,
+        subjectCode: s.classSubject.subject.code,
+        facultyName: s.faculty.user.name,
+        periodNumber: s.periodNumber,
+        radiusMeters: s.radiusMeters,
+        expiresAt: s.expiresAt,
+        totalEnrolled,
+        presentCount,
+        absentCount,
+        pendingCount,
+        percentage: totalEnrolled > 0 ? Math.round((presentCount / totalEnrolled) * 100) : 0,
+      };
+    });
+
+    // Today's timetable slots + status
+    const nowHHmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const todaysClasses = todaysSlotsRaw.map((slot) => {
+      const matchingSession = todaysSessions.find(
+        (sess) =>
+          sess.classId === slot.classId &&
+          sess.classSubjectId === slot.classSubjectId &&
+          (sess.periodNumber === null || sess.periodNumber === slot.periodNumber)
+      );
+      let state: 'LIVE' | 'COMPLETED' | 'NOT_TAKEN' | 'UPCOMING' = 'UPCOMING';
+      if (matchingSession) {
+        state = matchingSession.isActive && matchingSession.expiresAt > now ? 'LIVE' : 'COMPLETED';
+      } else if (slot.endTime < nowHHmm) {
+        state = 'NOT_TAKEN';
+      } else if (slot.startTime <= nowHHmm && slot.endTime >= nowHHmm) {
+        state = 'NOT_TAKEN';
+      }
+      return {
+        id: slot.id,
+        classId: slot.classId,
+        className: slot.class.name,
+        subjectName: slot.classSubject.subject.name,
+        subjectCode: slot.classSubject.subject.code,
+        facultyName: slot.faculty.user.name,
+        periodNumber: slot.periodNumber,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        roomNumber: slot.roomNumber,
+        state,
+        sessionId: matchingSession?.id || null,
+      };
+    });
+
+    // Department attendance benchmark
+    const departmentAttendance = departments.map((dept) => {
+      let present = 0;
+      let total = 0;
+      dept.academicYears.forEach((ay) => {
+        ay.classes.forEach((cls) => {
+          cls.sessions.forEach((sess) => {
+            sess.records.forEach((rec) => {
+              total++;
+              if (rec.status === 'PRESENT' || rec.status === 'LATE') present++;
+            });
+          });
+        });
+      });
+      return {
+        dept: dept.code,
+        name: dept.name,
+        attendance: total > 0 ? Math.round((present / total) * 100) : 0,
+        totalRecords: total,
+      };
+    });
+
+    // Low attendance students (< threshold)
+    const lowAttendanceStudents = studentsWithRecords
+      .map((st) => {
+        const total = st.attendanceRecords.length;
+        const present = st.attendanceRecords.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+        const percent = total > 0 ? Math.round((present / total) * 1000) / 10 : 100;
+        return {
+          id: st.id,
+          name: st.user.name,
+          registerNo: st.registerNo,
+          rollNo: st.rollNo,
+          className: st.class.name,
+          attended: present,
+          total,
+          percent,
+        };
+      })
+      .filter((s) => s.total > 0 && s.percent < minThreshold)
+      .sort((a, b) => a.percent - b.percent)
+      .slice(0, 15);
+
+    // Recent completed sessions
+    const recentSessions = recentSessionsRaw.map((s) => {
+      const present = s.records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+      const absent = s.records.filter((r) => r.status === 'ABSENT').length;
+      return {
+        id: s.id,
+        className: s.class.name,
+        subjectName: s.classSubject.subject.name,
+        subjectCode: s.classSubject.subject.code,
+        facultyName: s.faculty.user.name,
+        createdAt: s.createdAt,
+        closedAt: s.closedAt,
+        presentCount: present,
+        absentCount: absent,
+      };
+    });
+
+    return res.json({
+      stats: {
+        totalStudents,
+        totalFaculty,
+        totalClasses,
+        totalDepartments,
+        sessionsToday: todaysSessions.length,
+        overallAttendanceToday,
+        activeSessionsCount: liveSessions.length,
+        minThreshold,
+      },
+      liveSessions,
+      todaysClasses,
+      departmentAttendance,
+      lowAttendanceStudents,
+      recentSessions,
+    });
+  } catch (error: any) {
+    console.error('getDashboardStats error:', error);
+    return res.status(500).json({ error: 'Failed to load dashboard overview' });
+  }
+};
+
+// ==========================================
+// 8. CONFIGURABLE PERIOD TIMINGS (BELL SCHEDULE)
+// ==========================================
+
+const DEFAULT_PERIODS = [
+  { periodNumber: 1, name: 'Period 1', startTime: '09:00', endTime: '09:50', isBreak: false },
+  { periodNumber: 2, name: 'Period 2', startTime: '09:50', endTime: '10:40', isBreak: false },
+  { periodNumber: 3, name: 'Period 3', startTime: '10:55', endTime: '11:45', isBreak: false },
+  { periodNumber: 4, name: 'Period 4', startTime: '11:45', endTime: '12:35', isBreak: false },
+  { periodNumber: 5, name: 'Period 5', startTime: '13:30', endTime: '14:20', isBreak: false },
+  { periodNumber: 6, name: 'Period 6', startTime: '14:20', endTime: '15:10', isBreak: false },
+  { periodNumber: 7, name: 'Period 7', startTime: '15:20', endTime: '16:10', isBreak: false },
+  { periodNumber: 8, name: 'Period 8', startTime: '16:10', endTime: '17:00', isBreak: false },
+];
+
+export const getBellSchedule = async (req: Request, res: Response) => {
+  try {
+    let periods = await prisma.bellSchedule.findMany({ orderBy: { periodNumber: 'asc' } });
+    if (periods.length === 0) {
+      await prisma.bellSchedule.createMany({ data: DEFAULT_PERIODS });
+      periods = await prisma.bellSchedule.findMany({ orderBy: { periodNumber: 'asc' } });
+    }
+    return res.json({ periods });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to fetch period schedule' });
+  }
+};
+
+export const updateBellSchedule = async (req: Request, res: Response) => {
+  try {
+    const { periods } = req.body;
+    if (!Array.isArray(periods) || periods.length === 0) {
+      return res.status(400).json({ error: 'Periods array is required' });
+    }
+
+    for (const item of periods) {
+      const parsed = bellScheduleItemSchema.safeParse(item);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0].message });
+      }
+      await prisma.bellSchedule.upsert({
+        where: { periodNumber: parsed.data.periodNumber },
+        update: {
+          name: parsed.data.name,
+          startTime: parsed.data.startTime,
+          endTime: parsed.data.endTime,
+          isBreak: parsed.data.isBreak,
+        },
+        create: parsed.data,
+      });
+    }
+
+    const updated = await prisma.bellSchedule.findMany({ orderBy: { periodNumber: 'asc' } });
+    emitDataUpdate(req, 'bell-schedule');
+    return res.json({ message: 'Period timings updated successfully', periods: updated });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to update period schedule' });
   }
 };

@@ -129,16 +129,43 @@ export const facultyCreateSchema = z.object({
   name: z.string().min(2, 'Faculty name is required'),
   employeeId: z.string().min(2, 'Employee ID is required (e.g. FAC001)').toUpperCase(),
   departmentId: z.string().min(1, 'Department is required'),
-  designation: z.string().min(2, 'Designation is required'),
-  email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
+  designation: z.string().min(2, 'Designation is required').optional().default('Faculty'),
+  email: z.string().email('Please enter a valid email address').optional().or(z.literal('')).nullable(),
+  phone: z.string().optional().nullable(),
+  password: z.string().min(1).optional(),
+});
+
+export const facultyUpdateSchema = z.object({
+  name: z.string().min(2, 'Faculty name is required').optional(),
+  departmentId: z.string().min(1).optional(),
+  designation: z.string().min(2).optional(),
+  email: z.string().email('Please enter a valid email address').optional().or(z.literal('')).nullable(),
+  phone: z.string().optional().nullable(),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']).optional(),
 });
 
 export const studentCreateSchema = z.object({
   name: z.string().min(2, 'Student name is required'),
   registerNo: z.string().min(2, 'Register Number is required'),
-  rollNo: z.string().min(2, 'Roll Number is required'),
+  rollNo: z.string().min(1, 'Roll Number is required'),
   classId: z.string().min(1, 'Class is required'),
+  phone: z.string().optional().nullable(),
+});
+
+export const studentUpdateSchema = z.object({
+  name: z.string().min(2, 'Student name is required').optional(),
+  registerNo: z.string().min(2, 'Register Number is required').optional(),
+  rollNo: z.string().min(1, 'Roll Number is required').optional(),
+  classId: z.string().min(1, 'Class is required').optional(),
+  phone: z.string().optional().nullable(),
+});
+
+export const bellScheduleItemSchema = z.object({
+  periodNumber: z.number().int().min(1).max(10),
+  name: z.string().min(1),
+  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:mm)'),
+  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:mm)'),
+  isBreak: z.boolean().optional().default(false),
 });
 
 export const chatMessageSchema = z.object({

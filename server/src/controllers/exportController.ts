@@ -30,10 +30,15 @@ export const exportMonthlyRegister = async (req: Request, res: Response) => {
       views: [{ state: 'frozen', xSplit: 3, ySplit: 4 }],
     });
 
+    const instSetting = await prisma.setting.findUnique({ where: { key: 'INSTITUTION_NAME' } });
+    const instTitle = instSetting?.value?.trim()
+      ? `${instSetting.value.trim().toUpperCase()} — OFFICIAL ATTENDANCE REGISTER`
+      : 'OFFICIAL ATTENDANCE REGISTER';
+
     // 1. Header block
     sheet.mergeCells('A1:N1');
     const titleCell = sheet.getCell('A1');
-    titleCell.value = 'VELAN ENGINEERING COLLEGE — OFFICIAL ATTENDANCE REGISTER';
+    titleCell.value = instTitle;
     titleCell.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     titleCell.fill = {

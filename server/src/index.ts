@@ -118,6 +118,47 @@ app.use('/', apiRouter);
 
 // Start Server (only if not running under tests)
 if (process.env.NODE_ENV !== 'test') {
+  // Server-side auto-close job for expired GPS attendance sessions (every 30s)
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const expiredSessions = await prisma.attendanceSession.findMany({
+        where: { isActive: true, expiresAt: { lte: now } },
+        include: { class: { include: { students: true } }, records: true },
+      });
+
+      for (const session of expiredSessions) {
+        await prisma.$transaction(async (tx) => {
+          await tx.attendanceSession.update({
+            where: { id: session.id },
+            data: { isActive: false, closedAt: now },
+          });
+
+          const markedIds = new Set(session.records.map((r) => r.studentId));
+          for (const student of session.class.students) {
+            if (!markedIds.has(student.id)) {
+              await tx.attendanceRecord.create({
+                data: {
+                  sessionId: session.id,
+                  studentId: student.id,
+                  status: 'ABSENT',
+                  method: 'AUTO',
+                  markedBy: 'SYSTEM_AUTOCLOSE',
+                },
+              });
+            }
+          }
+        });
+
+        io.to(`class_${session.classId}`).emit('attendance:session_closed', { sessionId: session.id });
+        io.to(`session_${session.id}`).emit('attendance:session_closed', { sessionId: session.id });
+        io.emit('data:updated', { resource: 'attendance', sessionId: session.id });
+      }
+    } catch (err) {
+      console.error('Auto-close session job error:', err);
+    }
+  }, 30000);
+
   server.listen(PORT, () => {
     console.log(`🚀 Velan AI Server active on port ${PORT}`);
     console.log(`📡 Socket.IO real-time hub listening`);

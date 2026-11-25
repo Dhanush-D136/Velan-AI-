@@ -13,6 +13,7 @@
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
+    "reset-data": "tsx src/scripts/resetData.ts",
     "test": "vitest run"
   },
   "dependencies": {

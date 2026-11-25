@@ -281,27 +281,31 @@ model BellSchedule {
 }
 
 model AttendanceSession {
-  id             String         @id @default(uuid())
-  classId        String
-  class          Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
-  classSubjectId String
-  classSubject   ClassSubject   @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
-  facultyId      String
-  faculty        FacultyProfile @relation(fields: [facultyId], references: [id], onDelete: Cascade)
-  anchorLat      Float
-  anchorLng      Float
-  radiusMeters   Int            @default(500)
-  mode           String         @default("HYBRID") // GPS, MANUAL, HYBRID
-  rotatingToken  String
-  isActive       Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  expiresAt      DateTime
+  id              String         @id @default(uuid())
+  classId         String
+  class           Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classSubjectId  String
+  classSubject    ClassSubject   @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
+  facultyId       String
+  faculty         FacultyProfile @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  timetableSlotId String?
+  periodNumber    Int?
+  anchorLat       Float
+  anchorLng       Float
+  radiusMeters    Int            @default(500)
+  mode            String         @default("HYBRID") // GPS, MANUAL, HYBRID
+  rotatingToken   String
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  expiresAt       DateTime
+  closedAt        DateTime?
 
-  records        AttendanceRecord[]
+  records         AttendanceRecord[]
 
   @@index([classId])
   @@index([facultyId])
   @@index([createdAt])
+  @@index([isActive])
 }
 
 model AttendanceRecord {

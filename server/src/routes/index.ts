@@ -28,14 +28,18 @@ apiRouter.post('/student/request-profile-edit', authenticateToken, requireRole('
 // ACADEMIC HIERARCHY & CRUD (DEPARTMENTS, YEARS, CLASSES)
 // ==========================================
 apiRouter.get('/academics/hierarchy', authenticateToken, acadCtrl.getAcademicHierarchy);
+apiRouter.get('/academics/departments', authenticateToken, acadCtrl.getDepartments);
 apiRouter.post('/academics/departments', authenticateToken, requireRole('ADMIN'), acadCtrl.createDepartment);
 apiRouter.put('/academics/departments/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.updateDepartment);
 apiRouter.delete('/academics/departments/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteDepartment);
 
+apiRouter.get('/academics/years', authenticateToken, acadCtrl.getAcademicYears);
 apiRouter.post('/academics/years', authenticateToken, requireRole('ADMIN'), acadCtrl.createAcademicYear);
 apiRouter.delete('/academics/years/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteAcademicYear);
 
+apiRouter.get('/academics/classes', authenticateToken, acadCtrl.getClasses);
 apiRouter.post('/academics/classes', authenticateToken, requireRole('ADMIN'), acadCtrl.createClass);
+apiRouter.put('/academics/classes/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.updateClass);
 apiRouter.delete('/academics/classes/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteClass);
 
 // ==========================================
@@ -54,14 +58,17 @@ apiRouter.delete('/academics/assignments/:id', authenticateToken, requireRole('A
 // ==========================================
 apiRouter.get('/academics/faculty', authenticateToken, acadCtrl.getFacultyList);
 apiRouter.post('/academics/faculty', authenticateToken, requireRole('ADMIN'), acadCtrl.createFaculty);
+apiRouter.put('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.updateFaculty);
 apiRouter.delete('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteFaculty);
 apiRouter.post('/academics/faculty/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetFacultyPassword);
+apiRouter.post('/academics/faculty/import-excel', authenticateToken, requireRole('ADMIN'), acadCtrl.importFacultyFromExcel);
 
 // ==========================================
 // STUDENT MANAGEMENT & EXCEL IMPORT
 // ==========================================
 apiRouter.get('/academics/students', authenticateToken, acadCtrl.getStudentsList);
 apiRouter.post('/academics/students', authenticateToken, requireRole('ADMIN'), acadCtrl.createStudent);
+apiRouter.put('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.updateStudent);
 apiRouter.delete('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteStudent);
 apiRouter.post('/academics/students/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetStudentPassword);
 apiRouter.get('/academics/students/template', authenticateToken, acadCtrl.getStudentExcelTemplate);
@@ -76,10 +83,13 @@ apiRouter.post('/academics/requests/profile-edit/:id/decision', authenticateToke
 apiRouter.post('/academics/device-requests/:requestId/decision', authenticateToken, requireRole('ADMIN'), acadCtrl.decideDeviceRequest);
 
 // ==========================================
-// SYSTEM SETTINGS (INSTITUTION NAME)
+// SYSTEM SETTINGS & ADMIN OVERVIEW
 // ==========================================
 apiRouter.get('/settings', authenticateToken, acadCtrl.getSystemSettings);
 apiRouter.put('/settings', authenticateToken, requireRole('ADMIN'), acadCtrl.updateSystemSettings);
+apiRouter.get('/settings/bell-schedule', authenticateToken, acadCtrl.getBellSchedule);
+apiRouter.put('/settings/bell-schedule', authenticateToken, requireRole('ADMIN'), acadCtrl.updateBellSchedule);
+apiRouter.get('/admin/dashboard-stats', authenticateToken, requireRole('ADMIN'), acadCtrl.getDashboardStats);
 
 // ==========================================
 // GPS ATTENDANCE
@@ -94,8 +104,11 @@ apiRouter.post('/attendance/session/:sessionId/close', authenticateToken, requir
 // TIMETABLE
 // ==========================================
 apiRouter.get('/timetable/class/:classId', authenticateToken, ttCtrl.getClassTimetable);
+apiRouter.get('/timetable/my-faculty', authenticateToken, requireRole('FACULTY'), ttCtrl.getFacultyTimetable);
+apiRouter.get('/timetable/my-student', authenticateToken, requireRole('STUDENT'), ttCtrl.getStudentTimetable);
 apiRouter.post('/timetable/conflicts', authenticateToken, requireRole('ADMIN'), ttCtrl.checkConflicts);
 apiRouter.post('/timetable/slot', authenticateToken, requireRole('ADMIN'), ttCtrl.saveSlot);
+apiRouter.delete('/timetable/slot/:id', authenticateToken, requireRole('ADMIN'), ttCtrl.deleteSlot);
 
 // ==========================================
 // CHAT & AI & EXPORT

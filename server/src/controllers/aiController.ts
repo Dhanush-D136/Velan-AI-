@@ -19,19 +19,25 @@ export const askAI = async (req: Request, res: Response) => {
     } else {
       // Intelligent Rule-based collegiate engine fallback
       if (lower.includes('attendance') || lower.includes('shortage')) {
-        const atRiskStudents = await prisma.studentProfile.findMany({
-          take: 5,
-          include: {
-            user: true,
-            class: true,
-            attendanceRecords: true,
-          },
+        const [totalRecords, presentRecords, students] = await Promise.all([
+          prisma.attendanceRecord.count(),
+          prisma.attendanceRecord.count({ where: { status: { in: ['PRESENT', 'LATE'] } } }),
+          prisma.studentProfile.findMany({
+            include: { user: true, class: true, attendanceRecords: true },
+          }),
+        ]);
+
+        const campusPercent = totalRecords > 0 ? Math.round((presentRecords / totalRecords) * 1000) / 10 : 0;
+        const atRisk = students.filter((s) => {
+          const t = s.attendanceRecords.length;
+          if (t === 0) return false;
+          const p = s.attendanceRecords.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+          return (p / t) * 100 < 75;
         });
 
-        reply = `Velan AI Attendance Insights:
-- Current Campus Attendance: 92.4% across all departments.
-- At-risk alerts: 2 students in CSE 2A (Karthik Raja S, Janani R) currently below the 75% threshold.
-- Recommendation: Send advisory WhatsApp/SMS push to guardians and schedule counseling before semester exams.`;
+        reply = totalRecords === 0
+          ? 'Velan AI Attendance Insights: No attendance sessions have been recorded yet. Once faculty start sessions, real-time campus percentages and shortage alerts will appear here.'
+          : `Velan AI Attendance Insights:\n- Current Campus Attendance: ${campusPercent}% across ${totalRecords} recorded marks.\n- At-risk alerts (< 75%): ${atRisk.length} student(s) currently below threshold${atRisk.length > 0 ? ' (' + atRisk.slice(0, 5).map((s) => s.user.name).join(', ') + ')' : ''}.`;
       } else if (lower.includes('quiz') || lower.includes('flashcard')) {
         reply = `Velan AI Study Flashcards:
 1. Q: What is the average time complexity of searching in a Balanced AVL Tree?
