@@ -1,5 +1,5 @@
 // Service Worker for Velan AI (Web Push & Offline Shell)
-const CACHE_NAME = 'velan-ai-cache-v3';
+const CACHE_NAME = 'velan-ai-cache-v4';
 const STATIC_ASSETS = ['/manifest.json', '/logo.png', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
