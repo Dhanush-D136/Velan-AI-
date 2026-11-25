@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { useRealtimeSync } from '@/lib/socket';
 import {
   Plus,
   Search,
@@ -120,11 +121,11 @@ export const StudentManagement: React.FC = () => {
   const fetchClasses = async () => {
     try {
       const res = await api.get('/api/academics/classes');
-      const list = res.data.data || [];
+      const list = res.data.classes || res.data.data || [];
       setClasses(
         list.map((c: any) => ({
           id: c.id,
-          name: `${c.name} (${c.academicYear?.department?.code || 'Dept'} Y${c.academicYear?.yearNumber || 1})`,
+          name: `${c.name} (${c.academicYear?.department?.code || 'Dept'} Y${c.academicYear?.year || 1})`,
           departmentCode: c.academicYear?.department?.code,
         }))
       );
@@ -142,7 +143,7 @@ export const StudentManagement: React.FC = () => {
     try {
       const params = selectedClassFilter !== 'ALL' ? { classId: selectedClassFilter } : {};
       const res = await api.get('/api/academics/students', { params });
-      setStudents(res.data.students || []);
+      setStudents(res.data.students || res.data.data || []);
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to fetch students', 'error');
     } finally {
@@ -157,6 +158,11 @@ export const StudentManagement: React.FC = () => {
   useEffect(() => {
     fetchStudents();
   }, [selectedClassFilter]);
+
+  useRealtimeSync(['data:updated'], () => {
+    fetchClasses();
+    fetchStudents();
+  });
 
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();

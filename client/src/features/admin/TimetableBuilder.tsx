@@ -1,250 +1,336 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useToast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
+import { useRealtimeSync } from '@/lib/socket';
+import { DayOfWeek } from '@velan/shared';
 import {
   CalendarDays,
   Plus,
   AlertTriangle,
-  Sparkles,
   Printer,
-  Copy,
-  CheckCircle2,
-  Clock,
-  Layers,
+  Trash2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-interface SlotData {
-  day: string;
-  period: number;
-  subject: string;
-  subjectCode: string;
-  faculty: string;
-  room: string;
-  isLab?: boolean;
+interface TimetableSlotItem {
+  id: string;
+  dayOfWeek: DayOfWeek;
+  periodNumber: number;
+  startTime: string;
+  endTime: string;
+  roomNumber: string;
+  isLabBlock: boolean;
+  facultyId: string;
+  classSubject: {
+    subjectId: string;
+    subject: { id: string; code: string; name: string };
+    faculty: { id: string; user: { name: string } };
+  };
 }
 
+const DAYS: { key: DayOfWeek; label: string }[] = [
+  { key: DayOfWeek.MONDAY, label: 'Monday' },
+  { key: DayOfWeek.TUESDAY, label: 'Tuesday' },
+  { key: DayOfWeek.WEDNESDAY, label: 'Wednesday' },
+  { key: DayOfWeek.THURSDAY, label: 'Thursday' },
+  { key: DayOfWeek.FRIDAY, label: 'Friday' },
+  { key: DayOfWeek.SATURDAY, label: 'Saturday' },
+];
+
 export const TimetableBuilder: React.FC = () => {
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const periods = [1, 2, 3, 4, 5, 6, 7];
+  const navigate = useNavigate();
+  const { showToast } = useToast();
 
-  const periodTimings = [
-    '09:00 - 10:00',
-    '10:00 - 11:00',
-    '11:15 - 12:15',
-    '12:15 - 01:15',
-    '02:00 - 03:00',
-    '03:00 - 04:00',
-    '04:00 - 04:50',
-  ];
+  const [classes, setClasses] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [facultyList, setFacultyList] = useState<any[]>([]);
+  const [periods, setPeriods] = useState<any[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [slots, setSlots] = useState<TimetableSlotItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [selectedClass, setSelectedClass] = useState('CSE – Year 2 – A');
+  // Editor modal
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [activeSlot, setActiveSlot] = useState<{ day: string; period: number } | null>(null);
-  const [conflictWarning, setConflictWarning] = useState<string | null>(null);
-
-  // Form states for slot editor
-  const [slotSubject, setSlotSubject] = useState('Data Structures');
-  const [slotFaculty, setSlotFaculty] = useState('Dr. Ramesh Kumar');
-  const [slotRoom, setSlotRoom] = useState('Lab 302');
+  const [activeCell, setActiveCell] = useState<{ day: DayOfWeek; periodNumber: number } | null>(null);
+  const [existingSlotId, setExistingSlotId] = useState<string | null>(null);
+  const [slotSubjectId, setSlotSubjectId] = useState('');
+  const [slotFacultyId, setSlotFacultyId] = useState('');
+  const [slotRoom, setSlotRoom] = useState('');
   const [isLabBlock, setIsLabBlock] = useState(false);
+  const [conflictWarning, setConflictWarning] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Initial demo schedule
-  const [schedule, setSchedule] = useState<Record<string, SlotData>>({
-    'Monday-1': { day: 'Monday', period: 1, subject: 'Data Structures', subjectCode: 'CS301', faculty: 'Dr. Ramesh Kumar', room: 'Lab 302' },
-    'Monday-2': { day: 'Monday', period: 2, subject: 'Data Structures', subjectCode: 'CS301', faculty: 'Dr. Ramesh Kumar', room: 'Lab 302' },
-    'Monday-3': { day: 'Monday', period: 3, subject: 'Computer Networks', subjectCode: 'CS302', faculty: 'Ms. Priya S', room: 'Hall 201' },
-    'Monday-5': { day: 'Monday', period: 5, subject: 'Database Management', subjectCode: 'CS303', faculty: 'Dr. Suresh V', room: 'Hall 201' },
+  const fetchMeta = useCallback(async () => {
+    try {
+      const [clsRes, subjRes, facRes, bellRes] = await Promise.all([
+        api.get('/api/academics/classes'),
+        api.get('/api/academics/subjects'),
+        api.get('/api/academics/faculty'),
+        api.get('/api/settings/bell-schedule'),
+      ]);
+      const clsList = clsRes.data.classes || clsRes.data.data || [];
+      setClasses(clsList);
+      setSubjects(subjRes.data.subjects || subjRes.data.data || []);
+      setFacultyList((facRes.data.faculty || facRes.data.data || []).filter((f: any) => f.user?.status === 'ACTIVE'));
+      setPeriods(bellRes.data.periods || []);
+      if (clsList.length > 0 && !selectedClassId) {
+        setSelectedClassId(clsList[0].id);
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to load timetable configuration', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedClassId]);
 
-    'Tuesday-1': { day: 'Tuesday', period: 1, subject: 'Discrete Mathematics', subjectCode: 'MA301', faculty: 'Prof. Anitha M', room: 'Hall 201' },
-    'Tuesday-2': { day: 'Tuesday', period: 2, subject: 'Database Management', subjectCode: 'CS303', faculty: 'Dr. Suresh V', room: 'Hall 201' },
-    'Tuesday-4': { day: 'Tuesday', period: 4, subject: 'Operating Systems', subjectCode: 'CS304', faculty: 'Dr. Ramesh Kumar', room: 'Hall 201' },
+  const fetchClassTimetable = useCallback(async () => {
+    if (!selectedClassId) {
+      setSlots([]);
+      return;
+    }
+    try {
+      const res = await api.get(`/api/timetable/class/${selectedClassId}`);
+      setSlots(res.data.slots || []);
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to fetch class timetable', 'error');
+    }
+  }, [selectedClassId]);
 
-    'Wednesday-1': { day: 'Wednesday', period: 1, subject: 'Operating Systems Lab', subjectCode: 'CS308', faculty: 'Dr. Ramesh Kumar', room: 'Lab 101', isLab: true },
-    'Wednesday-2': { day: 'Wednesday', period: 2, subject: 'Operating Systems Lab', subjectCode: 'CS308', faculty: 'Dr. Ramesh Kumar', room: 'Lab 101', isLab: true },
+  useEffect(() => {
+    fetchMeta();
+  }, [fetchMeta]);
 
-    'Thursday-2': { day: 'Thursday', period: 2, subject: 'Computer Networks', subjectCode: 'CS302', faculty: 'Ms. Priya S', room: 'Hall 201' },
-    'Thursday-3': { day: 'Thursday', period: 3, subject: 'Data Structures', subjectCode: 'CS301', faculty: 'Dr. Ramesh Kumar', room: 'Hall 201' },
+  useEffect(() => {
+    fetchClassTimetable();
+  }, [fetchClassTimetable]);
 
-    'Friday-1': { day: 'Friday', period: 1, subject: 'Discrete Mathematics', subjectCode: 'MA301', faculty: 'Prof. Anitha M', room: 'Hall 201' },
-    'Friday-4': { day: 'Friday', period: 4, subject: 'Database Management', subjectCode: 'CS303', faculty: 'Dr. Suresh V', room: 'Hall 201' },
+  useRealtimeSync(['data:updated', 'timetable:updated'], () => {
+    fetchMeta();
+    fetchClassTimetable();
   });
 
-  const handleSlotClick = (day: string, period: number) => {
-    setActiveSlot({ day, period });
-    const existing = schedule[`${day}-${period}`];
+  const handleSlotClick = (day: DayOfWeek, periodNumber: number) => {
+    setActiveCell({ day, periodNumber });
+    const existing = slots.find((s) => s.dayOfWeek === day && s.periodNumber === periodNumber);
     if (existing) {
-      setSlotSubject(existing.subject);
-      setSlotFaculty(existing.faculty);
-      setSlotRoom(existing.room);
-      setIsLabBlock(!!existing.isLab);
+      setExistingSlotId(existing.id);
+      setSlotSubjectId(existing.classSubject.subjectId);
+      setSlotFacultyId(existing.facultyId);
+      setSlotRoom(existing.roomNumber);
+      setIsLabBlock(existing.isLabBlock);
     } else {
-      setSlotSubject('Data Structures');
-      setSlotFaculty('Dr. Ramesh Kumar');
-      setSlotRoom('Lab 302');
+      setExistingSlotId(null);
+      setSlotSubjectId(subjects[0]?.id || '');
+      setSlotFacultyId(facultyList[0]?.id || '');
+      const selectedCls = classes.find((c) => c.id === selectedClassId);
+      setSlotRoom(selectedCls?.roomNumber || 'Room 101');
       setIsLabBlock(false);
     }
     setConflictWarning(null);
     setIsEditModalOpen(true);
   };
 
-  const handleFacultyChange = (val: string) => {
-    setSlotFaculty(val);
-    // Simulate real-time clash check
-    if (val === 'Dr. Suresh V' && activeSlot?.day === 'Monday' && activeSlot?.period === 1) {
-      setConflictWarning('Conflict Warning: Dr. Suresh V is already assigned to CSE Year 3 Section B at this time.');
-    } else {
-      setConflictWarning(null);
+  const runConflictCheck = async (facultyId: string, roomNumber: string) => {
+    if (!activeCell || !facultyId || !roomNumber) return;
+    try {
+      const res = await api.post('/api/timetable/conflicts', {
+        facultyId,
+        roomNumber,
+        dayOfWeek: activeCell.day,
+        periodNumber: activeCell.periodNumber,
+        currentClassId: selectedClassId,
+      });
+      if (res.data.hasConflict && res.data.conflicts?.length > 0) {
+        setConflictWarning(res.data.conflicts.join(' | '));
+      } else {
+        setConflictWarning(null);
+      }
+    } catch {
+      // silent check
     }
   };
 
-  const handleSaveSlot = () => {
-    if (!activeSlot) return;
-    const key = `${activeSlot.day}-${activeSlot.period}`;
-    setSchedule((prev) => ({
-      ...prev,
-      [key]: {
-        day: activeSlot.day,
-        period: activeSlot.period,
-        subject: slotSubject,
-        subjectCode: slotSubject.substring(0, 3).toUpperCase() + '30' + activeSlot.period,
-        faculty: slotFaculty,
-        room: slotRoom,
-        isLab: isLabBlock,
-      },
-    }));
-    setIsEditModalOpen(false);
+  const handleSaveSlot = async () => {
+    if (!activeCell || !selectedClassId || !slotSubjectId || !slotFacultyId || !slotRoom.trim()) {
+      showToast('Subject, Faculty, and Room are required.', 'error');
+      return;
+    }
+
+    const periodInfo = periods.find((p) => p.periodNumber === activeCell.periodNumber);
+    const startTime = periodInfo?.startTime || '09:00';
+    const endTime = periodInfo?.endTime || '09:50';
+
+    setIsSaving(true);
+    try {
+      await api.post('/api/timetable/slot', {
+        classId: selectedClassId,
+        subjectId: slotSubjectId,
+        facultyId: slotFacultyId,
+        dayOfWeek: activeCell.day,
+        periodNumber: activeCell.periodNumber,
+        startTime,
+        endTime,
+        roomNumber: slotRoom.trim(),
+        isLabBlock,
+      });
+      showToast('Timetable slot saved successfully', 'success');
+      setIsEditModalOpen(false);
+      fetchClassTimetable();
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || 'Failed to save timetable slot';
+      setConflictWarning(errMsg);
+      showToast(errMsg, 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleRemoveSlot = () => {
-    if (!activeSlot) return;
-    const key = `${activeSlot.day}-${activeSlot.period}`;
-    setSchedule((prev) => {
-      const copy = { ...prev };
-      delete copy[key];
-      return copy;
-    });
-    setIsEditModalOpen(false);
+  const handleClearSlot = async () => {
+    if (!existingSlotId) return;
+    setIsSaving(true);
+    try {
+      await api.delete(`/api/timetable/slot/${existingSlotId}`);
+      showToast('Timetable slot cleared', 'success');
+      setIsEditModalOpen(false);
+      fetchClassTimetable();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to clear slot', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (!isLoading && classes.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
+          Timetable Builder
+        </h1>
+        <EmptyState
+          icon={CalendarDays}
+          title="No classes created yet"
+          description="Create a Department, Academic Year, and Class first before building your class timetable."
+          actionLabel="Go to Classes & Subjects"
+          onAction={() => navigate('/admin/academics')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
-              Interactive Timetable Builder
-            </h1>
-            <Badge variant="brand">Constraint Solver Active</Badge>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
+            Timetable Builder
+          </h1>
           <p className="text-xs sm:text-sm text-content-secondary mt-1">
-            Weekly grid scheduler with real-time faculty double-booking and room collision detection.
+            Real-time server-enforced conflict detection for faculty and classrooms.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button
-            variant="soft"
-            size="sm"
-            leftIcon={<Sparkles className="w-3.5 h-3.5 text-brand-600" />}
-            onClick={() => alert('AI Heuristic: Timetable optimized with zero faculty conflicts.')}
+          <select
+            value={selectedClassId}
+            onChange={(e) => setSelectedClassId(e.target.value)}
+            className="px-4 py-2.5 rounded-2xl border border-border bg-white text-xs sm:text-sm font-semibold text-content outline-none shadow-sm focus:border-brand-500"
           >
-            Auto-Generate Solver
-          </Button>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
           <Button
             variant="secondary"
             size="sm"
-            leftIcon={<Printer className="w-3.5 h-3.5" />}
+            leftIcon={<Printer className="w-4 h-4" />}
             onClick={() => window.print()}
           >
-            Print / PDF
+            Print
           </Button>
         </div>
       </div>
 
-      {/* Class Selector Bar */}
-      <div className="flex items-center justify-between p-4 bg-surface-soft rounded-2xl border border-border">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-bold text-content-secondary uppercase tracking-wider">
-            Active Class:
-          </span>
-          <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="px-3.5 py-1.5 rounded-xl border border-border bg-white text-xs sm:text-sm font-bold text-content outline-none"
-          >
-            <option value="CSE – Year 2 – A">CSE – Year 2 – Section A</option>
-            <option value="CSE – Year 2 – B">CSE – Year 2 – Section B</option>
-            <option value="ECE – Year 3 – A">ECE – Year 3 – Section A</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs text-content-secondary">
-          <span className="flex items-center gap-1 font-semibold text-accent-emerald">
-            <CheckCircle2 className="w-3.5 h-3.5" /> No Conflicts Detected
-          </span>
-        </div>
-      </div>
-
-      {/* Timetable Weekly Grid */}
-      <Card className="p-0 overflow-hidden border border-border">
+      {/* Timetable Matrix Grid */}
+      <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
-              <tr className="bg-surface-soft border-b border-border text-[11px] font-semibold text-content-secondary uppercase tracking-wider">
-                <th className="p-4 text-left w-28">Period / Day</th>
-                {days.map((day) => (
-                  <th key={day} className="p-4 text-center min-w-[150px]">
-                    {day}
+              <tr className="bg-surface-soft border-b border-border">
+                <th className="p-4 text-xs font-bold text-content-secondary uppercase w-32 border-r border-border">
+                  Day / Period
+                </th>
+                {periods.map((p) => (
+                  <th
+                    key={p.periodNumber}
+                    className="p-3 text-center border-r border-border last:border-r-0"
+                  >
+                    <span className="text-xs font-bold text-content block">{p.name}</span>
+                    <span className="text-[10px] text-content-muted font-mono">
+                      {p.startTime} - {p.endTime}
+                    </span>
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border text-xs">
-              {periods.map((p, idx) => (
-                <tr key={p} className="hover:bg-slate-50/50">
-                  {/* Period Header */}
-                  <td className="p-4 bg-surface-soft/60 font-medium border-r border-border">
-                    <span className="block font-bold text-content">Period {p}</span>
-                    <span className="block text-[10px] text-content-muted font-mono">
-                      {periodTimings[idx]}
-                    </span>
+            <tbody className="divide-y divide-border">
+              {DAYS.map((day) => (
+                <tr key={day.key} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 font-bold text-sm text-content bg-surface-soft/50 border-r border-border">
+                    {day.label}
                   </td>
-
-                  {/* Day Slots */}
-                  {days.map((day) => {
-                    const slot = schedule[`${day}-${p}`];
+                  {periods.map((p) => {
+                    const slot = slots.find(
+                      (s) => s.dayOfWeek === day.key && s.periodNumber === p.periodNumber
+                    );
                     return (
                       <td
-                        key={`${day}-${p}`}
-                        onClick={() => handleSlotClick(day, p)}
-                        className="p-2 border-r border-border last:border-r-0 cursor-pointer align-top"
+                        key={`${day.key}-${p.periodNumber}`}
+                        onClick={() => handleSlotClick(day.key, p.periodNumber)}
+                        className="p-2 border-r border-border last:border-r-0 cursor-pointer align-top hover:bg-brand-50/40 transition-all min-w-[130px] h-24"
                       >
                         {slot ? (
                           <div
-                            className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] shadow-sm ${
-                              slot.isLab
-                                ? 'bg-teal-50/80 border-teal-200 text-teal-900'
-                                : 'bg-brand-50/70 border-brand-200 text-brand-900'
+                            className={`p-2.5 rounded-2xl border h-full flex flex-col justify-between transition-all ${
+                              slot.isLabBlock
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                                : 'bg-white border-border hover:border-brand-400 shadow-sm'
                             }`}
                           >
-                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-white/80 shadow-xs mb-1 inline-block">
-                              {slot.subjectCode}
-                            </span>
-                            <h4 className="text-xs font-bold leading-tight">{slot.subject}</h4>
-                            <p className="text-[11px] text-content-secondary mt-1">{slot.faculty}</p>
-                            <div className="flex items-center justify-between text-[10px] text-content-muted mt-2 pt-1 border-t border-black/5">
-                              <span>{slot.room}</span>
-                              {slot.isLab && <span className="font-bold text-teal-700">Lab Block</span>}
+                            <div>
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[10px] font-mono font-bold text-brand-600">
+                                  {slot.classSubject.subject.code}
+                                </span>
+                                {slot.isLabBlock && (
+                                  <Badge variant="brand" size="sm">LAB</Badge>
+                                )}
+                              </div>
+                              <h4 className="text-xs font-bold leading-tight mt-1 line-clamp-1">
+                                {slot.classSubject.subject.name}
+                              </h4>
+                            </div>
+
+                            <div className="mt-2 text-[10px] text-content-secondary flex items-center justify-between gap-1 border-t border-slate-100 pt-1">
+                              <span className="truncate font-medium">
+                                {slot.classSubject.faculty.user.name}
+                              </span>
+                              <span className="font-mono text-content-muted shrink-0">
+                                {slot.roomNumber}
+                              </span>
                             </div>
                           </div>
                         ) : (
-                          <div className="h-20 rounded-2xl border border-dashed border-border/80 flex flex-col items-center justify-center text-content-muted hover:border-brand-400 hover:bg-brand-50/30 transition-all">
-                            <Plus className="w-4 h-4 opacity-50" />
-                            <span className="text-[10px] mt-1">Assign Slot</span>
+                          <div className="h-full border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center text-slate-300 hover:border-brand-300 hover:text-brand-400 transition-colors">
+                            <Plus className="w-4 h-4" />
                           </div>
                         )}
                       </td>
@@ -261,13 +347,13 @@ export const TimetableBuilder: React.FC = () => {
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
-        title={`Configure Slot: ${activeSlot?.day} - Period ${activeSlot?.period}`}
-        description="Assign registered faculty, subject, and room with live conflict detection."
+        title={`Edit Slot: ${activeCell?.day} — Period ${activeCell?.periodNumber}`}
+        description="Assign subject, registered faculty, and room. Faculty double-booking is blocked automatically."
       >
         <div className="space-y-4">
           {conflictWarning && (
-            <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-accent-rose text-xs flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5 font-medium">
+              <AlertTriangle className="w-5 h-5 text-accent-rose shrink-0 mt-0.5" />
               <span>{conflictWarning}</span>
             </div>
           )}
@@ -277,64 +363,83 @@ export const TimetableBuilder: React.FC = () => {
               Subject
             </label>
             <select
-              value={slotSubject}
-              onChange={(e) => setSlotSubject(e.target.value)}
-              className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-medium"
+              value={slotSubjectId}
+              onChange={(e) => setSlotSubjectId(e.target.value)}
+              className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none focus:border-brand-500"
             >
-              <option value="Data Structures">Data Structures (CS301) - 4 Credits</option>
-              <option value="Computer Networks">Computer Networks (CS302) - 3 Credits</option>
-              <option value="Database Management">Database Management (CS303) - 3 Credits</option>
-              <option value="Operating Systems">Operating Systems (CS304) - 4 Credits</option>
-              <option value="Operating Systems Lab">Operating Systems Lab (CS308) - 2 Credits</option>
-              <option value="Discrete Mathematics">Discrete Mathematics (MA301) - 4 Credits</option>
+              {subjects.length === 0 && <option value="">No subjects created yet</option>}
+              {subjects.map((subj) => (
+                <option key={subj.id} value={subj.id}>
+                  {subj.code} — {subj.name}
+                </option>
+              ))}
             </select>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-content-secondary uppercase mb-1">
-              Registered Faculty Member
+              Assigned Faculty
             </label>
             <select
-              value={slotFaculty}
-              onChange={(e) => handleFacultyChange(e.target.value)}
-              className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-medium"
+              value={slotFacultyId}
+              onChange={(e) => {
+                setSlotFacultyId(e.target.value);
+                runConflictCheck(e.target.value, slotRoom);
+              }}
+              className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none focus:border-brand-500"
             >
-              <option value="Dr. Ramesh Kumar">Dr. Ramesh Kumar (Professor, CSE)</option>
-              <option value="Ms. Priya S">Ms. Priya S (Associate Professor, CSE)</option>
-              <option value="Dr. Suresh V">Dr. Suresh V (Assistant Professor, CSE)</option>
-              <option value="Prof. Anitha M">Prof. Anitha M (Mathematics)</option>
+              {facultyList.length === 0 && <option value="">No active faculty registered yet</option>}
+              {facultyList.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.user?.name} ({f.employeeId})
+                </option>
+              ))}
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Room / Hall Number"
-              value={slotRoom}
-              onChange={(e) => setSlotRoom(e.target.value)}
+          <Input
+            label="Room / Lab Number"
+            value={slotRoom}
+            onChange={(e) => {
+              setSlotRoom(e.target.value);
+              runConflictCheck(slotFacultyId, e.target.value);
+            }}
+            placeholder="e.g. Hall 201 or Lab 302"
+          />
+
+          <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface-soft border border-border">
+            <input
+              type="checkbox"
+              id="labBlockCheck"
+              checked={isLabBlock}
+              onChange={(e) => setIsLabBlock(e.target.checked)}
+              className="w-4 h-4 accent-brand-600 rounded"
             />
-            <div className="flex flex-col justify-end pb-1">
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-content">
-                <input
-                  type="checkbox"
-                  checked={isLabBlock}
-                  onChange={(e) => setIsLabBlock(e.target.checked)}
-                  className="rounded text-brand-500"
-                />
-                <span>Multi-Period Lab Block</span>
-              </label>
-            </div>
+            <label htmlFor="labBlockCheck" className="text-xs font-semibold text-content cursor-pointer">
+              Mark as Practical / Lab Session
+            </label>
           </div>
 
           <div className="pt-4 flex items-center justify-between border-t border-border">
-            <Button variant="ghost" size="sm" onClick={handleRemoveSlot} className="text-accent-rose hover:bg-rose-50">
-              Clear Slot
-            </Button>
+            {existingSlotId ? (
+              <Button
+                variant="danger"
+                size="sm"
+                leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                onClick={handleClearSlot}
+                disabled={isSaving}
+              >
+                Clear Slot
+              </Button>
+            ) : (
+              <div />
+            )}
             <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setIsEditModalOpen(false)}>
+              <Button variant="secondary" size="sm" onClick={() => setIsEditModalOpen(false)} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={handleSaveSlot} disabled={!!conflictWarning}>
-                Save Timetable Slot
+              <Button size="sm" onClick={handleSaveSlot} isLoading={isSaving} disabled={isSaving}>
+                Save Slot
               </Button>
             </div>
           </div>

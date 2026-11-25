@@ -142,9 +142,10 @@ export const exportMonthlyRegister = async (req: Request, res: Response) => {
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
+    const safeClassName = classData.name.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="Velan_Attendance_Register_${classData.name.replace(/\s+/g, '_')}.xlsx"`
+      `attachment; filename="Velan_Attendance_Register_${safeClassName}.xlsx"`
     );
 
     await workbook.xlsx.write(res);

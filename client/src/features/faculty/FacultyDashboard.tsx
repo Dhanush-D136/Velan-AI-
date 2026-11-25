@@ -1,56 +1,65 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { StatCard } from '@/components/ui/StatCard';
-import { ProgressRing } from '@/components/ui/ProgressRing';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/stores/authStore';
+import { api } from '@/lib/api';
+import { useRealtimeSync } from '@/lib/socket';
 import {
   CalendarCheck2,
   Clock,
-  MapPin,
   Users,
-  ChevronRight,
   BookOpen,
   ArrowRight,
-  CheckCircle2,
-  AlertCircle,
+  CalendarDays,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const FacultyDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<any>({
+    stats: {
+      todaysPeriodsCount: 0,
+      assignedClassesCount: 0,
+      totalAssignedStudents: 0,
+      averageAttendance: 0,
+    },
+    todaysSlots: [],
+    classSubjects: [],
+    activeSession: null,
+    recentSessions: [],
+  });
+  const [myTimetable, setMyTimetable] = useState<any[]>([]);
 
-  const todayTimeline = [
-    {
-      period: 1,
-      time: '09:00 - 10:00 AM',
-      subject: 'Data Structures & Algorithms (CS301)',
-      class: 'CSE – Year 2 – A',
-      room: 'Lab 302',
-      isCurrent: true,
-      attendanceTaken: false,
-    },
-    {
-      period: 2,
-      time: '10:00 - 11:00 AM',
-      subject: 'Data Structures & Algorithms (CS301)',
-      class: 'CSE – Year 2 – A',
-      room: 'Lab 302',
-      isCurrent: false,
-      attendanceTaken: false,
-    },
-    {
-      period: 4,
-      time: '12:15 - 01:15 PM',
-      subject: 'Operating Systems (CS304)',
-      class: 'CSE – Year 2 – B',
-      room: 'Hall 201',
-      isCurrent: false,
-      attendanceTaken: false,
-    },
-  ];
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const [overviewRes, ttRes] = await Promise.all([
+        api.get('/api/attendance/faculty-overview'),
+        api.get('/api/timetable/my-faculty'),
+      ]);
+      if (overviewRes.data) setData(overviewRes.data);
+      setMyTimetable(ttRes.data?.slots || []);
+    } catch {
+      // handled
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  useRealtimeSync(
+    ['data:updated', 'timetable:updated', 'attendance:session_started', 'attendance:session_closed'],
+    fetchDashboard
+  );
+
+  const { stats, todaysSlots, activeSession, recentSessions } = data;
 
   return (
     <div className="space-y-6">
@@ -61,7 +70,7 @@ export const FacultyDashboard: React.FC = () => {
             Faculty Teaching Hub
           </span>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold mt-2">
-            Welcome back, {user?.name || 'Faculty Member'} 👋
+            Welcome back, {user?.name || 'Faculty Member'}
           </h1>
           <p className="text-xs sm:text-sm text-white/90 mt-1 font-medium">
             {user?.facultyProfile?.designation || 'Teaching Faculty'}
@@ -76,105 +85,115 @@ export const FacultyDashboard: React.FC = () => {
           className="bg-white text-teal-800 hover:bg-slate-100 font-bold shadow-lg"
           leftIcon={<CalendarCheck2 className="w-5 h-5 text-teal-600" />}
         >
-          Launch GPS Attendance
+          {activeSession ? 'Open Active Session' : 'Launch GPS Attendance'}
         </Button>
       </div>
 
-      {/* Quick Metrics */}
+      {/* Quick Metrics (100% Real DB) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <StatCard
           title="Today's Classes"
-          value="3 Periods"
-          subtitle="2 Theory • 1 Lab Block"
+          value={isLoading ? '...' : `${stats.todaysPeriodsCount} Period(s)`}
+          subtitle={`${myTimetable.length} total weekly slots`}
           icon={<Clock className="w-5 h-5 text-teal-600" />}
           iconBg="bg-teal-50"
         />
         <StatCard
           title="My Assigned Students"
-          value="60 Students"
-          subtitle="CSE 2nd Year (Sections A & B)"
+          value={isLoading ? '...' : `${stats.totalAssignedStudents} Student(s)`}
+          subtitle={`Across ${stats.assignedClassesCount} class(es)`}
           icon={<Users className="w-5 h-5 text-brand-600" />}
           iconBg="bg-brand-50"
         />
         <StatCard
           title="Average Attendance"
-          value="93.8%"
-          subtitle="Past 30 days verified"
-          change={{ value: '+1.5%', isPositive: true }}
-          icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+          value={isLoading ? '...' : `${stats.averageAttendance}%`}
+          subtitle={`${recentSessions.length} recorded session(s)`}
+          icon={<CalendarCheck2 className="w-5 h-5 text-emerald-600" />}
           iconBg="bg-emerald-50"
         />
       </div>
 
-      {/* Today's Teaching Timeline */}
+      {/* Today's Teaching Schedule */}
       <Card>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-heading font-bold text-content">Today's Class Schedule</h3>
-            <p className="text-xs text-content-secondary mt-0.5">
-              Attendance button is active during the class window (+/- 10 min grace period)
-            </p>
-          </div>
-          <Badge variant="faculty">Semester 4 Active</Badge>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-heading font-bold text-content">Today's Teaching Schedule</h3>
+          <Badge variant="neutral">{todaysSlots.length} Period(s)</Badge>
         </div>
 
-        <div className="space-y-4">
-          {todayTimeline.map((item) => (
-            <div
-              key={item.period}
-              className={`p-5 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
-                item.isCurrent
-                  ? 'bg-teal-50/80 border-teal-300 ring-2 ring-teal-500/20 shadow-sm'
-                  : 'bg-surface-soft border-border'
-              }`}
-            >
-              <div className="flex items-start gap-4">
-                <div
-                  className={`p-3 rounded-2xl shrink-0 font-mono text-center w-16 ${
-                    item.isCurrent ? 'bg-teal-600 text-white shadow-md' : 'bg-slate-200 text-content'
-                  }`}
-                >
-                  <span className="text-[10px] uppercase font-bold block">Period</span>
-                  <span className="text-xl font-bold leading-none">{item.period}</span>
-                </div>
-
+        {todaysSlots.length === 0 ? (
+          <EmptyState
+            icon={CalendarDays}
+            title="No classes scheduled for today"
+            description="Once the Admin assigns your subjects and periods in the Timetable Builder, your schedule will appear here automatically."
+          />
+        ) : (
+          <div className="space-y-3">
+            {todaysSlots.map((slot: any) => (
+              <div
+                key={slot.id}
+                className="p-4 rounded-2xl bg-surface-soft border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-content">{item.subject}</span>
-                    {item.isCurrent && (
-                      <Badge variant="success" size="sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-accent-emerald animate-ping mr-1" />
-                        In Progress
-                      </Badge>
-                    )}
+                    <Badge variant="brand" size="sm">Period {slot.periodNumber}</Badge>
+                    <span className="text-xs font-mono text-content-secondary">
+                      {slot.startTime} – {slot.endTime}
+                    </span>
                   </div>
-                  <p className="text-xs text-content-secondary mt-1">
-                    {item.class} • Room {item.room}
+                  <h4 className="font-bold text-sm text-content mt-1">
+                    {slot.classSubject?.subject?.name} ({slot.classSubject?.subject?.code})
+                  </h4>
+                  <p className="text-xs text-content-secondary">
+                    {slot.class?.name} • Room: {slot.roomNumber}
                   </p>
-                  <span className="text-[11px] font-mono text-content-muted mt-1 block">
-                    {item.time}
+                </div>
+                <Button
+                  size="sm"
+                  rightIcon={<ArrowRight className="w-4 h-4" />}
+                  onClick={() => navigate('/faculty/attendance')}
+                >
+                  Take Attendance
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Read-Only Weekly Timetable */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-heading font-bold text-content flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-brand-600" />
+            My Weekly Timetable (Read-Only)
+          </h3>
+          <Badge variant="brand">{myTimetable.length} Total Slots</Badge>
+        </div>
+        {myTimetable.length === 0 ? (
+          <div className="py-6 text-center text-xs text-content-secondary">
+            No weekly timetable slots assigned to you yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {myTimetable.map((slot: any) => (
+              <div key={slot.id} className="py-2.5 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-content">
+                    {slot.dayOfWeek} • Period {slot.periodNumber} ({slot.startTime}–{slot.endTime})
+                  </span>
+                  <span className="text-content-secondary block">
+                    {slot.classSubject?.subject?.code} — {slot.classSubject?.subject?.name}
                   </span>
                 </div>
+                <div className="text-right font-mono text-content-muted">
+                  <div>{slot.class?.name}</div>
+                  <div>{slot.roomNumber}</div>
+                </div>
               </div>
-
-              <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                {item.isCurrent ? (
-                  <Button
-                    variant="faculty"
-                    size="md"
-                    onClick={() => navigate('/faculty/attendance')}
-                    leftIcon={<MapPin className="w-4 h-4" />}
-                    className="w-full md:w-auto font-bold shadow-glass"
-                  >
-                    Take GPS Attendance
-                  </Button>
-                ) : (
-                  <span className="text-xs text-content-muted font-medium">Scheduled</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );

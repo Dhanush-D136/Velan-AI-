@@ -1,172 +1,136 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { ProgressRing } from '@/components/ui/ProgressRing';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useAuthStore } from '@/stores/authStore';
+import { api } from '@/lib/api';
+import { useRealtimeSync } from '@/lib/socket';
 import {
-  CalendarDays,
-  Sparkles,
   CheckCircle2,
   AlertTriangle,
   History,
-  FileSpreadsheet,
-  ChevronLeft,
-  ChevronRight,
+  CalendarDays,
 } from 'lucide-react';
 
 export const StudentAttendanceHistoryPage: React.FC = () => {
-  const [selectedMonth, setSelectedMonth] = useState('November 2026');
-
-  const subjectPercentages = [
-    { code: 'CS301', name: 'Data Structures & Algorithms', attended: 26, total: 27, percent: 96.3, color: '#6366F1' },
-    { code: 'CS302', name: 'Computer Networks', attended: 22, total: 24, percent: 91.6, color: '#06B6D4' },
-    { code: 'CS303', name: 'Database Management Systems', attended: 21, total: 22, percent: 95.4, color: '#10B981' },
-    { code: 'CS304', name: 'Operating Systems', attended: 23, total: 25, percent: 92.0, color: '#8B5CF6' },
-    { code: 'MA301', name: 'Discrete Mathematics', attended: 18, total: 20, percent: 90.0, color: '#F59E0B' },
-  ];
-
-  // Calendar Heatmap Days (30 days of November)
-  const heatmapDays = Array.from({ length: 30 }, (_, i) => {
-    const day = i + 1;
-    // Weekends (Sundays)
-    if (day % 7 === 1) return { day, status: 'WEEKEND', periodsAttended: 0, total: 0 };
-    // Leave / Absent on Day 12
-    if (day === 12) return { day, status: 'ABSENT', periodsAttended: 0, total: 5 };
-    // Partial Day on Day 18
-    if (day === 18) return { day, status: 'PARTIAL', periodsAttended: 4, total: 6 };
-    // All other working days full present
-    return { day, status: 'PRESENT', periodsAttended: 6, total: 6 };
+  const { user } = useAuthStore();
+  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<any>({
+    student: null,
+    stats: { totalAttended: 0, totalSessions: 0, overallPercent: 0, minThreshold: 75, belowThreshold: false },
+    subjectBreakdown: [],
+    history: [],
   });
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await api.get('/api/attendance/student-overview');
+      if (res.data) setData(res.data);
+    } catch {
+      // handled
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  useRealtimeSync(
+    ['attendance:marked', 'attendance:session_closed', 'data:updated'],
+    fetchHistory,
+    { classId: user?.studentProfile?.classId }
+  );
+
+  const { student, stats, subjectBreakdown, history } = data;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
-            Attendance Heatmap & Analytics
+            Attendance History &amp; Subject Breakdown
           </h1>
           <p className="text-xs sm:text-sm text-content-secondary mt-1">
-            Student: <span className="font-bold text-content">Arunachalam V</span> (Reg: 710022104001 • CSE 2nd Year A)
+            Student: <span className="font-bold text-content">{user?.name}</span>{' '}
+            {student ? `(Reg: ${student.registerNo} • ${student.class?.name || ''})` : ''}
           </p>
         </div>
 
-        <Badge variant="success" size="md">
-          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-          Overall: 94.2% (Shortage Risk: None)
+        <Badge variant={stats.belowThreshold ? 'danger' : 'success'} size="md">
+          {stats.belowThreshold ? (
+            <AlertTriangle className="w-3.5 h-3.5 mr-1" />
+          ) : (
+            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+          )}
+          Overall: {stats.overallPercent}% ({stats.totalAttended}/{stats.totalSessions})
         </Badge>
       </div>
 
-      {/* Safe-Bunk Calculator Card */}
-      <Card className="bg-gradient-to-r from-emerald-500/10 via-brand-500/5 to-cyan-500/10 border-brand-200 p-6">
-        <div className="flex items-start gap-4">
-          <div className="p-3 rounded-2xl bg-brand-gradient text-white shadow-md shrink-0">
-            <Sparkles className="w-6 h-6" />
+      {/* Subject Breakdown */}
+      <Card>
+        <h3 className="font-heading font-bold text-base text-content mb-4">Subject-Wise Attendance</h3>
+        {!isLoading && subjectBreakdown.length === 0 ? (
+          <EmptyState
+            icon={CalendarDays}
+            title="No attendance data yet"
+            description="Subject-wise statistics will appear once sessions are recorded for your class."
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {subjectBreakdown.map((subj: any) => (
+              <div key={subj.code} className="p-4 rounded-2xl bg-surface-soft border border-border flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-mono font-bold text-brand-600">{subj.code}</span>
+                  <h4 className="text-sm font-bold text-content">{subj.name}</h4>
+                  <span className="text-xs text-content-secondary">
+                    {subj.attended} / {subj.total} periods
+                  </span>
+                </div>
+                <Badge variant={subj.total > 0 && subj.percent < stats.minThreshold ? 'danger' : 'success'}>
+                  {subj.percent}%
+                </Badge>
+              </div>
+            ))}
           </div>
-          <div className="flex-1">
-            <h3 className="font-heading font-bold text-base text-content">
-              Smart Safe-Bunk Calculator
-            </h3>
-            <p className="text-xs text-content-secondary mt-1 leading-relaxed">
-              Based on your attendance in 83 completed periods and minimum collegiate threshold of <strong className="text-content">75%</strong>:
-            </p>
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3 rounded-xl bg-white border border-border">
-                <span className="text-[10px] uppercase font-bold text-content-secondary">
-                  Safe to Miss
-                </span>
-                <p className="text-xl font-bold font-heading text-accent-emerald">4 Classes</p>
-                <span className="text-[10px] text-content-muted">Resulting: 81.5%</span>
-              </div>
-              <div className="p-3 rounded-xl bg-white border border-border">
-                <span className="text-[10px] uppercase font-bold text-content-secondary">
-                  Max Miss to 75%
-                </span>
-                <p className="text-xl font-bold font-heading text-accent-amber">7 Classes</p>
-                <span className="text-[10px] text-content-muted">Resulting: 75.2%</span>
-              </div>
-              <div className="p-3 rounded-xl bg-white border border-border">
-                <span className="text-[10px] uppercase font-bold text-content-secondary">
-                  Medical / OD Condonation
-                </span>
-                <p className="text-xl font-bold font-heading text-brand-600">Eligible</p>
-                <span className="text-[10px] text-content-muted">Up to 65% with certificate</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </Card>
 
-      {/* Subject-Wise Percentage Rings */}
+      {/* Session-by-Session History */}
       <Card>
-        <h3 className="font-heading font-bold text-base text-content mb-4">
-          Subject-Wise Attendance Breakdown
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center">
-          {subjectPercentages.map((sub) => (
-            <div key={sub.code} className="p-3 rounded-2xl bg-surface-soft border border-border flex flex-col items-center">
-              <ProgressRing progress={sub.percent} size={84} strokeWidth={7} color={sub.color} />
-              <span className="text-xs font-bold text-content mt-2 block font-mono">{sub.code}</span>
-              <span className="text-[10px] text-content-secondary truncate max-w-[120px]">{sub.name}</span>
-              <span className="text-[10px] text-content-muted mt-1">{sub.attended}/{sub.total} periods</span>
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-heading font-bold text-base text-content flex items-center gap-2">
+            <History className="w-4 h-4 text-brand-600" />
+            Session History
+          </h3>
+          <Badge variant="neutral">{history.length} Record(s)</Badge>
         </div>
-      </Card>
 
-      {/* Calendar Heatmap (Monthly View) */}
-      <Card>
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-brand-600" />
-            <h3 className="font-heading font-bold text-base text-content">
-              Attendance Heatmap — {selectedMonth}
-            </h3>
+        {history.length === 0 ? (
+          <div className="py-8 text-center text-xs text-content-secondary">
+            No attendance marks recorded yet.
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-content-secondary flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> Present
-            </span>
-            <span className="text-xs text-content-secondary flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-amber-400" /> Partial
-            </span>
-            <span className="text-xs text-content-secondary flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-rose-500" /> Absent
-            </span>
+        ) : (
+          <div className="divide-y divide-border">
+            {history.map((item: any) => (
+              <div key={item.id} className="py-3 flex items-center justify-between gap-2 text-xs">
+                <div>
+                  <span className="font-bold text-content">
+                    {item.subjectName} ({item.subjectCode})
+                  </span>
+                  <span className="text-content-secondary block text-[11px]">
+                    {item.facultyName} • {new Date(item.markedAt).toLocaleString()} • Method: {item.method}
+                    {item.distanceMeters != null ? ` (${Math.round(item.distanceMeters)}m)` : ''}
+                  </span>
+                </div>
+                <Badge variant={item.status === 'PRESENT' ? 'success' : 'danger'} size="sm">
+                  {item.status}
+                </Badge>
+              </div>
+            ))}
           </div>
-        </div>
-
-        {/* Heatmap Grid */}
-        <div className="grid grid-cols-7 gap-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-            <div key={d} className="text-center text-[11px] font-bold text-content-secondary py-1">
-              {d}
-            </div>
-          ))}
-
-          {heatmapDays.map((d) => (
-            <div
-              key={d.day}
-              className={`h-16 rounded-2xl p-2 border flex flex-col justify-between transition-all hover:scale-105 cursor-pointer ${
-                d.status === 'WEEKEND'
-                  ? 'bg-slate-50 border-border/50 text-content-muted opacity-60'
-                  : d.status === 'ABSENT'
-                  ? 'bg-rose-50 border-rose-300 text-rose-900'
-                  : d.status === 'PARTIAL'
-                  ? 'bg-amber-50 border-amber-300 text-amber-900'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              }`}
-            >
-              <span className="text-xs font-bold">{d.day}</span>
-              {d.status !== 'WEEKEND' && (
-                <span className="text-[10px] font-mono font-semibold">
-                  {d.periodsAttended}/{d.total}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+        )}
       </Card>
     </div>
   );

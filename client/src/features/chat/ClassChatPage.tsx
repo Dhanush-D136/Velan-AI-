@@ -1,184 +1,186 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuthStore } from '@/stores/authStore';
-import {
-  Send,
-  Paperclip,
-  Smile,
-  Users,
-  ShieldCheck,
-  Megaphone,
-  CheckCheck,
-} from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
+import { useRealtimeSync } from '@/lib/socket';
+import { Send, Users, MessageSquare } from 'lucide-react';
 
-interface Message {
+interface ChatMsg {
   id: string;
-  senderName: string;
-  senderRole: string;
-  isMe: boolean;
   content: string;
-  timestamp: string;
-  isAnnouncement?: boolean;
+  createdAt: string;
+  sender: { id: string; name: string; role: string };
 }
 
 export const ClassChatPage: React.FC = () => {
   const { user } = useAuthStore();
+  const { showToast } = useToast();
+
+  const [classes, setClasses] = useState<any[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string>(user?.studentProfile?.classId || '');
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      senderName: 'Dr. Ramesh Kumar',
-      senderRole: 'FACULTY',
-      isMe: user?.role === 'FACULTY',
-      content: 'Good morning everyone! Please check the Study Materials tab for the Binary Search Tree and AVL tree notes for upcoming internals.',
-      timestamp: '09:15 AM',
-      isAnnouncement: true,
-    },
-    {
-      id: '2',
-      senderName: 'Bhavani S',
-      senderRole: 'STUDENT',
-      isMe: false,
-      content: 'Thank you Sir! Will the lab assignment on Dijkstra algorithm be due this Friday?',
-      timestamp: '09:22 AM',
-    },
-    {
-      id: '3',
-      senderName: 'Dr. Ramesh Kumar',
-      senderRole: 'FACULTY',
-      isMe: user?.role === 'FACULTY',
-      content: 'Yes Bhavani, please upload your GitHub repo link or zip by Friday 5:00 PM.',
-      timestamp: '09:25 AM',
-    },
-    {
-      id: '4',
-      senderName: 'Chandran M',
-      senderRole: 'STUDENT',
-      isMe: false,
-      content: 'Noted sir!',
-      timestamp: '09:30 AM',
-    },
-  ]);
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-
-    const newMsg: Message = {
-      id: String(Date.now()),
-      senderName: user?.name || 'Me',
-      senderRole: user?.role || 'STUDENT',
-      isMe: true,
-      content: inputText,
-      timestamp: 'Just now',
+  useEffect(() => {
+    const loadClasses = async () => {
+      if (user?.studentProfile?.classId) {
+        setSelectedClassId(user.studentProfile.classId);
+        return;
+      }
+      try {
+        const res = await api.get('/api/academics/classes');
+        const list = res.data.classes || res.data.data || [];
+        setClasses(list);
+        if (list.length > 0 && !selectedClassId) {
+          setSelectedClassId(list[0].id);
+        }
+      } catch {
+        // handled
+      }
     };
+    loadClasses();
+  }, [user?.studentProfile?.classId]);
 
-    setMessages((prev) => [...prev, newMsg]);
-    setInputText('');
+  const fetchMessages = useCallback(async () => {
+    if (!selectedClassId) return;
+    try {
+      const res = await api.get(`/api/chat/room/${selectedClassId}`);
+      setMessages(res.data.messages || []);
+    } catch {
+      // handled
+    }
+  }, [selectedClassId]);
+
+  useEffect(() => {
+    fetchMessages();
+  }, [fetchMessages]);
+
+  useRealtimeSync(
+    ['chat:message'],
+    (msg: ChatMsg) => {
+      if (msg?.id) {
+        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      } else {
+        fetchMessages();
+      }
+    },
+    { classId: selectedClassId || undefined }
+  );
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputText.trim() || !selectedClassId) return;
+
+    setIsSending(true);
+    try {
+      const res = await api.post('/api/chat/message', {
+        classId: selectedClassId,
+        content: inputText.trim(),
+        type: 'TEXT',
+      });
+      const sent = res.data.message;
+      if (sent) {
+        setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
+      }
+      setInputText('');
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to send message', 'error');
+    } finally {
+      setIsSending(false);
+    }
   };
+
+  if (!selectedClassId) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <EmptyState
+          icon={MessageSquare}
+          title="No class chat room available"
+          description="Once a class is created and you are assigned to it, your class-exclusive real-time chat will appear here."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto h-[calc(100vh-10rem)] flex flex-col space-y-4">
-      {/* Room Header */}
       <Card className="p-4 flex items-center justify-between shadow-subtle shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-brand-gradient text-white flex items-center justify-center font-bold shadow-md">
-            CSE
+            <Users className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="font-heading font-bold text-base text-content">
-              CSE – Year 2 – Section A Class Room
-            </h2>
-            <p className="text-xs text-content-secondary flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-accent-emerald inline-block" />
-              <span>32 Enrolled Students • 4 Faculty Assigned</span>
-            </p>
+            <h2 className="font-heading font-bold text-base text-content">Class Group Chat</h2>
+            <span className="text-[11px] text-content-secondary">Real-time class-scoped communication</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Badge variant="brand" size="sm">
-            <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-            Class-Exclusive
-          </Badge>
-        </div>
+        {classes.length > 0 && (
+          <select
+            value={selectedClassId}
+            onChange={(e) => setSelectedClassId(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-border bg-white text-xs font-semibold outline-none"
+          >
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
       </Card>
 
-      {/* Message Stream */}
-      <Card className="flex-1 overflow-y-auto p-6 space-y-4 shadow-subtle">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex flex-col ${msg.isMe ? 'items-end' : 'items-start'} max-w-xl ${
-              msg.isMe ? 'ml-auto' : 'mr-auto'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1 px-1">
-              <span className="text-[11px] font-bold text-content-secondary">
-                {msg.senderName}
-              </span>
-              <span className="text-[10px] text-content-muted font-mono">{msg.timestamp}</span>
-              {msg.senderRole === 'FACULTY' && (
-                <Badge variant="faculty" size="sm">
-                  Faculty
-                </Badge>
-              )}
-            </div>
-
-            <div
-              className={`p-4 rounded-3xl text-sm leading-relaxed ${
-                msg.isAnnouncement
-                  ? 'bg-amber-50 border border-amber-200 text-amber-950 font-medium'
-                  : msg.isMe
-                  ? 'bg-brand-gradient text-white shadow-glass rounded-tr-sm'
-                  : 'bg-surface-soft border border-border text-content rounded-tl-sm'
-              }`}
-            >
-              {msg.isAnnouncement && (
-                <span className="flex items-center gap-1 text-[11px] font-bold text-accent-amber uppercase mb-1">
-                  <Megaphone className="w-3.5 h-3.5" /> Faculty Announcement
-                </span>
-              )}
-              {msg.content}
-            </div>
+      <Card className="flex-1 overflow-y-auto p-5 space-y-4">
+        {messages.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-xs text-content-secondary">
+            No messages yet. Start the conversation with your class!
           </div>
-        ))}
+        ) : (
+          messages.map((m) => {
+            const isMe = m.sender?.id === user?.id;
+            return (
+              <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[11px] font-bold text-content-secondary">
+                    {m.sender?.name || 'User'}
+                  </span>
+                  <Badge variant="neutral" size="sm">{m.sender?.role || 'USER'}</Badge>
+                  <span className="text-[10px] text-content-muted">
+                    {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div
+                  className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm max-w-[80%] ${
+                    isMe
+                      ? 'bg-brand-600 text-white rounded-br-none'
+                      : 'bg-surface-soft border border-border text-content rounded-bl-none'
+                  }`}
+                >
+                  {m.content}
+                </div>
+              </div>
+            );
+          })
+        )}
       </Card>
 
-      {/* Input Bar */}
-      <Card className="p-3 shadow-subtle shrink-0">
-        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-          <button
-            type="button"
-            className="p-2.5 rounded-2xl text-content-muted hover:text-content hover:bg-slate-100 transition-colors"
-          >
-            <Paperclip className="w-5 h-5" />
-          </button>
-
-          <input
-            type="text"
-            placeholder="Send a message to CSE Year 2 Section A..."
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            className="flex-1 px-4 py-2.5 rounded-2xl bg-surface-soft border border-border text-sm outline-none focus:border-brand-500"
-          />
-
-          <Button
-            type="submit"
-            size="md"
-            variant="primary"
-            className="rounded-2xl px-5"
-            rightIcon={<Send className="w-4 h-4" />}
-          >
-            Send
-          </Button>
-        </form>
-      </Card>
+      <form onSubmit={handleSendMessage} className="flex items-center gap-2 shrink-0">
+        <Input
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          placeholder="Type a message to your class..."
+          className="flex-1"
+        />
+        <Button type="submit" isLoading={isSending} leftIcon={<Send className="w-4 h-4" />}>
+          Send
+        </Button>
+      </form>
     </div>
   );
 };

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { useRealtimeSync } from '@/lib/socket';
 import { Plus, Search, KeyRound, Trash2, Users, AlertCircle } from 'lucide-react';
 
 interface FacultyMember {
@@ -66,13 +67,15 @@ export const FacultyManagement: React.FC = () => {
         api.get('/api/academics/faculty'),
         api.get('/api/academics/departments'),
       ]);
-      setFacultyList(facRes.data.data || []);
-      setDepartments(deptRes.data.data || []);
-      if (deptRes.data.data?.length > 0 && !departmentId) {
-        setDepartmentId(deptRes.data.data[0].id);
+      const facList = facRes.data.faculty || facRes.data.data || [];
+      const deptList = deptRes.data.departments || deptRes.data.data || [];
+      setFacultyList(facList);
+      setDepartments(deptList);
+      if (deptList.length > 0 && !departmentId) {
+        setDepartmentId(deptList[0].id);
       }
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to fetch faculty list', 'error');
+      showToast(err.response?.data?.error || err.response?.data?.message || 'Failed to fetch faculty list', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -81,6 +84,8 @@ export const FacultyManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useRealtimeSync(['data:updated'], fetchData);
 
   const handleCreateFaculty = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +115,7 @@ export const FacultyManagement: React.FC = () => {
       setIsRegisterModalOpen(false);
       fetchData();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to register faculty member', 'error');
+      showToast(err.response?.data?.error || err.response?.data?.message || 'Failed to register faculty member', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -136,7 +141,7 @@ export const FacultyManagement: React.FC = () => {
       showToast(res.data.message || 'Faculty deleted successfully', 'success');
       fetchData();
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Failed to delete faculty', 'error');
+      showToast(err.response?.data?.error || err.response?.data?.message || 'Failed to delete faculty', 'error');
     }
   };
 

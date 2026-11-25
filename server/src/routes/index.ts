@@ -97,8 +97,12 @@ apiRouter.get('/admin/dashboard-stats', authenticateToken, requireRole('ADMIN'),
 apiRouter.post('/attendance/start', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.startSession);
 apiRouter.post('/attendance/mark', authenticateToken, requireRole('STUDENT'), attCtrl.markAttendance);
 apiRouter.get('/attendance/session/:sessionId/live', authenticateToken, attCtrl.getSessionLiveBoard);
+apiRouter.post('/attendance/session/:sessionId/extend', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.extendSession);
 apiRouter.post('/attendance/manual', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.submitManualAttendance);
 apiRouter.post('/attendance/session/:sessionId/close', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.closeSession);
+apiRouter.get('/attendance/live-sessions', authenticateToken, requireRole('ADMIN'), attCtrl.getLiveSessionsList);
+apiRouter.get('/attendance/faculty-overview', authenticateToken, requireRole('FACULTY'), attCtrl.getFacultyDashboardData);
+apiRouter.get('/attendance/student-overview', authenticateToken, requireRole('STUDENT'), attCtrl.getStudentDashboardData);
 
 // ==========================================
 // TIMETABLE
