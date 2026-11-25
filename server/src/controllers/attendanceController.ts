@@ -286,7 +286,7 @@ export const getSessionLiveBoard = async (req: Request, res: Response) => {
   }
 };
 
-// 5.5 Manual Fallback & Bulk Overrides
+// 5.5 Manual Fallback & Past/Present Attendance CRUD Editing (Faculty for own sessions, Admin for any session)
 export const submitManualAttendance = async (req: Request, res: Response) => {
   try {
     const parseResult = manualAttendanceSchema.safeParse(req.body);
@@ -296,40 +296,138 @@ export const submitManualAttendance = async (req: Request, res: Response) => {
 
     const { sessionId, records } = parseResult.data;
 
-    for (const r of records) {
-      await prisma.attendanceRecord.upsert({
-        where: {
-          sessionId_studentId: { sessionId, studentId: r.studentId },
-        },
-        update: {
-          status: r.status,
-          method: 'MANUAL',
-          markedBy: req.user!.name,
-          remarks: r.remarks || 'Manual faculty override',
-        },
-        create: {
-          sessionId,
-          studentId: r.studentId,
-          status: r.status,
-          method: 'MANUAL',
-          markedBy: req.user!.name,
-          remarks: r.remarks,
-        },
-      });
+    const session = await prisma.attendanceSession.findUnique({
+      where: { id: sessionId },
+      include: { faculty: true },
+    });
+    if (!session) {
+      return res.status(404).json({ error: 'Attendance session not found' });
     }
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user!.id,
-        action: 'ATTENDANCE_OVERRIDE',
-        details: `Updated ${records.length} records manually for session ${sessionId}`,
-      },
+    if (req.user!.role === 'FACULTY') {
+      const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
+      if (!fac || session.facultyId !== fac.id) {
+        return res.status(403).json({ error: 'You can only edit attendance for your own sessions' });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const r of records) {
+        await tx.attendanceRecord.upsert({
+          where: {
+            sessionId_studentId: { sessionId, studentId: r.studentId },
+          },
+          update: {
+            status: r.status,
+            method: 'MANUAL',
+            markedBy: req.user!.name,
+            markedAt: new Date(),
+            remarks: r.remarks || `Edited by ${req.user!.name}`,
+          },
+          create: {
+            sessionId,
+            studentId: r.studentId,
+            status: r.status,
+            method: 'MANUAL',
+            markedBy: req.user!.name,
+            remarks: r.remarks || `Marked by ${req.user!.name}`,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'ATTENDANCE_OVERRIDE',
+          details: `Updated ${records.length} record(s) for session ${sessionId}`,
+        },
+      });
     });
 
-    return res.json({ message: 'Manual attendance updated successfully' });
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`session_${sessionId}`).emit('attendance:marked', { sessionId, updated: true });
+      io.to(`class_${session.classId}`).emit('data:updated', {
+        resource: 'attendance',
+        sessionId,
+        classId: session.classId,
+      });
+      io.emit('data:updated', { resource: 'attendance', sessionId, classId: session.classId });
+    }
+
+    return res.json({ message: 'Attendance updated and synced across all profiles successfully' });
   } catch (error: any) {
-    return res.status(500).json({ error: 'Failed to update manual attendance' });
+    console.error('submitManualAttendance error:', error);
+    return res.status(500).json({ error: 'Failed to update attendance' });
+  }
+};
+
+// Get saved attendance sessions history (filterable by classId, subjectId, date)
+export const getAttendanceSessionsHistory = async (req: Request, res: Response) => {
+  try {
+    const { classId, subjectId, date } = req.query;
+    const where: any = {};
+
+    if (req.user!.role === 'FACULTY') {
+      const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
+      if (!fac) return res.status(404).json({ error: 'Faculty profile not found' });
+      where.facultyId = fac.id;
+    }
+
+    if (classId && classId !== 'ALL') {
+      where.classId = String(classId);
+    }
+    if (subjectId && subjectId !== 'ALL') {
+      where.classSubject = { subjectId: String(subjectId) };
+    }
+    if (date) {
+      const start = new Date(String(date));
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(String(date));
+      end.setHours(23, 59, 59, 999);
+      where.createdAt = { gte: start, lte: end };
+    }
+
+    const sessions = await prisma.attendanceSession.findMany({
+      where,
+      include: {
+        class: { include: { _count: { select: { students: true } } } },
+        classSubject: { include: { subject: true } },
+        faculty: { include: { user: true } },
+        records: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    const formatted = sessions.map((s) => {
+      const presentCount = s.records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+      const absentCount = s.records.filter((r) => r.status === 'ABSENT').length;
+      const totalEnrolled = s.class._count.students;
+      return {
+        id: s.id,
+        classId: s.classId,
+        className: s.class.name,
+        subjectId: s.classSubject.subjectId,
+        subjectName: s.classSubject.subject.name,
+        subjectCode: s.classSubject.subject.code,
+        facultyName: s.faculty.user.name,
+        periodNumber: s.periodNumber,
+        isActive: s.isActive,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+        closedAt: s.closedAt,
+        totalEnrolled,
+        presentCount,
+        absentCount,
+        percentage: totalEnrolled > 0 ? Math.round((presentCount / totalEnrolled) * 100) : 0,
+      };
+    });
+
+    return res.json({ sessions: formatted });
+  } catch (error: any) {
+    console.error('getAttendanceSessionsHistory error:', error);
+    return res.status(500).json({ error: 'Failed to fetch attendance sessions' });
   }
 };
 

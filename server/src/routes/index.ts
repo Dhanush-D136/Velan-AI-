@@ -107,6 +107,7 @@ apiRouter.post('/attendance/session/:sessionId/extend', authenticateToken, requi
 apiRouter.post('/attendance/manual', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.submitManualAttendance);
 apiRouter.post('/attendance/session/:sessionId/close', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.closeSession);
 apiRouter.get('/attendance/live-sessions', authenticateToken, requireRole('ADMIN'), attCtrl.getLiveSessionsList);
+apiRouter.get('/attendance/sessions', authenticateToken, requireRole('ADMIN', 'FACULTY'), attCtrl.getAttendanceSessionsHistory);
 apiRouter.get('/attendance/faculty-overview', authenticateToken, requireRole('FACULTY'), attCtrl.getFacultyDashboardData);
 apiRouter.get('/attendance/student-overview', authenticateToken, requireRole('STUDENT'), attCtrl.getStudentDashboardData);
 
@@ -127,3 +128,4 @@ apiRouter.get('/chat/room/:classId', authenticateToken, chatCtrl.getRoomMessages
 apiRouter.post('/chat/message', authenticateToken, chatCtrl.postMessage);
 apiRouter.post('/ai/ask', authenticateToken, aiCtrl.askAI);
 apiRouter.get('/export/monthly-register', authenticateToken, expCtrl.exportMonthlyRegister);
+apiRouter.get('/export/session/:sessionId', authenticateToken, requireRole('ADMIN', 'FACULTY'), expCtrl.exportSessionExcel);

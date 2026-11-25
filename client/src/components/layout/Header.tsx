@@ -2,18 +2,20 @@ import React from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
-import { Bell, Search, Command, LogOut, ShieldCheck } from 'lucide-react';
+import { Bell, Search, Command, LogOut, ShieldCheck, Menu } from 'lucide-react';
 import { UserRole } from '@velan/shared';
 
 export interface HeaderProps {
   onOpenCommandPalette?: () => void;
   onOpenNotifications?: () => void;
+  onOpenMobileMenu?: () => void;
   unreadNotificationsCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenCommandPalette,
   onOpenNotifications,
+  onOpenMobileMenu,
   unreadNotificationsCount = 2,
 }) => {
   const { user, logout } = useAuthStore();
@@ -33,11 +35,20 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-3.5 bg-white/80 backdrop-blur-md border-b border-border/80 transition-all">
-      {/* Search / Command Palette Trigger */}
-      <div className="flex items-center gap-3">
+      {/* Mobile Menu + Search / Command Palette Trigger */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <button
+          onClick={onOpenMobileMenu}
+          className="lg:hidden p-2.5 text-content bg-surface-muted hover:bg-slate-200/70 border border-border rounded-2xl transition-all"
+          title="All Menu Options"
+          aria-label="Open Navigation Menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
         <button
           onClick={onOpenCommandPalette}
-          className="flex items-center gap-2.5 px-3.5 py-2 text-xs sm:text-sm text-content-secondary bg-surface-muted hover:bg-slate-200/70 border border-border rounded-2xl transition-all w-48 sm:w-72"
+          className="flex items-center gap-2.5 px-3.5 py-2 text-xs sm:text-sm text-content-secondary bg-surface-muted hover:bg-slate-200/70 border border-border rounded-2xl transition-all w-40 sm:w-72"
         >
           <Search className="w-4 h-4 text-content-muted" />
           <span className="flex-1 text-left truncate">Quick search & actions...</span>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -80,6 +81,15 @@ export const AdminDashboard: React.FC = () => {
   );
 
   const { stats, liveSessions, todaysClasses, departmentAttendance, lowAttendanceStudents, recentSessions } = data;
+
+  if (isLoading) {
+    return (
+      <DatabaseLoader
+        message="Please wait, loading Admin Command Center..."
+        subtext="Syncing live attendance, classes, and alerts from Supabase"
+      />
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">

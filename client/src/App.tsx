@@ -29,6 +29,7 @@ import { StudentAttendanceHistoryPage } from './features/student/StudentAttendan
 import { ClassChatPage } from './features/chat/ClassChatPage';
 import { AIAssistantPage } from './features/ai/AIAssistantPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { AttendanceHistoryEditorPage } from './features/shared/AttendanceHistoryEditorPage';
 
 // Generic placeholder for sub-pages
 const GenericSubPage: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => (
@@ -98,6 +99,7 @@ export default function App() {
           {/* Admin Routes */}
           <Route path="/admin" element={user?.role === UserRole.ADMIN ? <AdminDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/live-attendance" element={user?.role === UserRole.ADMIN ? <LiveAttendanceMonitor /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/attendance-history" element={user?.role === UserRole.ADMIN ? <AttendanceHistoryEditorPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/timetable" element={user?.role === UserRole.ADMIN ? <TimetableBuilder /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/faculty" element={user?.role === UserRole.ADMIN ? <FacultyManagement /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/students" element={user?.role === UserRole.ADMIN ? <StudentManagement /> : <Navigate to={getDefaultRedirect()} replace />} />
@@ -109,6 +111,7 @@ export default function App() {
           {/* Faculty Routes */}
           <Route path="/faculty" element={user?.role === UserRole.FACULTY ? <FacultyDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/attendance" element={user?.role === UserRole.FACULTY ? <FacultyAttendancePage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/faculty/history" element={user?.role === UserRole.FACULTY ? <AttendanceHistoryEditorPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/timetable" element={user?.role === UserRole.FACULTY ? <FacultyDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/classes" element={<GenericSubPage title="My Classes & Students" subtitle="Class roster, individual performance, and remarks" />} />
           <Route path="/faculty/assignments" element={<GenericSubPage title="Assignments Manager" subtitle="Create homework, review submissions & grade" />} />

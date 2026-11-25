@@ -288,5 +288,32 @@ describe('Full Production Platform End-to-End Flow', () => {
       .get(`/api/export/monthly-register?classId=${classAId}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(exportRes.status).toBe(200);
-  }, 25000);
+
+    // Saved sessions history + post-close CRUD edit + session Excel export
+    const histRes = await request(app)
+      .get(`/api/attendance/sessions?classId=${classAId}`)
+      .set('Authorization', `Bearer ${facultyToken}`);
+    expect(histRes.status).toBe(200);
+    expect(histRes.body.sessions.some((s: any) => s.id === sessionId)).toBe(true);
+
+    const editPast = await request(app)
+      .post('/api/attendance/manual')
+      .set('Authorization', `Bearer ${facultyToken}`)
+      .send({
+        sessionId,
+        records: [{ studentId: studentOutId, status: 'PRESENT', remarks: 'Late arrival verified' }],
+      });
+    expect(editPast.status).toBe(200);
+
+    const updatedBoard = await request(app)
+      .get(`/api/attendance/session/${sessionId}/live`)
+      .set('Authorization', `Bearer ${facultyToken}`);
+    expect(updatedBoard.body.session.presentCount).toBe(2);
+    expect(updatedBoard.body.session.absentCount).toBe(0);
+
+    const sessExport = await request(app)
+      .get(`/api/export/session/${sessionId}`)
+      .set('Authorization', `Bearer ${facultyToken}`);
+    expect(sessExport.status).toBe(200);
+  }, 30000);
 });

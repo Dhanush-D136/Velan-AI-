@@ -2,79 +2,14 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { UserRole } from '@velan/shared';
-import {
-  LayoutDashboard,
-  CalendarCheck2,
-  CalendarDays,
-  Users,
-  GraduationCap,
-  BookOpen,
-  MessageSquare,
-  FileSpreadsheet,
-  Settings,
-  Sparkles,
-  ClipboardList,
-  FolderOpen,
-  Award,
-} from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
-
-interface NavItem {
-  to: string;
-  label: string;
-  icon: React.ReactNode;
-}
+import { getRoleNavItems } from './navConfig';
 
 export const Sidebar: React.FC = () => {
   const { user } = useAuthStore();
   const role = user?.role || UserRole.ADMIN;
-
-  const getNavItems = (): NavItem[] => {
-    switch (role) {
-      case UserRole.ADMIN:
-        return [
-          { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-          { to: '/admin/live-attendance', label: 'Live Attendance', icon: <CalendarCheck2 className="w-5 h-5" /> },
-          { to: '/admin/timetable', label: 'Timetable Builder', icon: <CalendarDays className="w-5 h-5" /> },
-          { to: '/admin/faculty', label: 'Faculty Directory', icon: <Users className="w-5 h-5" /> },
-          { to: '/admin/students', label: 'Students Directory', icon: <GraduationCap className="w-5 h-5" /> },
-          { to: '/admin/academics', label: 'Classes & Subjects', icon: <BookOpen className="w-5 h-5" /> },
-          { to: '/admin/requests', label: 'Requests & Approvals', icon: <ClipboardList className="w-5 h-5" /> },
-          { to: '/admin/reports', label: 'Reports & Excel', icon: <FileSpreadsheet className="w-5 h-5" /> },
-          { to: '/chat', label: 'Class Chat', icon: <MessageSquare className="w-5 h-5" /> },
-          { to: '/ai-insights', label: 'AI Intelligence', icon: <Sparkles className="w-5 h-5" /> },
-          { to: '/settings', label: 'System Settings', icon: <Settings className="w-5 h-5" /> },
-        ];
-      case UserRole.FACULTY:
-        return [
-          { to: '/faculty', label: 'Today & Classes', icon: <LayoutDashboard className="w-5 h-5" /> },
-          { to: '/faculty/attendance', label: 'Take Attendance', icon: <CalendarCheck2 className="w-5 h-5" /> },
-          { to: '/faculty/timetable', label: 'My Timetable', icon: <CalendarDays className="w-5 h-5" /> },
-          { to: '/faculty/classes', label: 'My Classes', icon: <GraduationCap className="w-5 h-5" /> },
-          { to: '/faculty/assignments', label: 'Assignments', icon: <ClipboardList className="w-5 h-5" /> },
-          { to: '/faculty/marks', label: 'Marks & Internal', icon: <Award className="w-5 h-5" /> },
-          { to: '/faculty/materials', label: 'Study Materials', icon: <FolderOpen className="w-5 h-5" /> },
-          { to: '/chat', label: 'Class Chat', icon: <MessageSquare className="w-5 h-5" /> },
-          { to: '/ai-insights', label: 'AI Insights', icon: <Sparkles className="w-5 h-5" /> },
-        ];
-      case UserRole.STUDENT:
-        return [
-          { to: '/student', label: 'Home Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-          { to: '/student/mark-attendance', label: 'Mark Attendance', icon: <CalendarCheck2 className="w-5 h-5" /> },
-          { to: '/student/attendance', label: 'Attendance & Heatmap', icon: <CalendarDays className="w-5 h-5" /> },
-          { to: '/student/timetable', label: 'Timetable', icon: <CalendarDays className="w-5 h-5" /> },
-          { to: '/student/academics', label: 'Academics & CGPA', icon: <Award className="w-5 h-5" /> },
-          { to: '/student/assignments', label: 'Assignments', icon: <ClipboardList className="w-5 h-5" /> },
-          { to: '/student/materials', label: 'Materials Library', icon: <FolderOpen className="w-5 h-5" /> },
-          { to: '/chat', label: 'Class Chat', icon: <MessageSquare className="w-5 h-5" /> },
-          { to: '/ai-assistant', label: 'AI Study Assistant', icon: <Sparkles className="w-5 h-5" /> },
-        ];
-      default:
-        return [];
-    }
-  };
-
-  const navItems = getNavItems();
+  const navItems = getRoleNavItems(role);
 
   return (
     <aside className="hidden lg:flex flex-col w-72 h-[calc(100vh-2rem)] sticky top-4 my-4 ml-4 bg-white/90 backdrop-blur-xl border border-border rounded-3xl shadow-glass overflow-hidden z-20 shrink-0">
