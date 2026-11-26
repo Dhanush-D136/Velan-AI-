@@ -1578,3 +1578,52 @@ export const updateBellSchedule = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Failed to update period schedule' });
   }
 };
+
+// ==========================================
+// 9. STUDENT DEVICE MANAGEMENT (ADMIN)
+// ==========================================
+
+export const getStudentDevices = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const student = await prisma.studentProfile.findUnique({ where: { id } });
+    if (!student) return res.status(404).json({ error: 'Student not found' });
+
+    const devices = await prisma.userDevice.findMany({
+      where: { userId: student.userId },
+      orderBy: { boundAt: 'desc' },
+    });
+    return res.json({ devices });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to fetch student devices' });
+  }
+};
+
+export const revokeStudentDevice = async (req: Request, res: Response) => {
+  try {
+    const { id, deviceId } = req.params;
+    const student = await prisma.studentProfile.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+    if (!student) return res.status(404).json({ error: 'Student not found' });
+
+    if (deviceId === 'all') {
+      await prisma.userDevice.deleteMany({ where: { userId: student.userId } });
+    } else {
+      await prisma.userDevice.deleteMany({ where: { id: deviceId, userId: student.userId } });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user!.id,
+        action: 'DEVICE_REVOKED',
+        details: `Revoked ${deviceId === 'all' ? 'all devices' : `device ${deviceId}`} for ${student.user.name} (${student.registerNo})`,
+      },
+    });
+
+    return res.json({ message: deviceId === 'all' ? 'All student devices cleared' : 'Device removed successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to revoke device' });
+  }
+};

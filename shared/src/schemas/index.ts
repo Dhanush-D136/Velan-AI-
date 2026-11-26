@@ -168,6 +168,74 @@ export const bellScheduleItemSchema = z.object({
   isBreak: z.boolean().optional().default(false),
 });
 
+const httpUrlSchema = z
+  .string()
+  .url('URL must be valid')
+  .refine((u) => u.startsWith('http://') || u.startsWith('https://'), {
+    message: 'Only http:// or https:// links are allowed',
+  });
+
+export const resourceLinkSchema = z.object({
+  title: z.string().min(1, 'Link title is required'),
+  url: httpUrlSchema,
+});
+
+export const assignmentCreateSchema = z
+  .object({
+    classId: z.string().min(1, 'Class is required'),
+    subjectId: z.string().min(1, 'Subject is required'),
+    title: z.string().min(2, 'Assignment title is required'),
+    description: z.string().min(2, 'Description is required'),
+    startDate: z.string().min(1, 'Start date is required'),
+    dueDate: z.string().min(1, 'Due date is required'),
+    submissionDate: z.string().optional().nullable(),
+    links: z.array(resourceLinkSchema).min(1, 'At least one resource link is required'),
+  })
+  .refine((d) => new Date(d.startDate).getTime() <= new Date(d.dueDate).getTime(), {
+    message: 'Start date must be on or before Due date',
+  })
+  .refine(
+    (d) =>
+      !d.submissionDate ||
+      new Date(d.dueDate).getTime() <= new Date(d.submissionDate).getTime(),
+    {
+      message: 'Due date must be on or before final Submission cutoff date',
+    }
+  );
+
+export const materialCreateSchema = z.object({
+  classId: z.string().min(1, 'Class is required'),
+  subjectId: z.string().min(1, 'Subject is required'),
+  title: z.string().min(2, 'Material title is required'),
+  description: z.string().optional().nullable(),
+  type: z.enum(['notes', 'slides', 'question_paper', 'video', 'other']).default('notes'),
+  links: z.array(resourceLinkSchema).min(1, 'At least one resource link is required'),
+});
+
+export const studentRequestCreateSchema = z.object({
+  type: z
+    .enum(['PROFILE_CORRECTION', 'ATTENDANCE_CORRECTION', 'DEVICE_RESET', 'PASSWORD_HELP', 'OTHER'])
+    .default('OTHER'),
+  subject: z.string().min(2, 'Subject is required'),
+  message: z.string().min(5, 'Message must be at least 5 characters'),
+});
+
+export const studentRequestDecisionSchema = z.object({
+  status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'RESOLVED']),
+  adminReply: z.string().optional().nullable(),
+});
+
+export const notificationPrefSchema = z.object({
+  attendanceAlerts: z.boolean().optional(),
+  chatAlerts: z.boolean().optional(),
+  assignmentAlerts: z.boolean().optional(),
+  materialAlerts: z.boolean().optional(),
+  timetableAlerts: z.boolean().optional(),
+  thresholdAlert: z.boolean().optional(),
+  theme: z.enum(['light', 'dark', 'system']).optional(),
+  language: z.string().optional(),
+});
+
 export const chatMessageSchema = z.object({
   classId: z.string().min(1),
   content: z.string().min(1),

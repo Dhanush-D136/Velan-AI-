@@ -30,6 +30,8 @@ import { ClassChatPage } from './features/chat/ClassChatPage';
 import { AIAssistantPage } from './features/ai/AIAssistantPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { AttendanceHistoryEditorPage } from './features/shared/AttendanceHistoryEditorPage';
+import { AssignmentsPage } from './features/shared/AssignmentsPage';
+import { MaterialsPage } from './features/shared/MaterialsPage';
 
 // Generic placeholder for sub-pages
 const GenericSubPage: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => (
@@ -111,10 +113,10 @@ export default function App() {
           <Route path="/faculty/attendance" element={user?.role === UserRole.FACULTY ? <FacultyAttendancePage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/history" element={user?.role === UserRole.FACULTY ? <AttendanceHistoryEditorPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/timetable" element={user?.role === UserRole.FACULTY ? <FacultyDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
-          <Route path="/faculty/classes" element={<GenericSubPage title="My Classes & Students" subtitle="Class roster, individual performance, and remarks" />} />
-          <Route path="/faculty/assignments" element={<GenericSubPage title="Assignments Manager" subtitle="Create homework, review submissions & grade" />} />
+          <Route path="/faculty/classes" element={user?.role === UserRole.FACULTY ? <AttendanceHistoryEditorPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/faculty/assignments" element={user?.role === UserRole.FACULTY ? <AssignmentsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/marks" element={<GenericSubPage title="Marks & Internals" subtitle="Semester marks entry and topper/at-risk analytics" />} />
-          <Route path="/faculty/materials" element={<GenericSubPage title="Study Materials" subtitle="Lecture notes, question banks, and reference PDFs" />} />
+          <Route path="/faculty/materials" element={user?.role === UserRole.FACULTY ? <MaterialsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
 
           {/* Student Routes */}
           <Route path="/student" element={user?.role === UserRole.STUDENT ? <StudentDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
@@ -122,8 +124,10 @@ export default function App() {
           <Route path="/student/attendance" element={user?.role === UserRole.STUDENT ? <StudentAttendanceHistoryPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/student/timetable" element={user?.role === UserRole.STUDENT ? <StudentDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/student/academics" element={<GenericSubPage title="Academic Records & CGPA" subtitle="Semester marks, CGPA calculator, and grade card" />} />
-          <Route path="/student/assignments" element={<GenericSubPage title="My Assignments" subtitle="Pending tasks, deadlines, and upload submissions" />} />
-          <Route path="/student/materials" element={<GenericSubPage title="Study Materials Library" subtitle="Course syllabus, notes, and references" />} />
+          <Route path="/student/assignments" element={user?.role === UserRole.STUDENT ? <AssignmentsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/student/materials" element={user?.role === UserRole.STUDENT ? <MaterialsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/assignments" element={user?.role === UserRole.ADMIN ? <AssignmentsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/materials" element={user?.role === UserRole.ADMIN ? <MaterialsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
 
           {/* Shared Routes */}
           <Route path="/chat" element={<ClassChatPage />} />

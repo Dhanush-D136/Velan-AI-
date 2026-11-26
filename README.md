@@ -35,15 +35,26 @@ Create `.env` inside the `server/` directory:
 ```env
 PORT=5000
 NODE_ENV=development
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://..."
 JWT_SECRET="your-ultra-secure-jwt-secret-key-32chars"
 ADMIN_USERNAME="Vel"
 ADMIN_PASSWORD="your-secure-admin-password"
 CLIENT_ORIGIN="http://localhost:5173"
+VAPID_PUBLIC_KEY=""
+VAPID_PRIVATE_KEY=""
+VAPID_EMAIL="mailto:admin@velan.ai"
 ```
 
-### 3. Installation & Database Setup
+To generate Web Push VAPID keys, run:
 ```bash
+npx web-push generate-vapid-keys
+```
+Copy the printed Public and Private keys into `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`.
+
+> **Mobile GPS & Web Push HTTPS Note:** Browsers require a secure **HTTPS** origin (or `localhost` during local testing) for Geolocation API and Service Worker Web Push subscriptions. On iOS Safari, users must tap **Share → Add to Home Screen** before enabling Web Push.
+
+### 3. Installation & Database Setup (Windows PowerShell)
+```powershell
 # Install root, shared, server, and client dependencies
 npm install
 
@@ -57,10 +68,13 @@ npx prisma db push --schema=server/prisma/schema.prisma
 npm run seed --prefix server
 ```
 
-### 4. Run the Platform
-```bash
+### 4. Run & Test the Platform
+```powershell
 # Start backend API (Port 5000) and frontend SPA (Port 5173) concurrently:
 npm run dev
+
+# Run backend test suite & client production build
+npm test; npm run build:client
 ```
 
 Open your browser at **`http://localhost:5173`**.

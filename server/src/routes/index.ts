@@ -13,6 +13,9 @@ import * as acadCtrl from '../controllers/academicController';
 import * as chatCtrl from '../controllers/chatController';
 import * as aiCtrl from '../controllers/aiController';
 import * as expCtrl from '../controllers/exportController';
+import * as notifCtrl from '../controllers/notificationController';
+import * as resCtrl from '../controllers/resourceController';
+import * as reqCtrl from '../controllers/requestController';
 
 export const apiRouter = Router();
 
@@ -24,6 +27,7 @@ apiRouter.post('/auth/change-password', authenticateToken, authCtrl.changePasswo
 apiRouter.post('/auth/forgot-password', authCtrl.requestPasswordReset);
 apiRouter.post('/auth/device-request', authCtrl.requestDeviceChange);
 apiRouter.get('/auth/me', authenticateToken, authCtrl.getCurrentUser);
+apiRouter.get('/auth/devices', authenticateToken, authCtrl.getMyDevices);
 apiRouter.post('/auth/logout', authCtrl.logout);
 
 // Student Profile Completion & Locks
@@ -79,6 +83,8 @@ apiRouter.delete('/academics/students/:id', authenticateToken, requireRole('ADMI
 apiRouter.post('/academics/students/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetStudentPassword);
 apiRouter.get('/academics/students/template', authenticateToken, acadCtrl.getStudentExcelTemplate);
 apiRouter.post('/academics/students/import-excel', authenticateToken, requireRole('ADMIN'), upload.single('file'), acadCtrl.importStudentsFromExcel);
+apiRouter.get('/academics/students/:id/devices', authenticateToken, requireRole('ADMIN'), acadCtrl.getStudentDevices);
+apiRouter.delete('/academics/students/:id/devices/:deviceId', authenticateToken, requireRole('ADMIN'), acadCtrl.revokeStudentDevice);
 
 // ==========================================
 // ADMIN REQUESTS QUEUE (PASSWORD, PROFILE, DEVICE)
@@ -106,6 +112,7 @@ apiRouter.get('/attendance/session/:sessionId/live', authenticateToken, attCtrl.
 apiRouter.post('/attendance/session/:sessionId/extend', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.extendSession);
 apiRouter.post('/attendance/manual', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.submitManualAttendance);
 apiRouter.post('/attendance/session/:sessionId/close', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.closeSession);
+apiRouter.delete('/attendance/session/:sessionId', authenticateToken, requireRole('FACULTY', 'ADMIN'), attCtrl.deleteSession);
 apiRouter.get('/attendance/live-sessions', authenticateToken, requireRole('ADMIN'), attCtrl.getLiveSessionsList);
 apiRouter.get('/attendance/sessions', authenticateToken, requireRole('ADMIN', 'FACULTY'), attCtrl.getAttendanceSessionsHistory);
 apiRouter.get('/attendance/faculty-overview', authenticateToken, requireRole('FACULTY'), attCtrl.getFacultyDashboardData);
@@ -122,10 +129,36 @@ apiRouter.post('/timetable/slot', authenticateToken, requireRole('ADMIN'), ttCtr
 apiRouter.delete('/timetable/slot/:id', authenticateToken, requireRole('ADMIN'), ttCtrl.deleteSlot);
 
 // ==========================================
-// CHAT & AI & EXPORT
+// CHAT & AI & EXPORT & RESOURCES & NOTIFICATIONS
 // ==========================================
+apiRouter.get('/chat/rooms', authenticateToken, chatCtrl.getChatRooms);
 apiRouter.get('/chat/room/:classId', authenticateToken, chatCtrl.getRoomMessages);
 apiRouter.post('/chat/message', authenticateToken, chatCtrl.postMessage);
 apiRouter.post('/ai/ask', authenticateToken, aiCtrl.askAI);
 apiRouter.get('/export/monthly-register', authenticateToken, expCtrl.exportMonthlyRegister);
 apiRouter.get('/export/session/:sessionId', authenticateToken, requireRole('ADMIN', 'FACULTY'), expCtrl.exportSessionExcel);
+
+// Assignments & Material Library
+apiRouter.get('/assignments', authenticateToken, resCtrl.getAssignments);
+apiRouter.post('/assignments', authenticateToken, requireRole('FACULTY'), resCtrl.createAssignment);
+apiRouter.put('/assignments/:id', authenticateToken, requireRole('FACULTY'), resCtrl.updateAssignment);
+apiRouter.delete('/assignments/:id', authenticateToken, requireRole('FACULTY'), resCtrl.deleteAssignment);
+
+apiRouter.get('/materials', authenticateToken, resCtrl.getMaterials);
+apiRouter.post('/materials', authenticateToken, requireRole('FACULTY'), resCtrl.createMaterial);
+apiRouter.put('/materials/:id', authenticateToken, requireRole('FACULTY'), resCtrl.updateMaterial);
+apiRouter.delete('/materials/:id', authenticateToken, requireRole('FACULTY', 'ADMIN'), resCtrl.deleteMaterial);
+
+// General Student Requests & Replies
+apiRouter.post('/requests', authenticateToken, reqCtrl.createStudentRequest);
+apiRouter.get('/requests/my', authenticateToken, reqCtrl.getMyRequests);
+apiRouter.get('/requests', authenticateToken, requireRole('ADMIN'), reqCtrl.getAllRequests);
+apiRouter.post('/requests/:id/decision', authenticateToken, requireRole('ADMIN'), reqCtrl.decideStudentRequest);
+
+// Notifications, Preferences & Web Push
+apiRouter.get('/push/vapid-public-key', notifCtrl.getVapidPublicKey);
+apiRouter.post('/push/subscribe', authenticateToken, notifCtrl.subscribePush);
+apiRouter.get('/notifications', authenticateToken, notifCtrl.getMyNotifications);
+apiRouter.post('/notifications/read', authenticateToken, notifCtrl.markNotificationsRead);
+apiRouter.get('/notifications/preferences', authenticateToken, notifCtrl.getMyPreferences);
+apiRouter.put('/notifications/preferences', authenticateToken, notifCtrl.updateMyPreferences);

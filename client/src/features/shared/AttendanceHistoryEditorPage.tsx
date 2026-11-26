@@ -9,6 +9,7 @@ import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
+import { Modal } from '@/components/ui/Modal';
 import {
   History,
   FileSpreadsheet,
@@ -20,6 +21,8 @@ import {
   CheckCircle2,
   XCircle,
   Edit3,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const AttendanceHistoryEditorPage: React.FC = () => {
@@ -38,6 +41,9 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isSavingId, setIsSavingId] = useState<string | null>(null);
   const [isExportingId, setIsExportingId] = useState<string | null>(null);
+  const [confirmMarkAll, setConfirmMarkAll] = useState<'PRESENT' | 'ABSENT' | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<any>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -115,12 +121,32 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
         records: roster.map((r) => ({ studentId: r.studentId, status, remarks: `Bulk ${status}` })),
       });
       showToast(`All students marked ${status} & synced`, 'success');
+      setConfirmMarkAll(null);
       fetchSessionRoster(selectedSessionId);
       fetchSessions();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to bulk update', 'error');
     } finally {
       setIsSavingId(null);
+    }
+  };
+
+  const handleDeleteSession = async () => {
+    if (!sessionToDelete) return;
+    setIsDeletingSession(true);
+    try {
+      const res = await api.delete(`/api/attendance/session/${sessionToDelete.id}`);
+      showToast(res.data.message || 'Session deleted successfully', 'success');
+      setSessionToDelete(null);
+      if (selectedSessionId === sessionToDelete.id) {
+        setSelectedSessionId(null);
+        setSessionDetail(null);
+      }
+      fetchSessions();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to delete session', 'error');
+    } finally {
+      setIsDeletingSession(false);
     }
   };
 
@@ -224,7 +250,7 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
                       variant="secondary"
                       isLoading={isSavingId === 'ALL'}
                       leftIcon={<Users className="w-3.5 h-3.5" />}
-                      onClick={() => handleMarkAll('PRESENT')}
+                      onClick={() => setConfirmMarkAll('PRESENT')}
                     >
                       Mark All Present
                     </Button>
@@ -232,9 +258,25 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
                       size="sm"
                       variant="danger"
                       isLoading={isSavingId === 'ALL'}
-                      onClick={() => handleMarkAll('ABSENT')}
+                      onClick={() => setConfirmMarkAll('ABSENT')}
                     >
                       Mark All Absent
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                      onClick={() =>
+                        setSessionToDelete({
+                          id: selectedSessionId,
+                          className: sessionDetail.className,
+                          subjectName: sessionDetail.subjectName,
+                          createdAt: sessionDetail.createdAt || new Date().toISOString(),
+                          recordsCount: roster.length,
+                        })
+                      }
+                    >
+                      Delete Session
                     </Button>
                   </div>
                 </Card>
@@ -414,6 +456,22 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
                       >
                         View &amp; Edit Roster
                       </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        leftIcon={<Trash2 className="w-4 h-4" />}
+                        onClick={() =>
+                          setSessionToDelete({
+                            id: s.id,
+                            className: s.className,
+                            subjectName: s.subjectName,
+                            createdAt: s.createdAt,
+                            recordsCount: s.presentCount + s.absentCount,
+                          })
+                        }
+                      >
+                        Delete
+                      </Button>
                     </div>
                   </Card>
                 ))}
@@ -422,6 +480,69 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Mark All Confirmation Modal */}
+      <Modal
+        isOpen={!!confirmMarkAll}
+        onClose={() => setConfirmMarkAll(null)}
+        title={`Confirm Mark All ${confirmMarkAll}`}
+        description={`Are you sure you want to mark all ${roster.length} student(s) as ${confirmMarkAll}?`}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-content-secondary">
+            This updates every student in this session in one transaction with method <strong>MANUAL</strong> and syncs live across student and admin profiles.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setConfirmMarkAll(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant={confirmMarkAll === 'ABSENT' ? 'danger' : 'primary'}
+              isLoading={isSavingId === 'ALL'}
+              onClick={() => confirmMarkAll && handleMarkAll(confirmMarkAll)}
+            >
+              Confirm Mark All {confirmMarkAll}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Session Confirmation Modal */}
+      <Modal
+        isOpen={!!sessionToDelete}
+        onClose={() => setSessionToDelete(null)}
+        title="Delete Attendance Session"
+        description="This action permanently deletes the session and all its attendance records."
+      >
+        {sessionToDelete && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-1">
+              <div className="flex items-center gap-2 font-bold">
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                Permanent Deletion Summary
+              </div>
+              <p><strong>Class:</strong> {sessionToDelete.className}</p>
+              <p><strong>Subject:</strong> {sessionToDelete.subjectName}</p>
+              <p><strong>Date:</strong> {new Date(sessionToDelete.createdAt).toLocaleString()}</p>
+              <p><strong>Records to be deleted:</strong> {sessionToDelete.recordsCount} student record(s)</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setSessionToDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                isLoading={isDeletingSession}
+                onClick={handleDeleteSession}
+              >
+                Delete Session Permanently
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

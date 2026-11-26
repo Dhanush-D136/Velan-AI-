@@ -31,6 +31,9 @@ model User {
   passwordResetRequests PasswordResetRequest[]
   notifications         Notification[]
   pushSubscriptions     PushSubscription[]
+  notificationPref      NotificationPref?
+  studentRequests       StudentRequest[]
+  chatReads             ChatRead[]
   sentMessages          ChatMessage[]
   leaveRequests         LeaveRequest[]
   auditLogs             AuditLog[]
@@ -47,12 +50,14 @@ model UserDevice {
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   deviceId   String   @unique
+  deviceType String   @default("COMPUTER") // PHONE, COMPUTER
   label      String?
   platform   String?  // iOS, Android, Web
   status     String   @default("ACTIVE") // ACTIVE, REVOKED
   boundAt    DateTime @default(now())
   lastUsedAt DateTime @default(now())
 
+  @@unique([userId, deviceId])
   @@index([userId])
   @@index([deviceId])
 }
@@ -385,18 +390,33 @@ model Mark {
 }
 
 model Assignment {
-  id             String         @id @default(uuid())
+  id             String           @id @default(uuid())
   classSubjectId String
-  classSubject   ClassSubject   @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
+  classSubject   ClassSubject     @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
   title          String
   description    String
+  startDate      DateTime         @default(now())
   dueDate        DateTime
+  submissionDate DateTime?
+  isClosed       Boolean          @default(false)
   attachmentUrl  String?
-  createdAt      DateTime       @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
+  links          AssignmentLink[]
   submissions    Submission[]
 
   @@index([classSubjectId])
+}
+
+model AssignmentLink {
+  id           String     @id @default(uuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  title        String
+  url          String
+
+  @@index([assignmentId])
 }
 
 model Submission {
@@ -445,12 +465,43 @@ model PushSubscription {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String?
   endpoint  String   @unique
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+model NotificationPref {
+  userId           String  @id
+  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendanceAlerts Boolean @default(true)
+  chatAlerts       Boolean @default(true)
+  assignmentAlerts Boolean @default(true)
+  materialAlerts   Boolean @default(true)
+  timetableAlerts  Boolean @default(true)
+  thresholdAlert   Boolean @default(true)
+  theme            String  @default("system")
+  language         String  @default("en")
+}
+
+model StudentRequest {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String   @default("OTHER") // PROFILE_CORRECTION, ATTENDANCE_CORRECTION, DEVICE_RESET, PASSWORD_HELP, OTHER
+  subject    String
+  message    String
+  status     String   @default("PENDING") // PENDING, APPROVED, REJECTED, RESOLVED
+  adminReply String?
+  decidedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 model ChatRoom {
@@ -460,6 +511,19 @@ model ChatRoom {
   createdAt DateTime      @default(now())
 
   messages  ChatMessage[]
+  reads     ChatRead[]
+}
+
+model ChatRead {
+  id         String   @id @default(uuid())
+  roomId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@index([userId])
 }
 
 model ChatMessage {
@@ -480,16 +544,30 @@ model ChatMessage {
 }
 
 model Material {
-  id             String       @id @default(uuid())
+  id             String         @id @default(uuid())
   classSubjectId String
-  classSubject   ClassSubject @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
+  classSubject   ClassSubject   @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
   title          String
+  description    String?
+  type           String         @default("notes") // notes, slides, question_paper, video, other
   fileUrl        String
-  fileType       String       // PDF, PPT, DOC
+  fileType       String         @default("LINK")
   fileSize       Int?
-  uploadedAt     DateTime     @default(now())
+  uploadedAt     DateTime       @default(now())
+
+  links          MaterialLink[]
 
   @@index([classSubjectId])
+}
+
+model MaterialLink {
+  id         String   @id @default(uuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  title      String
+  url        String
+
+  @@index([materialId])
 }
 
 model Event {

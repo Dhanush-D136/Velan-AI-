@@ -13,8 +13,12 @@ const cleanUrl = (url?: string): string | undefined => {
   return cleaned;
 };
 
-const sanitizedDbUrl = cleanUrl(process.env.DATABASE_URL);
+let sanitizedDbUrl = cleanUrl(process.env.DATABASE_URL);
 const sanitizedDirectUrl = cleanUrl(process.env.DIRECT_URL);
+
+if (sanitizedDbUrl && sanitizedDbUrl.startsWith('postgres') && !sanitizedDbUrl.includes('connection_limit=')) {
+  sanitizedDbUrl += (sanitizedDbUrl.includes('?') ? '&' : '?') + 'connection_limit=5';
+}
 
 if (sanitizedDbUrl) {
   process.env.DATABASE_URL = sanitizedDbUrl;

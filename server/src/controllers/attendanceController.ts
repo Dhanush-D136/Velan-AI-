@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { notifyUsers } from './notificationController';
 import {
   startAttendanceSessionSchema,
   markAttendanceSchema,
@@ -61,7 +62,7 @@ export const startSession = async (req: Request, res: Response) => {
       },
     });
 
-    // Notify class students via Socket.IO (handled in socket emitter)
+    // Notify class students via Socket.IO & Web Push
     const io = req.app.get('io');
     if (io) {
       io.to(`class_${classId}`).emit('attendance:session_started', {
@@ -73,7 +74,24 @@ export const startSession = async (req: Request, res: Response) => {
         radiusMeters,
         expiresAt: expiresAt.toISOString(),
       });
+      io.emit('data:updated', { resource: 'attendance', sessionId: session.id, classId });
     }
+
+    const classStudents = await prisma.studentProfile.findMany({
+      where: { classId },
+      select: { userId: true },
+    });
+    await notifyUsers(
+      io,
+      classStudents.map((s) => s.userId),
+      {
+        title: `Attendance Open: ${session.classSubject.subject.name}`,
+        message: `${session.classSubject.subject.name}, ${facultyUser.name}. Mark within ${durationMinutes} min.`,
+        type: 'ATTENDANCE',
+        link: '/student/mark-attendance',
+      },
+      'attendanceAlerts'
+    );
 
     return res.json({
       message: 'GPS Attendance Session initiated successfully',
@@ -474,6 +492,60 @@ export const closeSession = async (req: Request, res: Response) => {
   }
 };
 
+// Delete attendance session (Faculty who owns it or Admin) + AuditLog
+export const deleteSession = async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+
+    const session = await prisma.attendanceSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        class: true,
+        classSubject: { include: { subject: true } },
+        _count: { select: { records: true } },
+      },
+    });
+
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    if (req.user!.role === 'FACULTY') {
+      const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
+      if (!fac || session.facultyId !== fac.id) {
+        return res.status(403).json({ error: 'You can only delete your own attendance sessions' });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.attendanceSession.delete({ where: { id: sessionId } });
+      await tx.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'SESSION_DELETED',
+          details: `Deleted session ${sessionId} (${session.class.name} - ${session.classSubject.subject.code}, ${session._count.records} records) from ${new Date(session.createdAt).toISOString()}`,
+        },
+      });
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`class_${session.classId}`).emit('data:updated', {
+        resource: 'attendance',
+        deletedSessionId: sessionId,
+        classId: session.classId,
+      });
+      io.emit('data:updated', { resource: 'attendance', deletedSessionId: sessionId, classId: session.classId });
+    }
+
+    return res.json({
+      message: 'Attendance session and all its records deleted successfully',
+      deletedRecordsCount: session._count.records,
+    });
+  } catch (error: any) {
+    console.error('deleteSession error:', error);
+    return res.status(500).json({ error: 'Failed to delete session' });
+  }
+};
+
 // Extend active session duration (+5 min default)
 export const extendSession = async (req: Request, res: Response) => {
   try {
@@ -549,14 +621,24 @@ export const getFacultyDashboardData = async (req: Request, res: Response) => {
     if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
 
     const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
     const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const todayDay = dayNames[now.getDay()];
+    const nowHHmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const [todaysSlots, recentSessions, activeSession] = await Promise.all([
+    const [todaysSlotsRaw, todaysSessions, recentSessions, activeSession] = await Promise.all([
       prisma.timetableSlot.findMany({
         where: { facultyId: faculty.id, dayOfWeek: todayDay },
-        include: { class: true, classSubject: { include: { subject: true } } },
+        include: {
+          class: { include: { _count: { select: { students: true } } } },
+          classSubject: { include: { subject: true } },
+        },
         orderBy: { periodNumber: 'asc' },
+      }),
+      prisma.attendanceSession.findMany({
+        where: { facultyId: faculty.id, createdAt: { gte: startOfDay } },
+        include: { records: true },
       }),
       prisma.attendanceSession.findMany({
         where: { facultyId: faculty.id },
@@ -576,6 +658,27 @@ export const getFacultyDashboardData = async (req: Request, res: Response) => {
         },
       }),
     ]);
+
+    const todaysSlots = todaysSlotsRaw.map((slot) => {
+      const match = todaysSessions.find(
+        (s) =>
+          s.classId === slot.classId &&
+          s.classSubjectId === slot.classSubjectId &&
+          (s.periodNumber === null || s.periodNumber === slot.periodNumber)
+      );
+      let state: 'LIVE' | 'COMPLETED' | 'NOT_TAKEN' | 'UPCOMING' = 'UPCOMING';
+      if (match) {
+        state = match.isActive && match.expiresAt > now ? 'LIVE' : 'COMPLETED';
+      } else if (slot.endTime < nowHHmm) {
+        state = 'NOT_TAKEN';
+      }
+      return {
+        ...slot,
+        studentCount: slot.class._count.students,
+        state,
+        sessionId: match?.id || null,
+      };
+    });
 
     const uniqueClassIds = new Set(faculty.classSubjects.map((cs) => cs.classId));
     let totalAssignedStudents = 0;
@@ -624,6 +727,7 @@ export const getStudentDashboardData = async (req: Request, res: Response) => {
         class: {
           include: {
             academicYear: { include: { department: true } },
+            advisor: { include: { user: true } },
           },
         },
         attendanceRecords: {
@@ -698,9 +802,14 @@ export const getStudentDashboardData = async (req: Request, res: Response) => {
       });
     });
 
+    // Calculate attendance strictly from CLOSED sessions (isActive === false) of the student's class
+    const closedRecords = student.attendanceRecords.filter(
+      (rec) => rec.session.classId === student.classId && !rec.session.isActive
+    );
+
     let totalAttended = 0;
-    const totalSessions = student.attendanceRecords.length;
-    student.attendanceRecords.forEach((rec) => {
+    const totalSessions = closedRecords.length;
+    closedRecords.forEach((rec) => {
       const subj = rec.session.classSubject.subject;
       if (!subjectMap.has(subj.id)) {
         subjectMap.set(subj.id, { code: subj.code, name: subj.name, attended: 0, total: 0 });
@@ -712,6 +821,41 @@ export const getStudentDashboardData = async (req: Request, res: Response) => {
         totalAttended++;
       }
     });
+
+    // Day-wise attendance breakdown ("Attended X of Y periods = Z%" + P1..P8 chips)
+    const dayMap = new Map<
+      string,
+      {
+        date: string;
+        attended: number;
+        total: number;
+        periods: { periodNumber: number | null; subjectCode: string; status: string }[];
+      }
+    >();
+
+    closedRecords.forEach((rec) => {
+      const dateStr = new Date(rec.session.createdAt).toISOString().split('T')[0];
+      if (!dayMap.has(dateStr)) {
+        dayMap.set(dateStr, { date: dateStr, attended: 0, total: 0, periods: [] });
+      }
+      const dEntry = dayMap.get(dateStr)!;
+      dEntry.total++;
+      const isPresent = rec.status === 'PRESENT' || rec.status === 'LATE';
+      if (isPresent) dEntry.attended++;
+      dEntry.periods.push({
+        periodNumber: rec.session.periodNumber ?? dEntry.periods.length + 1,
+        subjectCode: rec.session.classSubject.subject.code,
+        status: isPresent ? 'PRESENT' : 'ABSENT',
+      });
+    });
+
+    const dayWiseAttendance = Array.from(dayMap.values())
+      .map((d) => ({
+        ...d,
+        periods: d.periods.sort((a, b) => (a.periodNumber || 0) - (b.periodNumber || 0)),
+        percent: d.total > 0 ? Math.round((d.attended / d.total) * 100) : 0,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
 
     const subjectBreakdown = Array.from(subjectMap.values()).map((s) => ({
       ...s,
@@ -726,7 +870,10 @@ export const getStudentDashboardData = async (req: Request, res: Response) => {
         id: student.id,
         registerNo: student.registerNo,
         rollNo: student.rollNo,
-        class: student.class,
+        class: {
+          ...student.class,
+          advisorName: student.class.advisor?.user?.name || null,
+        },
       },
       activeSession,
       todaysSlots,
@@ -738,7 +885,8 @@ export const getStudentDashboardData = async (req: Request, res: Response) => {
         belowThreshold: totalSessions > 0 && overallPercent < minThreshold,
       },
       subjectBreakdown,
-      history: student.attendanceRecords.map((r) => ({
+      dayWiseAttendance,
+      history: closedRecords.map((r) => ({
         id: r.id,
         sessionId: r.sessionId,
         subjectName: r.session.classSubject.subject.name,

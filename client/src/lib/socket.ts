@@ -36,7 +36,7 @@ export const getSocket = (): Socket => {
 export const useRealtimeSync = (
   events: string[],
   onSync: (payload?: any) => void,
-  rooms?: { classId?: string; sessionId?: string }
+  rooms?: { classId?: string; sessionId?: string; userId?: string }
 ) => {
   const callbackRef = useRef(onSync);
   callbackRef.current = onSync;
@@ -44,6 +44,9 @@ export const useRealtimeSync = (
   useEffect(() => {
     const socket = getSocket();
 
+    if (rooms?.userId) {
+      socket.emit('join:user', rooms.userId);
+    }
     if (rooms?.classId) {
       socket.emit('join:class', rooms.classId);
     }
@@ -56,6 +59,7 @@ export const useRealtimeSync = (
     };
 
     const onReconnect = () => {
+      if (rooms?.userId) socket.emit('join:user', rooms.userId);
       if (rooms?.classId) socket.emit('join:class', rooms.classId);
       if (rooms?.sessionId) socket.emit('join:session', rooms.sessionId);
       callbackRef.current({ reconnected: true });
@@ -68,5 +72,5 @@ export const useRealtimeSync = (
       events.forEach((ev) => socket.off(ev, handler));
       socket.off('connect', onReconnect);
     };
-  }, [JSON.stringify(events), rooms?.classId, rooms?.sessionId]);
+  }, [JSON.stringify(events), rooms?.classId, rooms?.sessionId, rooms?.userId]);
 };

@@ -77,44 +77,56 @@ export const login = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Your account is inactive or suspended. Please contact administrator.' });
     }
 
-    // 3. Hardware Device Lock verification
+    // 3. Hardware Device Lock verification (Max 2 devices per student: 1 PHONE + 1 COMPUTER)
     if (user.role === 'STUDENT') {
-      const activeDevice = user.devices.find((d) => d.status === 'ACTIVE');
-      if (activeDevice) {
-        if (activeDevice.deviceId !== deviceId) {
+      const ua = String(req.headers['user-agent'] || '');
+      const deviceType: 'PHONE' | 'COMPUTER' = /mobile|android|iphone/i.test(`${platform || ''} ${deviceLabel || ''} ${ua}`)
+        ? 'PHONE'
+        : 'COMPUTER';
+
+      const activeDevices = user.devices.filter((d) => d.status === 'ACTIVE');
+      const matchedActive = activeDevices.find((d) => d.deviceId === deviceId);
+
+      if (matchedActive) {
+        await prisma.userDevice.update({
+          where: { id: matchedActive.id },
+          data: { lastUsedAt: new Date() },
+        });
+      } else {
+        const sameSlotTaken = activeDevices.find((d) => d.deviceType === deviceType);
+        if (activeDevices.length >= 2 || sameSlotTaken) {
           return res.status(403).json({
             code: 'DEVICE_LOCKED',
-            error: 'This account is linked to another device. Request admin approval.',
-            boundDeviceId: activeDevice.deviceId,
-          });
-        } else {
-          await prisma.userDevice.update({
-            where: { id: activeDevice.id },
-            data: { lastUsedAt: new Date() },
+            error:
+              activeDevices.length >= 2
+                ? 'This account is already registered on 2 devices. Send a request to admin to reset your devices.'
+                : `This account already has a ${deviceType.toLowerCase()} registered. Send a request to admin to reset your devices.`,
+            boundDeviceId: sameSlotTaken?.deviceId || activeDevices[0]?.deviceId,
           });
         }
-      } else {
-        // First login: check if deviceId is already claimed by another user
+
+        // Check if this deviceId is already bound to another user
         const existingDevice = await prisma.userDevice.findUnique({ where: { deviceId } });
-        if (existingDevice) {
-          if (existingDevice.userId !== user.id) {
-            return res.status(403).json({
-              code: 'DEVICE_LOCKED',
-              error: 'This hardware device is already registered to another student account.',
-              boundDeviceId: existingDevice.deviceId,
-            });
-          } else {
-            await prisma.userDevice.update({
-              where: { id: existingDevice.id },
-              data: { status: 'ACTIVE', lastUsedAt: new Date() },
-            });
-          }
+        if (existingDevice && existingDevice.userId !== user.id) {
+          return res.status(403).json({
+            code: 'DEVICE_LOCKED',
+            error: 'This hardware device is already registered to another student account.',
+            boundDeviceId: existingDevice.deviceId,
+          });
+        }
+
+        if (existingDevice && existingDevice.userId === user.id) {
+          await prisma.userDevice.update({
+            where: { id: existingDevice.id },
+            data: { status: 'ACTIVE', deviceType, lastUsedAt: new Date() },
+          });
         } else {
           await prisma.userDevice.create({
             data: {
               userId: user.id,
               deviceId,
-              label: deviceLabel || 'Primary Device',
+              deviceType,
+              label: deviceLabel || (deviceType === 'PHONE' ? 'Mobile Browser' : 'Desktop Browser'),
               platform: platform || 'Web',
               status: 'ACTIVE',
             },
@@ -437,16 +449,30 @@ export const getCurrentUser = async (req: Request, res: Response) => {
           class: {
             include: {
               academicYear: { include: { department: true } },
+              advisor: { include: { user: true } },
             },
           },
         },
       },
+      devices: { where: { status: 'ACTIVE' } },
     },
   });
 
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   return res.json({ user });
+};
+
+export const getMyDevices = async (req: Request, res: Response) => {
+  try {
+    const devices = await prisma.userDevice.findMany({
+      where: { userId: req.user!.id, status: 'ACTIVE' },
+      orderBy: { boundAt: 'asc' },
+    });
+    return res.json({ devices });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to load registered devices' });
+  }
 };
 
 export const logout = (req: Request, res: Response) => {

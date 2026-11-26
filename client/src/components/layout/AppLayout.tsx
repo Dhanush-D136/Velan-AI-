@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
@@ -7,10 +7,23 @@ import { BottomBar } from './BottomBar';
 import { getRoleNavItems } from './navConfig';
 import { Modal } from '@/components/ui/Modal';
 import { BrandLogo } from '@/components/ui/BrandLogo';
-import { Command, Search, Sparkles, CalendarCheck2, Users, FileText, Loader2, X, LogOut } from 'lucide-react';
+import { Command, Search, Sparkles, CalendarCheck2, Users, FileText, Loader2, X, LogOut, Bell, CheckCheck, Smartphone } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
+import { useRealtimeSync } from '@/lib/socket';
+import { useToast } from '@/components/ui/Toast';
 import { clsx } from 'clsx';
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 export const AppLayout: React.FC = () => {
   const [isCommandOpen, setIsCommandOpen] = useState(false);
@@ -20,8 +33,89 @@ export const AppLayout: React.FC = () => {
   const [isServerWaking, setIsServerWaking] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user, logout, deviceId } = useAuthStore();
+  const { showToast } = useToast();
   const mobileNavItems = getRoleNavItems(user?.role);
+
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushSupported, setPushSupported] = useState(true);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission>(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
+
+  const fetchNotifications = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data } = await api.get('/api/notifications');
+      setNotifications(data.notifications || []);
+      setUnreadCount(data.unreadCount || 0);
+    } catch {
+      // ignore silent fetch failure
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushSupported(false);
+    } else {
+      setPushPermission(Notification.permission);
+    }
+  }, []);
+
+  useRealtimeSync(
+    ['notification:new'],
+    () => {
+      fetchNotifications();
+    },
+    { userId: user?.id }
+  );
+
+  const handleMarkRead = async (notificationId?: string) => {
+    try {
+      await api.post('/api/notifications/read', notificationId ? { notificationId } : {});
+      fetchNotifications();
+    } catch {
+      showToast('Failed to update notifications', 'error');
+    }
+  };
+
+  const handleEnablePush = async () => {
+    if (!pushSupported) {
+      showToast('Web Push is not supported in this browser. On iOS, add Velan AI to Home Screen first.', 'error');
+      return;
+    }
+    setPushLoading(true);
+    try {
+      const permission = await Notification.requestPermission();
+      setPushPermission(permission);
+      if (permission !== 'granted') {
+        showToast('Notification permission denied', 'error');
+        return;
+      }
+      const { data: keyData } = await api.get('/api/push/vapid-public-key');
+      if (!keyData?.publicKey) {
+        showToast('In-app notifications enabled (server VAPID keys not configured yet).', 'info');
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+      });
+      await api.post('/api/push/subscribe', { subscription, deviceId });
+      showToast('Push notifications enabled for this device!', 'success');
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Could not enable push notifications', 'error');
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   // Free-tier server wake-up monitor
   useEffect(() => {
@@ -94,8 +188,12 @@ export const AppLayout: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 pb-24 lg:pb-10">
           <Header
             onOpenCommandPalette={() => setIsCommandOpen(true)}
-            onOpenNotifications={() => setIsNotificationOpen(true)}
+            onOpenNotifications={() => {
+              setIsNotificationOpen(true);
+              fetchNotifications();
+            }}
             onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+            unreadNotificationsCount={unreadCount}
           />
 
           <main className="flex-1 px-4 sm:px-8 py-6 portal-pattern-grid">
@@ -239,30 +337,91 @@ export const AppLayout: React.FC = () => {
         isOpen={isNotificationOpen}
         onClose={() => setIsNotificationOpen(false)}
         title="Notifications Center"
-        description="Stay updated with attendance, timetable changes & alerts"
-        size="sm"
+        description="Live updates for attendance, chat, assignments, materials & requests"
+        size="md"
       >
         <div className="space-y-3">
-          <div className="p-3 rounded-2xl bg-brand-50/60 border border-brand-200/60 flex items-start gap-3">
-            <span className="w-2 h-2 rounded-full bg-brand-500 mt-2 shrink-0 animate-ping" />
-            <div>
-              <p className="text-xs font-bold text-brand-900">Attendance Session Active</p>
-              <p className="text-xs text-content-secondary mt-0.5">
-                Data Structures (CS301) attendance window is open. 8 minutes remaining.
-              </p>
-              <span className="text-[10px] text-content-muted mt-1 block">Just now</span>
+          {/* Web Push Banner */}
+          <div className="p-3 rounded-2xl bg-slate-50 border border-border flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 text-xs text-content-secondary">
+              <Smartphone className="w-4 h-4 text-brand-500 shrink-0" />
+              <span>
+                {!pushSupported
+                  ? 'Install on Home Screen (iOS Safari) over HTTPS to enable push alerts.'
+                  : pushPermission === 'granted'
+                    ? 'Browser push alerts are enabled for this device.'
+                    : 'Enable push alerts to get notified even when the tab is closed.'}
+              </span>
             </div>
+            {pushSupported && pushPermission !== 'granted' && (
+              <button
+                onClick={handleEnablePush}
+                disabled={pushLoading}
+                className="px-3 py-1.5 rounded-xl bg-brand-gradient text-white text-xs font-bold shadow-sm disabled:opacity-60"
+              >
+                {pushLoading ? 'Enabling...' : 'Enable Push'}
+              </button>
+            )}
           </div>
 
-          <div className="p-3 rounded-2xl bg-surface-soft border border-border flex items-start gap-3">
-            <span className="w-2 h-2 rounded-full bg-accent-emerald mt-2 shrink-0" />
-            <div>
-              <p className="text-xs font-bold text-content">Timetable Published</p>
-              <p className="text-xs text-content-secondary mt-0.5">
-                CSE 2nd Year Section A timetable has been updated by Admin.
-              </p>
-              <span className="text-[10px] text-content-muted mt-1 block">2 hours ago</span>
+          {/* Actions Row */}
+          {notifications.length > 0 && unreadCount > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => handleMarkRead()}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                Mark all as read ({unreadCount})
+              </button>
             </div>
+          )}
+
+          {/* Notification List */}
+          <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+            {notifications.length === 0 ? (
+              <div className="py-10 text-center text-content-muted text-xs flex flex-col items-center gap-2">
+                <Bell className="w-6 h-6 opacity-40" />
+                <span>No notifications yet.</span>
+              </div>
+            ) : (
+              notifications.map((n) => (
+                <div
+                  key={n.id}
+                  onClick={() => {
+                    if (!n.isRead) handleMarkRead(n.id);
+                    if (n.link) {
+                      setIsNotificationOpen(false);
+                      navigate(n.link);
+                    }
+                  }}
+                  className={clsx(
+                    'p-3 rounded-2xl border flex items-start gap-3 transition-colors cursor-pointer',
+                    n.isRead
+                      ? 'bg-surface-soft border-border hover:bg-slate-50'
+                      : 'bg-brand-50/60 border-brand-200/70 hover:bg-brand-50'
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'w-2 h-2 rounded-full mt-1.5 shrink-0',
+                      n.isRead ? 'bg-slate-300' : 'bg-brand-500 animate-pulse'
+                    )}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={clsx('text-xs font-bold truncate', n.isRead ? 'text-content' : 'text-brand-900')}>
+                        {n.title}
+                      </p>
+                      <span className="text-[10px] text-content-muted shrink-0">
+                        {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-content-secondary mt-0.5 break-words">{n.message}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </Modal>

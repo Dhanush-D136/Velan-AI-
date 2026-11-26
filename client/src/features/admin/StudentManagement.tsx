@@ -348,19 +348,19 @@ export const StudentManagement: React.FC = () => {
     },
     {
       key: 'deviceStatus',
-      header: 'Device Lock',
+      header: 'Device Lock (Max 2)',
       render: (s) => {
-        const dev = s.user.devices?.[0];
+        const devs = s.user.devices || [];
         return (
           <div className="flex items-center gap-1.5 text-xs">
             <Smartphone className="w-3.5 h-3.5 text-content-muted" />
-            {dev ? (
+            {devs.length > 0 ? (
               <Badge variant="success" size="sm">
-                Bound ({dev.platform || 'Phone'})
+                {devs.length}/2 ({devs.map((d: any) => d.deviceType || d.platform || 'Device').join(', ')})
               </Badge>
             ) : (
               <Badge variant="neutral" size="sm">
-                Unbound
+                0/2 Unbound
               </Badge>
             )}
           </div>
@@ -835,20 +835,80 @@ export const StudentManagement: React.FC = () => {
 
             {/* Hardware Binding */}
             <div className="space-y-3">
-              <h4 className="text-xs font-bold text-content uppercase tracking-wider">
-                Device Lock Security
-              </h4>
-              <div className="p-3 rounded-xl bg-slate-50 border border-border text-xs flex items-center justify-between">
-                <div>
-                  <span className="text-content-secondary block text-[11px]">Bound Hardware Fingerprint</span>
-                  <span className="font-mono text-content font-bold">
-                    {selectedStudentForView.user.devices?.[0]?.deviceId || 'No hardware device bound'}
-                  </span>
-                </div>
-                <Badge variant={selectedStudentForView.user.devices?.[0] ? 'success' : 'neutral'}>
-                  {selectedStudentForView.user.devices?.[0] ? 'Active' : 'Unregistered'}
-                </Badge>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-content uppercase tracking-wider">
+                  Device Lock Security ({(selectedStudentForView.user.devices || []).length} / 2 Devices)
+                </h4>
+                {(selectedStudentForView.user.devices || []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!window.confirm(`Revoke ALL registered devices for ${selectedStudentForView.user.name}?`)) return;
+                      try {
+                        await api.delete(`/api/academics/students/${selectedStudentForView.id}/devices/all`);
+                        showToast('All devices revoked', 'success');
+                        setSelectedStudentForView((prev: any) =>
+                          prev ? { ...prev, user: { ...prev.user, devices: [] } } : null
+                        );
+                        fetchStudents();
+                      } catch (err: any) {
+                        showToast(err?.response?.data?.error || 'Failed to revoke devices', 'error');
+                      }
+                    }}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-700"
+                  >
+                    Revoke All
+                  </button>
+                )}
               </div>
+
+              {(selectedStudentForView.user.devices || []).length === 0 ? (
+                <div className="p-3 rounded-xl bg-slate-50 border border-border text-xs text-content-muted">
+                  No hardware devices bound yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {(selectedStudentForView.user.devices || []).map((dev: any) => (
+                    <div key={dev.id} className="p-3 rounded-xl bg-slate-50 border border-border text-xs flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="brand" size="sm">{dev.deviceType || 'DEVICE'}</Badge>
+                          <span className="font-semibold text-content">{dev.platform || 'Unknown Platform'}</span>
+                        </div>
+                        <span className="font-mono text-[11px] text-content-muted block truncate mt-1">
+                          ID: {dev.deviceId}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await api.delete(`/api/academics/students/${selectedStudentForView.id}/devices/${dev.id}`);
+                            showToast('Device revoked', 'success');
+                            setSelectedStudentForView((prev: any) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    user: {
+                                      ...prev.user,
+                                      devices: (prev.user.devices || []).filter((d: any) => d.id !== dev.id),
+                                    },
+                                  }
+                                : null
+                            );
+                            fetchStudents();
+                          } catch (err: any) {
+                            showToast(err?.response?.data?.error || 'Failed to revoke device', 'error');
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 font-bold hover:bg-rose-100 shrink-0"
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="pt-4 flex justify-end border-t border-border">

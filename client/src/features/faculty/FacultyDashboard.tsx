@@ -86,6 +86,9 @@ export const FacultyDashboard: React.FC = () => {
             {user?.facultyProfile?.designation || 'Teaching Faculty'}
             {user?.facultyProfile?.employeeId ? ` • Employee ID: ${user.facultyProfile.employeeId}` : ''}
           </p>
+          <p className="text-xs sm:text-sm text-white font-bold mt-2">
+            You have {todaysSlots.length} {todaysSlots.length === 1 ? 'class' : 'classes'} today
+          </p>
         </div>
 
         <Button
@@ -139,34 +142,59 @@ export const FacultyDashboard: React.FC = () => {
           />
         ) : (
           <div className="space-y-3">
-            {todaysSlots.map((slot: any) => (
-              <div
-                key={slot.id}
-                className="p-4 rounded-2xl bg-surface-soft border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="brand" size="sm">Period {slot.periodNumber}</Badge>
-                    <span className="text-xs font-mono text-content-secondary">
-                      {slot.startTime} – {slot.endTime}
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-sm text-content mt-1">
-                    {slot.classSubject?.subject?.name} ({slot.classSubject?.subject?.code})
-                  </h4>
-                  <p className="text-xs text-content-secondary">
-                    {slot.class?.name} • Room: {slot.roomNumber}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  rightIcon={<ArrowRight className="w-4 h-4" />}
-                  onClick={() => navigate('/faculty/attendance')}
+            {todaysSlots.map((slot: any) => {
+              const slotState = slot.state || 'UPCOMING';
+              const badgeVariant =
+                slotState === 'LIVE'
+                  ? 'brand'
+                  : slotState === 'COMPLETED'
+                    ? 'success'
+                    : slotState === 'NOT_TAKEN'
+                      ? 'warning'
+                      : 'neutral';
+              const targetRoute = slotState === 'COMPLETED' ? '/faculty/history' : '/faculty/attendance';
+              const actionLabel =
+                slotState === 'LIVE'
+                  ? 'Open Live Roster'
+                  : slotState === 'COMPLETED'
+                    ? 'View Saved Record'
+                    : 'Take Attendance';
+
+              return (
+                <div
+                  key={slot.id}
+                  onClick={() => navigate(targetRoute)}
+                  className="p-4 rounded-2xl bg-surface-soft border border-border hover:border-brand-300 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
-                  Take Attendance
-                </Button>
-              </div>
-            ))}
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="brand" size="sm">Period {slot.periodNumber}</Badge>
+                      <Badge variant={badgeVariant} size="sm">{slotState.replace('_', ' ')}</Badge>
+                      <span className="text-xs font-mono text-content-secondary">
+                        {slot.startTime} – {slot.endTime}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-sm text-content mt-1">
+                      {slot.classSubject?.subject?.name} ({slot.classSubject?.subject?.code})
+                    </h4>
+                    <p className="text-xs text-content-secondary">
+                      {slot.class?.name} • Room: {slot.roomNumber} • {slot.studentCount ?? 0} Students
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={slotState === 'COMPLETED' ? 'secondary' : 'primary'}
+                    rightIcon={<ArrowRight className="w-4 h-4" />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(targetRoute);
+                    }}
+                  >
+                    {actionLabel}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>

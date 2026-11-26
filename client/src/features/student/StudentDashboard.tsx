@@ -70,7 +70,7 @@ export const StudentDashboard: React.FC = () => {
     { classId }
   );
 
-  const { student, activeSession, todaysSlots, stats, subjectBreakdown } = data;
+  const { student, activeSession, todaysSlots, stats, subjectBreakdown, dayWiseAttendance = [] } = data;
 
   if (isLoading) {
     return (
@@ -92,6 +92,9 @@ export const StudentDashboard: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 mt-1">
             {student?.class?.name && (
               <Badge variant="brand" size="sm">{student.class.name}</Badge>
+            )}
+            {student?.class?.advisorName && (
+              <Badge variant="neutral" size="sm">Advisor: {student.class.advisorName}</Badge>
             )}
             <span className="font-mono text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-200">
               Roll: {user?.studentProfile?.rollNo || '—'}
@@ -176,7 +179,7 @@ export const StudentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Overall Attendance & Today's Schedule */}
+      {/* Overall Attendance & Day-Wise Attendance */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="flex flex-col items-center justify-center p-6 text-center">
           <ProgressRing
@@ -187,41 +190,100 @@ export const StudentDashboard: React.FC = () => {
           />
           <h3 className="text-lg font-heading font-bold text-content mt-3">Overall Attendance</h3>
           <p className="text-xs text-content-secondary">
-            {isLoading ? '...' : `${stats.totalAttended} / ${stats.totalSessions} sessions attended`}
+            {isLoading ? '...' : `${stats.totalAttended} / ${stats.totalSessions} closed sessions`}
           </p>
+          {stats.belowThreshold && (
+            <Badge variant="danger" size="sm" className="mt-2">
+              Below {stats.minThreshold}%
+            </Badge>
+          )}
         </Card>
 
         <Card className="md:col-span-2">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <h3 className="text-base font-heading font-bold text-content flex items-center gap-2">
-              <Clock className="w-4 h-4 text-brand-600" />
-              Today's Class Timetable
+              <CalendarDays className="w-4 h-4 text-brand-600" />
+              Day-Wise Attendance
             </h3>
-            <Badge variant="neutral">{todaysSlots.length} Period(s)</Badge>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/student/attendance')}>
+              Calendar &amp; History
+            </Button>
           </div>
-          {todaysSlots.length === 0 ? (
+          {dayWiseAttendance.length === 0 ? (
             <div className="py-8 text-center text-xs text-content-secondary">
-              No periods scheduled for today in your class timetable.
+              Day-wise attendance appears once sessions are closed for your class.
             </div>
           ) : (
-            <div className="space-y-2.5">
-              {todaysSlots.map((slot: any) => (
-                <div key={slot.id} className="p-3 rounded-2xl bg-surface-soft border border-border flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-bold text-content">
-                      P{slot.periodNumber}: {slot.classSubject?.subject?.name} ({slot.classSubject?.subject?.code})
-                    </span>
-                    <span className="text-content-secondary block text-[11px]">
-                      {slot.classSubject?.faculty?.user?.name} • Room {slot.roomNumber}
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+              {dayWiseAttendance.slice(0, 7).map((day: any) => (
+                <div key={day.date} className="p-3 rounded-2xl bg-surface-soft border border-border space-y-2">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-content">{day.date}</span>
+                    <span className="font-semibold text-content-secondary">
+                      Attended {day.attended} of {day.total} periods ={' '}
+                      <span className={day.percent < stats.minThreshold ? 'text-rose-600 font-bold' : 'text-emerald-600 font-bold'}>
+                        {day.percent}%
+                      </span>
                     </span>
                   </div>
-                  <span className="font-mono text-content-muted">{slot.startTime}–{slot.endTime}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(day.periods || []).map((p: any, idx: number) => {
+                      const pNum = p.periodNumber ?? p.period ?? idx + 1;
+                      return (
+                        <span
+                          key={pNum}
+                          title={`P${pNum}: ${p.status}`}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                            p.status === 'PRESENT'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : p.status === 'ABSENT'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-slate-100 text-slate-400 border-slate-200'
+                          }`}
+                        >
+                          P{pNum}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </Card>
       </div>
+
+      {/* Today's Class Timetable */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-heading font-bold text-content flex items-center gap-2">
+            <Clock className="w-4 h-4 text-brand-600" />
+            Today's Class Timetable
+          </h3>
+          <Badge variant="neutral">{todaysSlots.length} Period(s)</Badge>
+        </div>
+        {todaysSlots.length === 0 ? (
+          <div className="py-6 text-center text-xs text-content-secondary">
+            No periods scheduled for today in your class timetable.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {todaysSlots.map((slot: any) => (
+              <div key={slot.id} className="p-3 rounded-2xl bg-surface-soft border border-border flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-content">
+                    P{slot.periodNumber}: {slot.classSubject?.subject?.name} ({slot.classSubject?.subject?.code})
+                  </span>
+                  <span className="text-content-secondary block text-[11px]">
+                    {slot.classSubject?.faculty?.user?.name} • Room {slot.roomNumber}
+                  </span>
+                </div>
+                <span className="font-mono text-content-muted">{slot.startTime}–{slot.endTime}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {/* Subject-Wise Breakdown */}
       <Card>

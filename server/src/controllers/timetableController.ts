@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { timetableSlotCreateSchema } from '@velan/shared';
+import { notifyUsers } from './notificationController';
 
 // Get weekly timetable for a class
 export const getClassTimetable = async (req: Request, res: Response) => {
@@ -142,6 +143,26 @@ export const saveSlot = async (req: Request, res: Response) => {
       io.emit('data:updated', { resource: 'timetable', classId });
     }
 
+    // Notify students of this class and the assigned faculty
+    const [students, facultyProfile] = await Promise.all([
+      prisma.studentProfile.findMany({ where: { classId }, select: { userId: true } }),
+      prisma.facultyProfile.findUnique({ where: { id: facultyId }, select: { userId: true } }),
+    ]);
+    const targetUserIds = [
+      ...students.map((s) => s.userId),
+      ...(facultyProfile ? [facultyProfile.userId] : []),
+    ];
+    await notifyUsers(
+      io,
+      targetUserIds,
+      {
+        title: 'Timetable Updated',
+        message: `${dayOfWeek} Period ${periodNumber} (${startTime}–${endTime}) has been updated.`,
+        type: 'TIMETABLE',
+      },
+      'timetableAlerts'
+    );
+
     return res.json({ message: 'Timetable slot saved successfully', slot });
   } catch (error: any) {
     console.error('saveSlot error:', error);
@@ -163,6 +184,25 @@ export const deleteSlot = async (req: Request, res: Response) => {
       io.to(`class_${slot.classId}`).emit('timetable:updated', { classId: slot.classId, deletedId: id });
       io.emit('data:updated', { resource: 'timetable', classId: slot.classId });
     }
+
+    const [students, facultyProfile] = await Promise.all([
+      prisma.studentProfile.findMany({ where: { classId: slot.classId }, select: { userId: true } }),
+      prisma.facultyProfile.findUnique({ where: { id: slot.facultyId }, select: { userId: true } }),
+    ]);
+    const targetUserIds = [
+      ...students.map((s) => s.userId),
+      ...(facultyProfile ? [facultyProfile.userId] : []),
+    ];
+    await notifyUsers(
+      io,
+      targetUserIds,
+      {
+        title: 'Timetable Slot Cleared',
+        message: `${slot.dayOfWeek} Period ${slot.periodNumber} was removed from the timetable.`,
+        type: 'TIMETABLE',
+      },
+      'timetableAlerts'
+    );
 
     return res.json({ message: 'Timetable slot cleared successfully' });
   } catch (error: any) {

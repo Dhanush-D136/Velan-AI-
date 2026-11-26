@@ -2,14 +2,19 @@ import { Server, Socket } from 'socket.io';
 
 export const setupSocketHandlers = (io: Server) => {
   io.on('connection', (socket: Socket) => {
-    // Join class-specific room for targeted announcements and chat
+    // Join user-specific room for notifications & request updates
+    socket.on('join:user', (userId: string) => {
+      if (userId) socket.join(`user_${userId}`);
+    });
+
+    // Join class-specific room for targeted announcements, attendance & chat
     socket.on('join:class', (classId: string) => {
-      socket.join(`class_${classId}`);
+      if (classId) socket.join(`class_${classId}`);
     });
 
     // Join attendance session room for live board updates
     socket.on('join:session', (sessionId: string) => {
-      socket.join(`session_${sessionId}`);
+      if (sessionId) socket.join(`session_${sessionId}`);
     });
 
     // Typing indicators

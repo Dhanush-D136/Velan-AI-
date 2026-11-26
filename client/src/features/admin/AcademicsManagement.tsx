@@ -16,6 +16,7 @@ import {
   UserCheck,
   CheckCircle2,
   Trash2,
+  Edit3,
   Calendar,
   AlertCircle,
   RefreshCw,
@@ -31,6 +32,10 @@ export const AcademicsManagement: React.FC = () => {
   const [subjects, setSubjects] = useState<any[]>([]);
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [editingClass, setEditingClass] = useState<any | null>(null);
+  const [editSection, setEditSection] = useState('');
+  const [editRoom, setEditRoom] = useState('');
+  const [editAdvisorId, setEditAdvisorId] = useState('');
 
   // Modals
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
@@ -165,6 +170,34 @@ export const AcademicsManagement: React.FC = () => {
       fetchData();
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 3b. Update Class Section (section, room, advisor)
+  const openEditClassModal = (cls: any) => {
+    setEditingClass(cls);
+    setEditSection(cls.section || 'A');
+    setEditRoom(cls.roomNumber || '');
+    setEditAdvisorId(cls.advisorId || '');
+  };
+
+  const handleUpdateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClass) return;
+    setIsSaving(true);
+    try {
+      await api.put(`/academics/classes/${editingClass.id}`, {
+        section: editSection.trim().toUpperCase(),
+        roomNumber: editRoom.trim() || null,
+        advisorId: editAdvisorId || null,
+      });
+      toast.success('Class details & advisor updated!');
+      setEditingClass(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err.message || 'Failed to update class');
     } finally {
       setIsSaving(false);
     }
@@ -405,10 +438,17 @@ export const AcademicsManagement: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     <span className="bg-surface-soft px-3 py-1.5 rounded-full border border-border text-xs font-semibold">
                       {cls._count?.students || 0} Students
                     </span>
+                    <button
+                      onClick={() => openEditClassModal(cls)}
+                      className="p-2 text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"
+                      title="Edit Class & Assign Advisor"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => handleDeleteClass(cls.id)}
                       className="p-2 text-content-muted hover:text-accent-rose hover:bg-rose-50 rounded-xl transition-colors"
@@ -754,6 +794,58 @@ export const AcademicsManagement: React.FC = () => {
             </Button>
             <Button type="submit" size="sm" isLoading={isSaving}>
               Create Section
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL 3b: EDIT CLASS SECTION */}
+      <Modal
+        isOpen={!!editingClass}
+        onClose={() => setEditingClass(null)}
+        title="Edit Class & Advisor"
+        description={editingClass ? `Updating ${editingClass.name}` : ''}
+      >
+        <form onSubmit={handleUpdateClass} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Section Letter"
+              required
+              value={editSection}
+              onChange={(e) => setEditSection(e.target.value)}
+            />
+            <Input
+              label="Room / Lab Number"
+              placeholder="e.g. Hall 301"
+              value={editRoom}
+              onChange={(e) => setEditRoom(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-content-secondary uppercase mb-1">
+              Class Advisor (Optional)
+            </label>
+            <select
+              value={editAdvisorId}
+              onChange={(e) => setEditAdvisorId(e.target.value)}
+              className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-semibold"
+            >
+              <option value="">No Advisor Assigned (Clear)</option>
+              {facultyList.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.user?.name} ({f.employeeId})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="pt-4 flex items-center justify-end gap-2 border-t border-border">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditingClass(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" isLoading={isSaving}>
+              Save Class Changes
             </Button>
           </div>
         </form>

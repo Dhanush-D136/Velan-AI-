@@ -20,20 +20,26 @@ import {
 
 export const AdminRequestsPage: React.FC = () => {
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'PASSWORD' | 'PROFILE' | 'DEVICE'>('PASSWORD');
+  const [activeTab, setActiveTab] = useState<'PASSWORD' | 'PROFILE' | 'DEVICE' | 'GENERAL'>('PASSWORD');
   const [isLoading, setIsLoading] = useState(false);
 
   const [passwordRequests, setPasswordRequests] = useState<any[]>([]);
   const [profileEditRequests, setProfileEditRequests] = useState<any[]>([]);
   const [deviceRequests, setDeviceRequests] = useState<any[]>([]);
+  const [generalRequests, setGeneralRequests] = useState<any[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
 
   const fetchRequests = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/api/academics/requests');
+      const [res, genRes] = await Promise.all([
+        api.get('/api/academics/requests'),
+        api.get('/api/requests'),
+      ]);
       setPasswordRequests(res.data.passwordRequests || []);
       setProfileEditRequests(res.data.profileEditRequests || []);
       setDeviceRequests(res.data.deviceRequests || []);
+      setGeneralRequests(genRes.data.requests || []);
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to fetch admin requests queue', 'error');
     } finally {
@@ -75,9 +81,23 @@ export const AdminRequestsPage: React.FC = () => {
     }
   };
 
+  const handleGeneralDecision = async (id: string, status: 'APPROVED' | 'REJECTED' | 'RESOLVED') => {
+    try {
+      await api.post(`/api/requests/${id}/decision`, {
+        status,
+        adminReply: (replyDrafts[id] || '').trim() || undefined,
+      });
+      showToast(`Request marked as ${status}`, 'success');
+      fetchRequests();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to update request', 'error');
+    }
+  };
+
   const pendingPasswordCount = passwordRequests.filter((r) => r.status === 'PENDING').length;
   const pendingProfileCount = profileEditRequests.filter((r) => r.status === 'PENDING').length;
   const pendingDeviceCount = deviceRequests.filter((r) => r.status === 'PENDING').length;
+  const pendingGeneralCount = generalRequests.filter((r) => r.status === 'PENDING').length;
 
   const passwordColumns: Column<any>[] = [
     {
@@ -349,6 +369,23 @@ export const AdminRequestsPage: React.FC = () => {
             </span>
           )}
         </button>
+
+        <button
+          onClick={() => setActiveTab('GENERAL')}
+          className={`flex items-center gap-2 pb-3 px-4 text-sm font-semibold border-b-2 transition ${
+            activeTab === 'GENERAL'
+              ? 'border-brand-600 text-brand-700'
+              : 'border-transparent text-content-secondary hover:text-content'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span>Student Requests</span>
+          {pendingGeneralCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-100 text-brand-800">
+              {pendingGeneralCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Tab Panels */}
@@ -435,6 +472,82 @@ export const AdminRequestsPage: React.FC = () => {
               keyExtractor={(r) => r.id}
               emptyMessage="No device rebind requests found"
             />
+          )}
+        </div>
+      )}
+
+      {activeTab === 'GENERAL' && (
+        <div className="space-y-4">
+          {generalRequests.length === 0 && !isLoading ? (
+            <EmptyState
+              icon={ClipboardList}
+              title="No student requests"
+              description="General requests from students (profile, attendance, device reset, password help) appear here."
+            />
+          ) : (
+            <div className="space-y-3">
+              {generalRequests.map((r) => (
+                <Card key={r.id} className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="brand" size="sm">{r.type}</Badge>
+                        <Badge
+                          variant={
+                            r.status === 'APPROVED' || r.status === 'RESOLVED'
+                              ? 'success'
+                              : r.status === 'REJECTED'
+                                ? 'danger'
+                                : 'warning'
+                          }
+                          size="sm"
+                        >
+                          {r.status}
+                        </Badge>
+                      </div>
+                      <h4 className="font-bold text-sm text-content mt-1">{r.subject}</h4>
+                      <p className="text-xs text-content-secondary">
+                        From: <strong>{r.student?.user?.name || 'Student'}</strong> ({r.student?.registerNo || '—'})
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-content-muted">
+                      {new Date(r.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-content bg-surface-soft p-3 rounded-xl border border-border">
+                    {r.message}
+                  </p>
+
+                  {r.status === 'PENDING' ? (
+                    <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                      <input
+                        type="text"
+                        placeholder="Optional reply to student..."
+                        value={replyDrafts[r.id] || ''}
+                        onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                        className="flex-1 px-3 py-2 rounded-xl border border-border text-xs"
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => handleGeneralDecision(r.id, 'REJECTED')}>
+                          Reject
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => handleGeneralDecision(r.id, 'APPROVED')}>
+                          Approve
+                        </Button>
+                        <Button size="sm" onClick={() => handleGeneralDecision(r.id, 'RESOLVED')}>
+                          Resolve
+                        </Button>
+                      </div>
+                    </div>
+                  ) : r.adminReply ? (
+                    <p className="text-xs text-content-secondary">
+                      <strong>Admin Reply:</strong> {r.adminReply}
+                    </p>
+                  ) : null}
+                </Card>
+              ))}
+            </div>
           )}
         </div>
       )}
