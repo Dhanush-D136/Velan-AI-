@@ -21,7 +21,6 @@ import * as skipCtrl from '../controllers/skipController';
 import * as acadRecCtrl from '../controllers/academicsRecordController';
 import * as monCtrl from '../controllers/monitorController';
 import * as rushCtrl from '../controllers/rushQueueController';
-import * as mentorCtrl from '../controllers/mentorController';
 
 const deviceRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -233,22 +232,3 @@ apiRouter.get('/checkin/ticket/:id', authenticateToken, rushCtrl.getCheckinTicke
 apiRouter.get('/admin/rush-queue/config', authenticateToken, requireRole('ADMIN'), rushCtrl.getRushQueueConfig);
 apiRouter.put('/admin/rush-queue/config', authenticateToken, requireRole('ADMIN'), rushCtrl.updateRushQueueConfig);
 apiRouter.get('/admin/rush-queue/stats', authenticateToken, requireRole('ADMIN'), rushCtrl.getRushQueueStats);
-
-// ==========================================
-// PHASE 6: MENTOR SYSTEM
-// ==========================================
-apiRouter.get('/admin/mentors/overview', authenticateToken, requireRole('ADMIN'), mentorCtrl.getAdminMentorsOverview);
-apiRouter.get('/admin/mentors/class/:classId', authenticateToken, requireRole('ADMIN'), mentorCtrl.getClassMentorBoard);
-apiRouter.put('/admin/mentors/class/:classId/mentors', authenticateToken, requireRole('ADMIN'), mentorCtrl.setClassMentors);
-apiRouter.post('/admin/mentors/class/:classId/bulk-assign', authenticateToken, requireRole('ADMIN'), deviceRequestLimiter, mentorCtrl.bulkAssignMentees);
-apiRouter.post('/admin/mentors/class/:classId/auto-distribute', authenticateToken, requireRole('ADMIN'), mentorCtrl.autoDistributeMentees);
-apiRouter.get('/admin/mentors/class/:classId/export', authenticateToken, requireRole('ADMIN'), mentorCtrl.exportMentorMappingExcel);
-apiRouter.post('/admin/mentors/class/:classId/import', authenticateToken, requireRole('ADMIN'), mentorCtrl.importMentorMapping);
-apiRouter.post('/admin/mentors/faculty/:facultyId/reassign', authenticateToken, requireRole('ADMIN'), mentorCtrl.reassignFacultyMentees);
-
-apiRouter.get('/mentoring/roles', authenticateToken, requireRole('FACULTY'), mentorCtrl.getMyMentoringRoles);
-apiRouter.get('/mentoring/mentees', authenticateToken, requireRole('FACULTY'), mentorCtrl.getScopedMentees);
-apiRouter.get('/mentoring/student/:studentId', authenticateToken, mentorCtrl.getFullStudentDetail);
-apiRouter.post('/mentoring/student/:studentId/notes', authenticateToken, requireRole('FACULTY', 'ADMIN'), mentorCtrl.createMentorNote);
-apiRouter.delete('/mentoring/notes/:noteId', authenticateToken, requireRole('FACULTY', 'ADMIN'), mentorCtrl.deleteMentorNote);
-apiRouter.post('/mentoring/announce', authenticateToken, requireRole('FACULTY'), mentorCtrl.sendMenteeAnnouncement);

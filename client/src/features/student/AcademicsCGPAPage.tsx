@@ -479,7 +479,7 @@ export const AcademicsCGPAPage: React.FC = () => {
                     checked={consentChecked}
                     onChange={(e) => setConsentChecked(e.target.checked)}
                   />
-                  <span>Your confirmed results and attendance will be visible to your class advisor, your mentor and the admin.</span>
+                  <span>Your confirmed results will be visible to your class advisor and the admin.</span>
                 </label>
               )}
 

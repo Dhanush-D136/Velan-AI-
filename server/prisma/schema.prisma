@@ -142,8 +142,6 @@ model Class {
   chatRoom       ChatRoom?
   exams          Exam[]
   announcements  Announcement[]
-  classMentors   ClassMentor[]
-  mentees        MenteeAssignment[]
 
   @@unique([academicYearId, section])
   @@index([academicYearId])
@@ -165,9 +163,6 @@ model FacultyProfile {
   classSubjects  ClassSubject[]
   sessions       AttendanceSession[]
   timetableSlots TimetableSlot[]
-  mentorRoles    ClassMentor[]
-  mentees        MenteeAssignment[]
-  mentorNotes    MentorNote[]
 
   @@index([departmentId])
   @@index([employeeId])
@@ -194,7 +189,6 @@ model StudentProfile {
   photoUrl       String?
   isProfileLocked Boolean       @default(false)
   canEditProfile Boolean        @default(false)
-  mentorConsentAcceptedAt DateTime?
 
   enrolledAt     DateTime       @default(now())
 
@@ -203,8 +197,6 @@ model StudentProfile {
   marks               Mark[]
   profileEditRequests ProfileEditRequest[]
   academicSemesters   AcademicSemester[]
-  menteeAssignments   MenteeAssignment[]
-  mentorNotes         MentorNote[]
 
   @@unique([classId, rollNo])
   @@index([classId])
@@ -850,73 +842,4 @@ model CheckinTicket {
   @@unique([sessionId, studentId])
   @@index([sessionId, state])
   @@index([userId])
-}
-
-// ==========================================
-// PHASE 6: MENTOR SYSTEM
-// ==========================================
-
-model ClassMentor {
-  id           String         @id @default(uuid())
-  classId      String
-  class        Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
-  facultyId    String
-  faculty      FacultyProfile @relation(fields: [facultyId], references: [id], onDelete: Cascade)
-  role         String         @default("mentor") // advisor, mentor
-  academicYear String         @default("2025-2026")
-  createdAt    DateTime       @default(now())
-
-  @@unique([classId, facultyId, academicYear])
-  @@index([classId])
-  @@index([facultyId])
-  @@map("class_mentors")
-}
-
-model MenteeAssignment {
-  id           String         @id @default(uuid())
-  studentId    String
-  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  classId      String
-  class        Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
-  mentorId     String
-  mentor       FacultyProfile @relation(fields: [mentorId], references: [id], onDelete: Restrict)
-  academicYear String         @default("2025-2026")
-  assignedBy   String
-  assignedAt   DateTime       @default(now())
-
-  @@unique([studentId, academicYear])
-  @@index([classId])
-  @@index([mentorId])
-  @@map("mentees")
-}
-
-model MentorAssignmentHistory {
-  id           String   @id @default(uuid())
-  studentId    String
-  fromMentorId String?
-  toMentorId   String?
-  byUserId     String
-  reason       String?
-  at           DateTime @default(now())
-
-  @@index([studentId])
-  @@map("mentor_assignment_history")
-}
-
-model MentorNote {
-  id           String         @id @default(uuid())
-  studentId    String
-  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  mentorId     String
-  mentor       FacultyProfile @relation(fields: [mentorId], references: [id], onDelete: Cascade)
-  type         String         @default("meeting") // meeting, concern, achievement, counselling, action_item
-  note         String
-  followUpDate DateTime?
-  status       String         @default("open") // open, done
-  createdAt    DateTime       @default(now())
-  editedAt     DateTime       @updatedAt
-
-  @@index([studentId])
-  @@index([mentorId])
-  @@map("mentor_notes")
 }

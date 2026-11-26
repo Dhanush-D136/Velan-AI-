@@ -27,7 +27,6 @@ describe('Phase 5: Rush-Hour Check-In Queue & Batched Saver', () => {
   const reg2 = `P5R2_${runId}`;
 
   beforeAll(async () => {
-    await rushQueueService.updateConfig({ enabled: false, triggerThreshold: 30 }, undefined);
     const res = await request(app).post('/api/auth/login').send({
       identifier: 'Vel',
       password: process.env.ADMIN_PASSWORD || 'elite minds',

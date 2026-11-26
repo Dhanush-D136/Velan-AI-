@@ -275,16 +275,7 @@ export const SettingsPage: React.FC = () => {
             </div>
             <div className="p-3 rounded-xl bg-surface-soft border border-border">
               <span className="text-content-muted block text-[11px]">Class Advisor</span>
-              <span className="font-bold text-brand-600">{(user.studentProfile as any).class?.advisor?.user?.name || (user as any).advisor?.name || 'Unassigned'}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-surface-soft border border-border sm:col-span-2">
-              <span className="text-content-muted block text-[11px]">My Mentor</span>
-              <span className="font-bold text-content">
-                {(user.studentProfile as any).menteeAssignments?.[0]?.mentor?.user?.name || 'Unassigned'}
-                {(user.studentProfile as any).menteeAssignments?.[0]?.mentor?.department?.code
-                  ? ` (${(user.studentProfile as any).menteeAssignments[0].mentor.department.code})`
-                  : ''}
-              </span>
+              <span className="font-bold text-brand-600">{(user as any).advisor?.name || 'Unassigned'}</span>
             </div>
           </div>
         )}
@@ -458,126 +449,6 @@ export const SettingsPage: React.FC = () => {
               <Switch checked={!!rushConfig.playSound} onChange={(v) => setRushConfig((p: any) => ({ ...p, playSound: v }))} />
               <span>Play Sound at End</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Switch checked={!!rushConfig.showTransliteration} onChange={(v) => setRushConfig((p: any) => ({ ...p, showTransliteration: v }))} />
-              <span>Show Transliteration</span>
-            </label>
-          </div>
-
-          {/* Structured Thirukkural / Message List Editor */}
-          <div className="pt-3 border-t border-border space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-content">Thirukkural &amp; Waiting Messages ({(rushConfig.quotes || []).length})</span>
-              <button
-                type="button"
-                onClick={() =>
-                  setRushConfig((p: any) => ({
-                    ...p,
-                    quotes: [
-                      ...(p.quotes || []),
-                      {
-                        id: `k_${Date.now()}`,
-                        kural_number: 612,
-                        chapter_ta: 'ஆள்வினையுடைமை',
-                        chapter_en: 'Perseverance',
-                        line1_ta: '',
-                        line2_ta: '',
-                        meaning_ta: '',
-                        meaning_en: '',
-                        explanation_source: '',
-                      },
-                    ],
-                  }))
-                }
-                className="font-bold text-brand-600 hover:underline"
-              >
-                + Add Kural / Message
-              </button>
-            </div>
-            <div className="space-y-2 max-h-56 overflow-y-auto">
-              {(rushConfig.quotes || []).map((q: any, idx: number) => (
-                <div key={q.id || idx} className="p-2.5 rounded-xl bg-surface-soft border border-border text-xs space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold">
-                      #{idx + 1} {q.kural_number ? `குறள் ${q.kural_number}` : 'Message'}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {idx > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = [...rushConfig.quotes];
-                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                            setRushConfig((p: any) => ({ ...p, quotes: next }));
-                          }}
-                          className="text-[11px] font-semibold text-content-secondary"
-                        >
-                          Up
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setRushConfig((p: any) => ({
-                            ...p,
-                            quotes: p.quotes.filter((_: any, i: number) => i !== idx),
-                          }))
-                        }
-                        className="text-[11px] font-semibold text-rose-600"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    <input
-                      placeholder="Line 1 (Tamil)"
-                      maxLength={160}
-                      value={q.line1_ta || ''}
-                      onChange={(e) => {
-                        const next = [...rushConfig.quotes];
-                        next[idx] = { ...next[idx], line1_ta: e.target.value };
-                        setRushConfig((p: any) => ({ ...p, quotes: next }));
-                      }}
-                      className="px-2 py-1 rounded-lg border border-border bg-white"
-                    />
-                    <input
-                      placeholder="Line 2 (Tamil)"
-                      maxLength={160}
-                      value={q.line2_ta || ''}
-                      onChange={(e) => {
-                        const next = [...rushConfig.quotes];
-                        next[idx] = { ...next[idx], line2_ta: e.target.value };
-                        setRushConfig((p: any) => ({ ...p, quotes: next }));
-                      }}
-                      className="px-2 py-1 rounded-lg border border-border bg-white"
-                    />
-                    <input
-                      placeholder="Tamil Meaning (பொருள்)"
-                      maxLength={160}
-                      value={q.meaning_ta || ''}
-                      onChange={(e) => {
-                        const next = [...rushConfig.quotes];
-                        next[idx] = { ...next[idx], meaning_ta: e.target.value };
-                        setRushConfig((p: any) => ({ ...p, quotes: next }));
-                      }}
-                      className="px-2 py-1 rounded-lg border border-border bg-white"
-                    />
-                    <input
-                      placeholder="English Meaning"
-                      maxLength={160}
-                      value={q.meaning_en || ''}
-                      onChange={(e) => {
-                        const next = [...rushConfig.quotes];
-                        next[idx] = { ...next[idx], meaning_en: e.target.value };
-                        setRushConfig((p: any) => ({ ...p, quotes: next }));
-                      }}
-                      className="px-2 py-1 rounded-lg border border-border bg-white"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className="flex flex-wrap justify-between gap-2 pt-2 border-t border-border">

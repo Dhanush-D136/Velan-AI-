@@ -13,7 +13,6 @@ import {
   GradeScaleEntry,
 } from '../utils/gpaMath';
 import { notifyUsers } from './notificationController';
-import { canViewStudent } from '../utils/studentAccess';
 
 async function ensureDefaultGradingScale(regulation = '2021') {
   const existing = await prisma.gradingScale.findMany({ where: { regulation } });
@@ -208,8 +207,7 @@ export const getMyAcademics = async (req: Request, res: Response) => {
       cgpaMultiplier: multiplier,
       scales,
       creditLookups: lookups,
-      hasSavedBefore: student.academicSemesters.length > 0 && !!student.mentorConsentAcceptedAt,
-      needsMentorConsentReaccept: !student.mentorConsentAcceptedAt,
+      hasSavedBefore: student.academicSemesters.length > 0,
       ...summary,
     });
   } catch (err) {
@@ -235,15 +233,9 @@ export const saveMySemester = async (req: Request, res: Response) => {
 
     const { semesterNumber, regulation, sessionLabel, source, consentGiven, subjects } = parse.data;
 
-    if ((!student.mentorConsentAcceptedAt || student.academicSemesters.length === 0) && !consentGiven) {
+    if (student.academicSemesters.length === 0 && !consentGiven) {
       return res.status(400).json({
-        error: 'Please tick the consent notice before saving your results.',
-      });
-    }
-    if (consentGiven && !student.mentorConsentAcceptedAt) {
-      await prisma.studentProfile.update({
-        where: { id: student.id },
-        data: { mentorConsentAcceptedAt: new Date() },
+        error: 'Please tick the consent notice before saving your results for the first time.',
       });
     }
 
@@ -528,9 +520,15 @@ export const getStudentAcademicDetail = async (req: Request, res: Response) => {
     });
     if (!student) return res.status(404).json({ error: 'Student not found' });
 
-    const access = await canViewStudent(req.user!, studentId);
-    if (!access.allowed) {
-      return res.status(403).json({ error: 'Forbidden: you do not have access to this student' });
+    const role = req.user!.role;
+    if (role === 'STUDENT' && student.userId !== req.user!.id) {
+      return res.status(403).json({ error: 'Forbidden: you can only view your own academics' });
+    }
+    if (role === 'FACULTY') {
+      const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
+      if (!fac || student.class.advisorId !== fac.id) {
+        return res.status(403).json({ error: 'Forbidden: only the assigned class advisor can view this student' });
+      }
     }
 
     const multiplier = await getCgpaMultiplierValue();

@@ -94,14 +94,6 @@ npm test; npm run build:client
 - **Honesty & Fairness:** Deadlines are judged by server arrival time (`pressed_at`), invalid/out-of-range check-ins are rejected immediately, session close drains queued tickets before marking absentees, and students see a real countdown alongside **Thirukkural couplets with Tamil Porul**.
 - **Load Test:** Run `npm run load-test` to simulate 300 concurrent student arrivals and measure admission throughput and p95 latency.
 
-### 8. Phase 6: Mentor System & Access Matrix
-- **Admin Mentor Assignment:** Navigate to **Admin → Mentor Assignment** to select the class's mentors (Class Advisor locked + additional faculty), bulk-assign students (checkboxes, Shift-click range, select first N, roll-number range, drag-and-drop, Excel import/export), or **Auto-distribute evenly**.
-- **Access Matrix:**
-  - **Admin:** Full read/write across all classes, mentors, and students.
-  - **Class Advisor:** Sees all students in their advised class, mentor group averages, and private `mentor_notes`.
-  - **Mentor:** Sees full details and private `mentor_notes` **only** for their assigned mentees (`403` for non-mentees).
-  - **Student:** Views their assigned Mentor & Class Advisor in Settings; accepts the updated academics consent (`"visible to your class advisor, your mentor and the admin"`). Students can never view `mentor_notes`.
-
 Open your browser at **`http://localhost:5173`**.
 
 ---

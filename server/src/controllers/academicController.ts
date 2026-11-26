@@ -494,16 +494,9 @@ export const deleteFaculty = async (req: Request, res: Response) => {
       where: { id },
       include: {
         timetableSlots: { include: { class: true } },
-        mentees: true,
       },
     });
     if (!profile) return res.status(404).json({ error: 'Faculty not found' });
-
-    if (profile.mentees.length > 0) {
-      return res.status(409).json({
-        error: `Cannot delete faculty: still assigned as mentor to ${profile.mentees.length} student(s). Reassign mentees first.`,
-      });
-    }
 
     if (profile.timetableSlots.length > 0) {
       const assignedLocations = profile.timetableSlots
