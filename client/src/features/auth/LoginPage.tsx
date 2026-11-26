@@ -55,6 +55,8 @@ export const LoginPage: React.FC = () => {
   const [showDeviceLockBlocked, setShowDeviceLockBlocked] = useState(false);
   const [deviceRequestReason, setDeviceRequestReason] = useState('');
   const [deviceRequestSent, setDeviceRequestSent] = useState(false);
+  const [deviceResetId, setDeviceResetId] = useState('');
+  const [deviceLimitBanner, setDeviceLimitBanner] = useState('');
 
   const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
@@ -100,13 +102,17 @@ export const LoginPage: React.FC = () => {
         navigate('/student');
       }
     } catch (err: any) {
+      const serverCode = err.response?.data?.code;
       const serverError =
         err.response?.data?.error ||
         err.response?.data?.message ||
         err.message ||
         'Authentication failed. Please verify your credentials.';
 
-      if (serverError?.includes('DEVICE_LOCKED') || serverError?.includes('linked to another device')) {
+      if (serverCode === 'DEVICE_LIMIT_REACHED' || serverCode === 'DEVICE_LOCKED') {
+        setDeviceResetId(identifier.trim());
+        setDeviceLimitBanner(serverError);
+        setErrorMessage(serverError);
         setShowDeviceLockBlocked(true);
       } else {
         setErrorMessage(serverError);
@@ -171,19 +177,24 @@ export const LoginPage: React.FC = () => {
   };
 
   const handleDeviceChangeRequest = async () => {
-    if (!deviceRequestReason.trim()) return;
+    const idToSend = (deviceResetId || identifier).trim();
+    if (!idToSend) {
+      toast.error('Please enter your Register Number or Roll Number.');
+      return;
+    }
 
     try {
       await api.post('/auth/device-request', {
-        identifier: identifier.trim(),
+        identifier: idToSend,
+        registerNo: idToSend,
         newDeviceId: getDeviceId(),
-        reason: deviceRequestReason,
+        reason: deviceRequestReason.trim() || 'Device limit reached — requesting reset from login screen',
         platform: navigator.platform || 'Web',
       });
       setDeviceRequestSent(true);
-      toast.success('Device change request submitted to admin.');
+      toast.success('Device reset request submitted to admin.');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to submit device change request');
+      toast.error(err?.response?.data?.error || err.message || 'Failed to submit device reset request');
     }
   };
 
@@ -447,27 +458,36 @@ export const LoginPage: React.FC = () => {
       <Modal
         isOpen={showDeviceLockBlocked}
         onClose={() => setShowDeviceLockBlocked(false)}
-        title="Account Bound to Another Phone"
-        description="For collegiate GPS attendance security, accounts are bound to one registered phone."
+        title="2-Device Limit Reached"
+        description={
+          deviceLimitBanner ||
+          'This account is already signed in on 2 devices (phone and computer). To use a new device, send a request to the admin.'
+        }
       >
         {!deviceRequestSent ? (
           <div className="space-y-4">
             <p className="text-xs text-content-secondary leading-relaxed">
-              To transfer your attendance device, request administrator authorization stating your reason:
+              This account is already signed in on 2 devices (phone and computer). To use a new device, send a request to the admin.
             </p>
             <Input
-              label="Reason for Transfer"
+              label="Student ID / Register Number"
               required
+              value={deviceResetId}
+              onChange={(e) => setDeviceResetId(e.target.value)}
+              placeholder="e.g. 113024243032"
+            />
+            <Input
+              label="Optional Note / Reason"
               value={deviceRequestReason}
               onChange={(e) => setDeviceRequestReason(e.target.value)}
-              placeholder="e.g. New permanent phone, damaged screen repaired"
+              placeholder="e.g. Switched to a new phone"
             />
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button variant="secondary" size="sm" onClick={() => setShowDeviceLockBlocked(false)}>
                 Cancel
               </Button>
               <Button size="sm" onClick={handleDeviceChangeRequest}>
-                Submit Transfer Request
+                Request device reset
               </Button>
             </div>
           </div>

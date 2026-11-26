@@ -155,6 +155,8 @@ model FacultyProfile {
   departmentId   String
   department     Department     @relation(fields: [departmentId], references: [id])
   designation    String         // Professor, Associate Professor, Assistant Professor
+  qualification  String?
+  bio            String?
   joinedAt       DateTime       @default(now())
 
   advisedClasses Class[]        @relation("ClassAdvisor")
@@ -194,6 +196,7 @@ model StudentProfile {
   submissions         Submission[]
   marks               Mark[]
   profileEditRequests ProfileEditRequest[]
+  academicSemesters   AcademicSemester[]
 
   @@unique([classId, rollNo])
   @@index([classId])
@@ -643,4 +646,87 @@ model Payment {
   transactionId String   @unique
   method        String   // UPI, NETBANKING, CARD
   paidAt        DateTime @default(now())
+}
+
+// ==========================================
+// PHASE 3: SKIP CALCULATOR & ACADEMICS / CGPA
+// ==========================================
+
+model SemesterDate {
+  id             String   @id @default(uuid())
+  label          String   // e.g. "Even Semester 2026"
+  startDate      DateTime
+  endDate        DateTime
+  departmentId   String?
+  academicYearId String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model GradingScale {
+  id         String  @id @default(uuid())
+  regulation String  @default("2021")
+  grade      String  // O, A+, A, B+, B, C, RA, WH, WD, AB
+  points     Float
+  isPass     Boolean @default(true)
+  isArrear   Boolean @default(false)
+  label      String?
+
+  @@unique([regulation, grade])
+  @@index([regulation])
+}
+
+model SubjectCreditLookup {
+  id          String   @id @default(uuid())
+  subjectCode String   @unique
+  subjectName String?
+  credits     Float
+  regulation  String   @default("2021")
+  updatedAt   DateTime @updatedAt
+}
+
+model AcademicSemester {
+  id               String            @id @default(uuid())
+  studentId        String
+  student          StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  semesterNumber   Int
+  regulation       String            @default("2021")
+  sessionLabel     String?
+  gpa              Float             @default(0)
+  totalCredits     Float             @default(0)
+  totalGradePoints Float             @default(0)
+  source           String            @default("MANUAL")
+  editedByAdmin    Boolean           @default(false)
+  consentGivenAt   DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  subjects         AcademicSubject[]
+
+  @@unique([studentId, semesterNumber])
+  @@index([studentId])
+}
+
+model AcademicSubject {
+  id                 String           @id @default(uuid())
+  academicSemesterId String
+  academicSemester   AcademicSemester @relation(fields: [academicSemesterId], references: [id], onDelete: Cascade)
+  subjectCode        String
+  subjectName        String
+  credits            Float
+  grade              String
+  gradePoint         Float
+  result             String           @default("PASS")
+  isArrear           Boolean          @default(false)
+  isNonCredit        Boolean          @default(false)
+  isCleared          Boolean          @default(true)
+  editedByAdmin      Boolean          @default(false)
+  attemptHistory     String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([academicSemesterId, subjectCode])
+  @@index([academicSemesterId])
+  @@index([subjectCode])
 }

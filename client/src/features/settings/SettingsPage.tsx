@@ -29,8 +29,23 @@ const REQUEST_TYPES = [
 ];
 
 export const SettingsPage: React.FC = () => {
-  const { user, deviceId } = useAuthStore();
+  const { user, deviceId, setUser } = useAuthStore();
   const { showToast } = useToast();
+
+  // Profile Editor (C2)
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || '',
+    phone: user?.phone || user?.studentProfile?.phone || '',
+    email: user?.email || '',
+    avatarUrl: user?.avatarUrl || '',
+    departmentId: user?.facultyProfile?.departmentId || '',
+    designation: user?.facultyProfile?.designation || '',
+    qualification: (user?.facultyProfile as any)?.qualification || '',
+    bio: (user?.facultyProfile as any)?.bio || '',
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
 
   // Institution settings (Admin)
   const [institutionName, setInstitutionName] = useState('');
@@ -70,13 +85,15 @@ export const SettingsPage: React.FC = () => {
         api.get('/api/settings'),
         api.get('/api/auth/devices'),
         api.get('/api/notifications/preferences'),
+        api.get('/api/academics/departments').catch(() => ({ data: { departments: [] } })),
       ];
       if (user?.role === 'STUDENT') {
         reqs.push(api.get('/api/requests/my'));
       }
-      const [settingsRes, devRes, prefRes, myReqRes] = await Promise.all(reqs);
+      const [settingsRes, devRes, prefRes, deptRes, myReqRes] = await Promise.all(reqs);
       setInstitutionName(settingsRes.data?.settings?.INSTITUTION_NAME || '');
       setDevices(devRes.data?.devices || []);
+      setDepartments(deptRes?.data?.departments || []);
       if (prefRes.data?.preferences) {
         setPrefs((prev) => ({ ...prev, ...prefRes.data.preferences }));
       }
@@ -93,6 +110,38 @@ export const SettingsPage: React.FC = () => {
   }, [loadAll]);
 
   useRealtimeSync(['notification:new', 'data:updated'], loadAll, { userId: user?.id });
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileError('');
+    setIsSavingProfile(true);
+    try {
+      const payload =
+        user?.role === 'STUDENT'
+          ? { phone: profileForm.phone.trim() || null, avatarUrl: profileForm.avatarUrl.trim() || null }
+          : {
+              name: profileForm.name.trim(),
+              phone: profileForm.phone.trim() || null,
+              email: profileForm.email.trim() || null,
+              avatarUrl: profileForm.avatarUrl.trim() || null,
+              departmentId: profileForm.departmentId || undefined,
+              designation: profileForm.designation.trim() || undefined,
+              qualification: profileForm.qualification.trim() || null,
+              bio: profileForm.bio.trim() || null,
+            };
+      const res = await api.put('/api/auth/profile', payload);
+      if (res.data?.user) {
+        setUser(res.data.user);
+      }
+      showToast('Profile saved and synced!', 'success');
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err.message || 'Failed to save profile';
+      setProfileError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const handleSaveInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,7 +239,7 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
         {user?.studentProfile && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-4">
             <div className="p-3 rounded-xl bg-surface-soft border border-border">
               <span className="text-content-muted block text-[11px]">Roll No</span>
               <span className="font-mono font-bold text-content">{user.studentProfile.rollNo}</span>
@@ -209,6 +258,99 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        <form onSubmit={handleSaveProfile} className="space-y-3 pt-3 border-t border-border">
+          {user?.role === 'STUDENT' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Phone Number"
+                value={profileForm.phone}
+                onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))}
+                placeholder="+91 9876543210"
+              />
+              <Input
+                label="Avatar URL (Optional)"
+                value={profileForm.avatarUrl}
+                onChange={(e) => setProfileForm((p) => ({ ...p, avatarUrl: e.target.value }))}
+                placeholder="https://..."
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Full Name"
+                required
+                value={profileForm.name}
+                onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
+              />
+              <Input
+                label="Email Address"
+                type="email"
+                value={profileForm.email}
+                onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))}
+              />
+              <Input
+                label="Phone Number"
+                value={profileForm.phone}
+                onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))}
+              />
+              {user?.role === 'FACULTY' && (
+                <>
+                  <div>
+                    <label className="text-xs font-bold text-content-secondary uppercase block mb-1">Department</label>
+                    <select
+                      value={profileForm.departmentId}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, departmentId: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-2xl border border-border text-sm bg-white"
+                    >
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.id}>{d.code} — {d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <Input
+                    label="Designation"
+                    value={profileForm.designation}
+                    onChange={(e) => setProfileForm((p) => ({ ...p, designation: e.target.value }))}
+                  />
+                  <Input
+                    label="Qualification"
+                    value={profileForm.qualification}
+                    onChange={(e) => setProfileForm((p) => ({ ...p, qualification: e.target.value }))}
+                    placeholder="e.g. M.E., Ph.D."
+                  />
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-bold text-content-secondary uppercase block mb-1">Bio</label>
+                    <textarea
+                      rows={2}
+                      value={profileForm.bio}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, bio: e.target.value }))}
+                      placeholder="Short academic bio..."
+                      className="w-full px-3 py-2 rounded-2xl border border-border text-xs"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {profileError && (
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+              {profileError}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-content-muted">
+              {user?.role === 'STUDENT'
+                ? 'Name, Roll/Register No, and Class changes require an Admin Request below.'
+                : user?.facultyProfile?.employeeId
+                  ? `Faculty ID: ${user.facultyProfile.employeeId} (Admin-managed)`
+                  : ''}
+            </span>
+            <Button type="submit" size="sm" isLoading={isSavingProfile} leftIcon={<Save className="w-3.5 h-3.5" />}>
+              Save Profile
+            </Button>
+          </div>
+        </form>
       </Card>
 
       {/* Institution Name Configuration (Admin only) */}

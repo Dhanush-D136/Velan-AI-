@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { authenticateToken, requireRole } from '../middleware/auth';
 
 const upload = multer({
@@ -16,6 +17,14 @@ import * as expCtrl from '../controllers/exportController';
 import * as notifCtrl from '../controllers/notificationController';
 import * as resCtrl from '../controllers/resourceController';
 import * as reqCtrl from '../controllers/requestController';
+import * as skipCtrl from '../controllers/skipController';
+import * as acadRecCtrl from '../controllers/academicsRecordController';
+
+const deviceRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  message: { error: 'Too many device reset requests. Please try again later.' },
+});
 
 export const apiRouter = Router();
 
@@ -25,8 +34,9 @@ export const apiRouter = Router();
 apiRouter.post('/auth/login', authCtrl.login);
 apiRouter.post('/auth/change-password', authenticateToken, authCtrl.changePassword);
 apiRouter.post('/auth/forgot-password', authCtrl.requestPasswordReset);
-apiRouter.post('/auth/device-request', authCtrl.requestDeviceChange);
+apiRouter.post('/auth/device-request', deviceRequestLimiter, authCtrl.requestDeviceChange);
 apiRouter.get('/auth/me', authenticateToken, authCtrl.getCurrentUser);
+apiRouter.put('/auth/profile', authenticateToken, authCtrl.updateMyProfile);
 apiRouter.get('/auth/devices', authenticateToken, authCtrl.getMyDevices);
 apiRouter.post('/auth/logout', authCtrl.logout);
 
@@ -140,6 +150,7 @@ apiRouter.get('/export/session/:sessionId', authenticateToken, requireRole('ADMI
 
 // Assignments & Material Library
 apiRouter.get('/assignments', authenticateToken, resCtrl.getAssignments);
+apiRouter.get('/assignments/teaching-pairs', authenticateToken, requireRole('FACULTY'), resCtrl.getMyTeachingPairs);
 apiRouter.post('/assignments', authenticateToken, requireRole('FACULTY'), resCtrl.createAssignment);
 apiRouter.put('/assignments/:id', authenticateToken, requireRole('FACULTY'), resCtrl.updateAssignment);
 apiRouter.delete('/assignments/:id', authenticateToken, requireRole('FACULTY'), resCtrl.deleteAssignment);
@@ -162,3 +173,38 @@ apiRouter.get('/notifications', authenticateToken, notifCtrl.getMyNotifications)
 apiRouter.post('/notifications/read', authenticateToken, notifCtrl.markNotificationsRead);
 apiRouter.get('/notifications/preferences', authenticateToken, notifCtrl.getMyPreferences);
 apiRouter.put('/notifications/preferences', authenticateToken, notifCtrl.updateMyPreferences);
+
+// ==========================================
+// PHASE 3: SKIP CALCULATOR, HOLIDAYS & SEMESTER DATES
+// ==========================================
+apiRouter.get('/skip/overview', authenticateToken, requireRole('STUDENT'), skipCtrl.getSkipOverview);
+apiRouter.get('/skip/semester-dates', authenticateToken, skipCtrl.getSemesterDates);
+apiRouter.post('/skip/semester-dates', authenticateToken, requireRole('ADMIN'), skipCtrl.upsertSemesterDate);
+apiRouter.put('/skip/semester-dates/:id', authenticateToken, requireRole('ADMIN'), skipCtrl.upsertSemesterDate);
+apiRouter.delete('/skip/semester-dates/:id', authenticateToken, requireRole('ADMIN'), skipCtrl.deleteSemesterDate);
+apiRouter.get('/skip/holidays', authenticateToken, skipCtrl.getHolidays);
+apiRouter.post('/skip/holidays', authenticateToken, requireRole('ADMIN'), skipCtrl.createHoliday);
+apiRouter.delete('/skip/holidays/:id', authenticateToken, requireRole('ADMIN'), skipCtrl.deleteHoliday);
+apiRouter.put('/skip/thresholds', authenticateToken, requireRole('ADMIN'), skipCtrl.updateThresholds);
+
+// ==========================================
+// PHASE 3: ACADEMICS, GPA / CGPA & GRADING SCALE
+// ==========================================
+apiRouter.get('/academics-records/grading-scales', authenticateToken, acadRecCtrl.getGradingScales);
+apiRouter.post('/academics-records/grading-scales', authenticateToken, requireRole('ADMIN'), acadRecCtrl.upsertGradingScale);
+apiRouter.put('/academics-records/cgpa-multiplier', authenticateToken, requireRole('ADMIN'), acadRecCtrl.updateCgpaMultiplier);
+apiRouter.get('/academics-records/credit-lookup', authenticateToken, acadRecCtrl.getCreditLookups);
+apiRouter.post('/academics-records/credit-lookup', authenticateToken, requireRole('ADMIN'), acadRecCtrl.upsertCreditLookup);
+apiRouter.delete('/academics-records/credit-lookup/:id', authenticateToken, requireRole('ADMIN'), acadRecCtrl.deleteCreditLookup);
+
+apiRouter.get('/academics-records/my', authenticateToken, requireRole('STUDENT'), acadRecCtrl.getMyAcademics);
+apiRouter.post('/academics-records/my/semester', authenticateToken, requireRole('STUDENT'), acadRecCtrl.saveMySemester);
+apiRouter.delete('/academics-records/my/semester/:id', authenticateToken, requireRole('STUDENT'), acadRecCtrl.deleteMySemester);
+
+apiRouter.get('/academics-records/advisees', authenticateToken, requireRole('FACULTY'), acadRecCtrl.getAdviseeAcademics);
+apiRouter.get('/academics-records/admin', authenticateToken, requireRole('ADMIN'), acadRecCtrl.getAdminAcademics);
+apiRouter.get('/academics-records/student/:studentId', authenticateToken, acadRecCtrl.getStudentAcademicDetail);
+apiRouter.post('/academics-records/student/:studentId/semester', authenticateToken, requireRole('ADMIN'), acadRecCtrl.adminSaveStudentSemester);
+
+apiRouter.get('/academics-records/export/excel', authenticateToken, requireRole('FACULTY', 'ADMIN'), acadRecCtrl.exportAcademicsExcel);
+apiRouter.get('/academics-records/export/pdf', authenticateToken, requireRole('FACULTY', 'ADMIN'), acadRecCtrl.exportAcademicsPdf);

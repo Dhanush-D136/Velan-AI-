@@ -9,7 +9,9 @@ import {
   deviceChangeRequestSchema,
   completeProfileSchema,
   requestProfileEditSchema,
+  profileUpdateSchema,
 } from '@velan/shared';
+import { notifyUsers } from './notificationController';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'velan_jwt_secret_dev_2026';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'velan_refresh_secret_dev_2026';
@@ -96,11 +98,9 @@ export const login = async (req: Request, res: Response) => {
         const sameSlotTaken = activeDevices.find((d) => d.deviceType === deviceType);
         if (activeDevices.length >= 2 || sameSlotTaken) {
           return res.status(403).json({
-            code: 'DEVICE_LOCKED',
+            code: 'DEVICE_LIMIT_REACHED',
             error:
-              activeDevices.length >= 2
-                ? 'This account is already registered on 2 devices. Send a request to admin to reset your devices.'
-                : `This account already has a ${deviceType.toLowerCase()} registered. Send a request to admin to reset your devices.`,
+              'This account is already signed in on 2 devices (phone and computer). To use a new device, send a request to the admin.',
             boundDeviceId: sameSlotTaken?.deviceId || activeDevices[0]?.deviceId,
           });
         }
@@ -383,10 +383,16 @@ export const requestProfileEdit = async (req: Request, res: Response) => {
   }
 };
 
-// Device Change Request
+// Device Change Request (works without login)
 export const requestDeviceChange = async (req: Request, res: Response) => {
   try {
-    const parseResult = deviceChangeRequestSchema.safeParse(req.body);
+    const body = {
+      ...req.body,
+      identifier: req.body.identifier || req.body.registerNo || req.body.studentId || '',
+      newDeviceId: req.body.newDeviceId || String(req.headers['x-device-id'] || 'web_device'),
+      reason: req.body.reason || req.body.note || 'Device reset requested from login screen',
+    };
+    const parseResult = deviceChangeRequestSchema.safeParse(body);
     if (!parseResult.success) {
       return res.status(400).json({ error: parseResult.error.errors[0].message });
     }
@@ -408,7 +414,7 @@ export const requestDeviceChange = async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: 'Student or user account not found for that ID / Register Number.' });
     }
 
     const activeDevice = user.devices.find((d) => d.status === 'ACTIVE');
@@ -426,12 +432,128 @@ export const requestDeviceChange = async (req: Request, res: Response) => {
       },
     });
 
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'DEVICE_RESET_REQUESTED',
+        details: JSON.stringify({ identifier: cleanId, newDeviceId, reason }),
+      },
+    });
+
+    const io = req.app.get('io');
+    if (io) io.emit('data:updated', { resource: 'requests' });
+
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+    await notifyUsers(io, admins.map((a) => a.id), {
+      title: 'Device Reset Requested',
+      message: `${user.name} (${cleanId}) requested a device limit reset: ${reason}`,
+      type: 'REQUEST',
+      link: '/admin/requests',
+    });
+
     return res.json({
       message: 'Device change request submitted to admin for review',
       requestId: changeRequest.id,
     });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to process device change request' });
+  }
+};
+
+// Update My Profile (C2: Student safe fields; Faculty profile fields)
+export const updateMyProfile = async (req: Request, res: Response) => {
+  try {
+    const parse = profileUpdateSchema.safeParse(req.body);
+    if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
+
+    const userId = req.user!.id;
+    const role = req.user!.role;
+    const { name, phone, email, avatarUrl, departmentId, designation, qualification, bio } = parse.data;
+
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      const existing = await prisma.user.findFirst({
+        where: { email: cleanEmail, NOT: { id: userId } },
+      });
+      if (existing) {
+        return res.status(409).json({ error: 'This email address is already in use by another account.' });
+      }
+    }
+
+    if (role === 'STUDENT') {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            ...(phone !== undefined ? { phone: phone || null } : {}),
+            ...(avatarUrl !== undefined ? { avatarUrl: avatarUrl || null } : {}),
+          },
+        });
+        await tx.studentProfile.update({
+          where: { userId },
+          data: {
+            ...(phone !== undefined ? { phone: phone || null } : {}),
+          },
+        });
+      });
+    } else if (role === 'FACULTY') {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            ...(name ? { name: name.trim() } : {}),
+            ...(phone !== undefined ? { phone: phone || null } : {}),
+            ...(email !== undefined ? { email: email ? email.trim().toLowerCase() : null } : {}),
+            ...(avatarUrl !== undefined ? { avatarUrl: avatarUrl || null } : {}),
+          },
+        });
+        await tx.facultyProfile.update({
+          where: { userId },
+          data: {
+            ...(departmentId ? { departmentId } : {}),
+            ...(designation ? { designation: designation.trim() } : {}),
+            ...(qualification !== undefined ? { qualification: qualification || null } : {}),
+            ...(bio !== undefined ? { bio: bio || null } : {}),
+          },
+        });
+      });
+    } else {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...(name ? { name: name.trim() } : {}),
+          ...(phone !== undefined ? { phone: phone || null } : {}),
+          ...(email !== undefined ? { email: email ? email.trim().toLowerCase() : null } : {}),
+          ...(avatarUrl !== undefined ? { avatarUrl: avatarUrl || null } : {}),
+        },
+      });
+    }
+
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        facultyProfile: { include: { department: true } },
+        studentProfile: {
+          include: {
+            class: {
+              include: {
+                academicYear: { include: { department: true } },
+                advisor: { include: { user: true } },
+              },
+            },
+          },
+        },
+        devices: { where: { status: 'ACTIVE' } },
+      },
+    });
+
+    const io = req.app.get('io');
+    if (io) io.emit('data:updated', { resource: 'profile', userId });
+
+    return res.json({ message: 'Profile updated successfully', user: updatedUser });
+  } catch (err: any) {
+    console.error('updateMyProfile error:', err);
+    return res.status(500).json({ error: 'Failed to update profile' });
   }
 };
 

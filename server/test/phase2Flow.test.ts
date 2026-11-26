@@ -164,7 +164,7 @@ describe('Phase 2 Features End-to-End Flow', () => {
       .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile')
       .send({ identifier: reg1, password: '1234', deviceId: `st1_phone2_${runId}` });
     expect(thirdLogin.status).toBe(403);
-    expect(thirdLogin.body.error).toContain('already registered on 2 devices');
+    expect(thirdLogin.body.error).toContain('already signed in on 2 devices');
 
     const devList = await request(app)
       .get(`/api/academics/students/${student1Id}/devices`)

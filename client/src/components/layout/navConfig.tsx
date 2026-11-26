@@ -15,6 +15,7 @@ import {
   FolderOpen,
   Award,
   History,
+  Calculator,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -34,6 +35,7 @@ export const getRoleNavItems = (role?: UserRole): NavItem[] => {
         { to: '/admin/faculty', label: 'Faculty Directory', icon: <Users className="w-5 h-5" /> },
         { to: '/admin/students', label: 'Students Directory', icon: <GraduationCap className="w-5 h-5" /> },
         { to: '/admin/academics', label: 'Classes & Subjects', icon: <BookOpen className="w-5 h-5" /> },
+        { to: '/admin/academics-records', label: 'Academics & Grading', icon: <Award className="w-5 h-5" /> },
         { to: '/admin/requests', label: 'Requests & Approvals', icon: <ClipboardList className="w-5 h-5" /> },
         { to: '/admin/reports', label: 'Reports & Excel', icon: <FileSpreadsheet className="w-5 h-5" /> },
         { to: '/chat', label: 'Class Chat', icon: <MessageSquare className="w-5 h-5" /> },
@@ -47,6 +49,7 @@ export const getRoleNavItems = (role?: UserRole): NavItem[] => {
         { to: '/faculty/history', label: 'Saved & Past Attendance', icon: <History className="w-5 h-5" /> },
         { to: '/faculty/timetable', label: 'My Timetable', icon: <CalendarDays className="w-5 h-5" /> },
         { to: '/faculty/classes', label: 'My Classes', icon: <GraduationCap className="w-5 h-5" /> },
+        { to: '/faculty/advisees', label: 'My Advisees / Academics', icon: <Award className="w-5 h-5" /> },
         { to: '/faculty/assignments', label: 'Assignments', icon: <ClipboardList className="w-5 h-5" /> },
         { to: '/faculty/marks', label: 'Marks & Internal', icon: <Award className="w-5 h-5" /> },
         { to: '/faculty/materials', label: 'Study Materials', icon: <FolderOpen className="w-5 h-5" /> },
@@ -59,6 +62,7 @@ export const getRoleNavItems = (role?: UserRole): NavItem[] => {
         { to: '/student', label: 'Home Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
         { to: '/student/mark-attendance', label: 'Mark GPS Attendance', icon: <CalendarCheck2 className="w-5 h-5" /> },
         { to: '/student/attendance', label: 'Attendance History', icon: <History className="w-5 h-5" /> },
+        { to: '/student/skip-calculator', label: 'Can I Skip?', icon: <Calculator className="w-5 h-5" /> },
         { to: '/student/timetable', label: 'Class Timetable', icon: <CalendarDays className="w-5 h-5" /> },
         { to: '/student/academics', label: 'Academics & CGPA', icon: <Award className="w-5 h-5" /> },
         { to: '/student/assignments', label: 'Assignments', icon: <ClipboardList className="w-5 h-5" /> },

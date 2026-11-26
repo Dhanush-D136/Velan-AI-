@@ -74,10 +74,64 @@ export const getAssignments = async (req: Request, res: Response) => {
       orderBy: { dueDate: 'asc' },
     });
 
-    return res.json({ assignments });
+    const formatted = assignments.map((a) => ({
+      ...a,
+      classId: a.classSubject.classId,
+      subjectId: a.classSubject.subjectId,
+      class: a.classSubject.class,
+      subject: a.classSubject.subject,
+      faculty: a.classSubject.faculty,
+    }));
+
+    return res.json({ assignments: formatted });
   } catch (error: any) {
     console.error('getAssignments error:', error);
     return res.status(500).json({ error: 'Failed to load assignments' });
+  }
+};
+
+export const getMyTeachingPairs = async (req: Request, res: Response) => {
+  try {
+    const faculty = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
+    if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
+
+    const [classSubjects, slots] = await Promise.all([
+      prisma.classSubject.findMany({
+        where: { facultyId: faculty.id },
+        include: { class: true, subject: true },
+      }),
+      prisma.timetableSlot.findMany({
+        where: { facultyId: faculty.id },
+        include: { class: true, classSubject: { include: { subject: true } } },
+      }),
+    ]);
+
+    const pairMap = new Map<string, any>();
+    for (const cs of classSubjects) {
+      pairMap.set(`${cs.classId}_${cs.subjectId}`, {
+        classId: cs.classId,
+        className: cs.class.name,
+        subjectId: cs.subjectId,
+        subjectName: cs.subject.name,
+        subjectCode: cs.subject.code,
+      });
+    }
+    for (const s of slots) {
+      const key = `${s.classId}_${s.classSubject.subjectId}`;
+      if (!pairMap.has(key)) {
+        pairMap.set(key, {
+          classId: s.classId,
+          className: s.class.name,
+          subjectId: s.classSubject.subjectId,
+          subjectName: s.classSubject.subject.name,
+          subjectCode: s.classSubject.subject.code,
+        });
+      }
+    }
+
+    return res.json({ pairs: Array.from(pairMap.values()) });
+  } catch {
+    return res.status(500).json({ error: 'Failed to load teaching assignments' });
   }
 };
 
@@ -94,13 +148,14 @@ export const createAssignment = async (req: Request, res: Response) => {
       data: {
         classSubjectId: auth.classSubject.id,
         title: title.trim(),
-        description: description.trim(),
+        description: (description || '').trim(),
         startDate: new Date(startDate),
         dueDate: new Date(dueDate),
         submissionDate: submissionDate ? new Date(submissionDate) : null,
-        links: {
-          create: links.map((l) => ({ title: l.title.trim(), url: l.url.trim() })),
-        },
+        links:
+          links && links.length > 0
+            ? { create: links.map((l) => ({ title: l.title.trim(), url: l.url.trim() })) }
+            : undefined,
       },
       include: {
         links: true,

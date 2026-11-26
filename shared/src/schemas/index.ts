@@ -185,11 +185,11 @@ export const assignmentCreateSchema = z
     classId: z.string().min(1, 'Class is required'),
     subjectId: z.string().min(1, 'Subject is required'),
     title: z.string().min(2, 'Assignment title is required'),
-    description: z.string().min(2, 'Description is required'),
+    description: z.string().optional().default(''),
     startDate: z.string().min(1, 'Start date is required'),
     dueDate: z.string().min(1, 'Due date is required'),
     submissionDate: z.string().optional().nullable(),
-    links: z.array(resourceLinkSchema).min(1, 'At least one resource link is required'),
+    links: z.array(resourceLinkSchema).optional().default([]),
   })
   .refine((d) => new Date(d.startDate).getTime() <= new Date(d.dueDate).getTime(), {
     message: 'Start date must be on or before Due date',
@@ -243,4 +243,64 @@ export const chatMessageSchema = z.object({
   attachmentUrl: z.string().optional(),
   attachmentName: z.string().optional(),
   replyToId: z.string().optional(),
+});
+
+// Phase 3 Schemas
+export const profileUpdateSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  phone: z.string().optional().nullable(),
+  email: z.string().email('Invalid email address').optional().nullable(),
+  avatarUrl: z.string().optional().nullable(),
+  departmentId: z.string().optional(),
+  designation: z.string().optional(),
+  qualification: z.string().optional().nullable(),
+  bio: z.string().optional().nullable(),
+});
+
+export const semesterDateSchema = z.object({
+  label: z.string().min(2, 'Label is required'),
+  startDate: z.string().min(1, 'Start date is required'),
+  endDate: z.string().min(1, 'End date is required'),
+  departmentId: z.string().optional().nullable(),
+  academicYearId: z.string().optional().nullable(),
+  isActive: z.boolean().optional().default(true),
+});
+
+export const holidaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+  name: z.string().min(2, 'Holiday name is required'),
+  departmentId: z.string().optional().nullable(),
+});
+
+export const gradingScaleItemSchema = z.object({
+  regulation: z.string().min(1).default('2021'),
+  grade: z.string().min(1),
+  points: z.number().min(0).max(10),
+  isPass: z.boolean().default(true),
+  isArrear: z.boolean().default(false),
+  label: z.string().optional().nullable(),
+});
+
+export const creditLookupSchema = z.object({
+  subjectCode: z.string().min(2).toUpperCase(),
+  subjectName: z.string().optional().nullable(),
+  credits: z.number().min(0).max(20),
+  regulation: z.string().default('2021'),
+});
+
+export const academicSubjectInputSchema = z.object({
+  subjectCode: z.string().min(2, 'Subject code is required').toUpperCase(),
+  subjectName: z.string().min(1, 'Subject name is required'),
+  credits: z.number().min(0).max(20),
+  grade: z.string().min(1, 'Grade is required'),
+  result: z.string().optional().default('PASS'),
+});
+
+export const academicSemesterSaveSchema = z.object({
+  semesterNumber: z.number().int().min(1).max(12),
+  regulation: z.string().min(1).default('2021'),
+  sessionLabel: z.string().optional().nullable(),
+  source: z.enum(['PDF', 'OCR', 'MANUAL', 'ADMIN']).default('MANUAL'),
+  consentGiven: z.boolean().optional().default(false),
+  subjects: z.array(academicSubjectInputSchema).min(1, 'At least one subject is required'),
 });

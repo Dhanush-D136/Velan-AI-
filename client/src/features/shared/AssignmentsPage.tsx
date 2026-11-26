@@ -74,31 +74,19 @@ export const AssignmentsPage: React.FC = () => {
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 16));
   const [dueDate, setDueDate] = useState(() => new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16));
   const [submissionDate, setSubmissionDate] = useState(() => new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 16));
-  const [links, setLinks] = useState<{ title: string; url: string }[]>([{ title: 'Assignment Sheet', url: '' }]);
+  const [links, setLinks] = useState<{ title: string; url: string }[]>([]);
+  const [formError, setFormError] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
       const reqs: Promise<any>[] = [api.get('/api/assignments')];
       if (isFaculty) {
-        reqs.push(api.get('/api/timetable/my-faculty'));
+        reqs.push(api.get('/api/assignments/teaching-pairs'));
       }
-      const [aRes, ttRes] = await Promise.all(reqs);
+      const [aRes, pairsRes] = await Promise.all(reqs);
       setAssignments(aRes.data?.assignments || []);
-      if (ttRes?.data?.slots) {
-        const pairMap = new Map<string, any>();
-        for (const s of ttRes.data.slots) {
-          const key = `${s.classId}_${s.classSubject?.subjectId}`;
-          if (!pairMap.has(key) && s.class && s.classSubject?.subject) {
-            pairMap.set(key, {
-              classId: s.classId,
-              className: s.class.name,
-              subjectId: s.classSubject.subjectId,
-              subjectName: s.classSubject.subject.name,
-              subjectCode: s.classSubject.subject.code,
-            });
-          }
-        }
-        const pairs = Array.from(pairMap.values());
+      if (pairsRes?.data?.pairs) {
+        const pairs = pairsRes.data.pairs;
         setTeachingPairs(pairs);
         if (pairs.length > 0 && !formClassId) {
           setFormClassId(pairs[0].classId);
@@ -124,12 +112,13 @@ export const AssignmentsPage: React.FC = () => {
 
   const openCreateModal = () => {
     setEditingId(null);
+    setFormError('');
     setTitle('');
     setDescription('');
     setStartDate(new Date().toISOString().slice(0, 16));
     setDueDate(new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16));
     setSubmissionDate(new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 16));
-    setLinks([{ title: 'Assignment Resource', url: '' }]);
+    setLinks([]);
     if (teachingPairs.length > 0) {
       setFormClassId(teachingPairs[0].classId);
       setFormSubjectId(teachingPairs[0].subjectId);
@@ -139,8 +128,9 @@ export const AssignmentsPage: React.FC = () => {
 
   const openEditModal = (a: any) => {
     setEditingId(a.id);
-    setFormClassId(a.classId);
-    setFormSubjectId(a.subjectId);
+    setFormError('');
+    setFormClassId(a.classId || a.classSubject?.classId);
+    setFormSubjectId(a.subjectId || a.classSubject?.subjectId);
     setTitle(a.title);
     setDescription(a.description || '');
     setStartDate(new Date(a.startDate || a.createdAt).toISOString().slice(0, 16));
@@ -149,29 +139,38 @@ export const AssignmentsPage: React.FC = () => {
     setLinks(
       a.links?.length > 0
         ? a.links.map((l: any) => ({ title: l.title, url: l.url }))
-        : [{ title: 'Assignment Resource', url: '' }]
+        : []
     );
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     if (!formClassId || !formSubjectId) {
-      return showToast('Select a class and subject you teach', 'error');
+      const msg = 'Select a class and subject you teach';
+      setFormError(msg);
+      return showToast(msg, 'error');
+    }
+    if (title.trim().length < 2) {
+      const msg = 'Assignment title must be at least 2 characters';
+      setFormError(msg);
+      return showToast(msg, 'error');
     }
     const sTime = new Date(startDate).getTime();
     const dTime = new Date(dueDate).getTime();
     const cTime = new Date(submissionDate).getTime();
     if (sTime > dTime || dTime > cTime) {
-      return showToast('Dates must satisfy: Start Date ≤ Due Date ≤ Submission Cutoff', 'error');
+      const msg = 'Dates must satisfy: Start Date ≤ Due Date ≤ Submission Cutoff';
+      setFormError(msg);
+      return showToast(msg, 'error');
     }
     const cleanLinks = links.filter((l) => l.url.trim());
-    if (cleanLinks.length === 0) {
-      return showToast('Add at least one valid http/https resource link', 'error');
-    }
     for (const l of cleanLinks) {
       if (!/^https?:\/\//i.test(l.url.trim())) {
-        return showToast('Resource URLs must start with http:// or https://', 'error');
+        const msg = 'Resource URLs must start with http:// or https://';
+        setFormError(msg);
+        return showToast(msg, 'error');
       }
     }
 
@@ -197,7 +196,9 @@ export const AssignmentsPage: React.FC = () => {
       setIsModalOpen(false);
       fetchData();
     } catch (err: any) {
-      showToast(err?.response?.data?.error || err.message || 'Failed to save assignment', 'error');
+      const msg = err?.response?.data?.error || err.message || 'Failed to save assignment';
+      setFormError(msg);
+      showToast(msg, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -464,7 +465,7 @@ export const AssignmentsPage: React.FC = () => {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-content-secondary uppercase">Resource Links (http/https) *</label>
+              <label className="text-xs font-bold text-content-secondary uppercase">Resource Links (Optional, http/https)</label>
               <button
                 type="button"
                 onClick={() => setLinks((prev) => [...prev, { title: '', url: '' }])}
@@ -488,7 +489,6 @@ export const AssignmentsPage: React.FC = () => {
                 />
                 <input
                   type="url"
-                  required
                   placeholder="https://drive.google.com/..."
                   value={l.url}
                   onChange={(e) => {
@@ -498,18 +498,22 @@ export const AssignmentsPage: React.FC = () => {
                   }}
                   className="sm:col-span-7 px-3 py-2 rounded-xl border border-border text-xs"
                 />
-                {links.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setLinks((prev) => prev.filter((_, i) => i !== idx))}
-                    className="sm:col-span-1 p-2 text-rose-500 hover:bg-rose-50 rounded-xl"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setLinks((prev) => prev.filter((_, i) => i !== idx))}
+                  className="sm:col-span-1 p-2 text-rose-500 hover:bg-rose-50 rounded-xl"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>
+
+          {formError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+              {formError}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>

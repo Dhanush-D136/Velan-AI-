@@ -41,18 +41,21 @@ export const StudentDashboard: React.FC = () => {
     subjectBreakdown: [],
   });
   const [weeklyTimetable, setWeeklyTimetable] = useState<any[]>([]);
+  const [skipSummary, setSkipSummary] = useState<any>(null);
 
   const isProfileLocked = !!user?.studentProfile?.isProfileLocked;
   const classId = user?.studentProfile?.classId;
 
   const fetchOverview = useCallback(async () => {
     try {
-      const [ovRes, ttRes] = await Promise.all([
+      const [ovRes, ttRes, skipRes] = await Promise.all([
         api.get('/api/attendance/student-overview'),
         api.get('/api/timetable/my-student'),
+        api.get('/api/skip/overview').catch(() => ({ data: null })),
       ]);
       if (ovRes.data) setData(ovRes.data);
       setWeeklyTimetable(ttRes.data?.slots || []);
+      if (skipRes?.data?.overall) setSkipSummary(skipRes.data.overall);
     } catch {
       // handled
     } finally {
@@ -196,6 +199,14 @@ export const StudentDashboard: React.FC = () => {
             <Badge variant="danger" size="sm" className="mt-2">
               Below {stats.minThreshold}%
             </Badge>
+          )}
+          {skipSummary && (
+            <div className="mt-3 pt-3 border-t border-border w-full text-xs space-y-1.5">
+              <p className="text-content-secondary">{skipSummary.advice}</p>
+              <Button variant="secondary" size="sm" onClick={() => navigate('/student/skip-calculator')}>
+                Can I Skip? Simulator
+              </Button>
+            </div>
           )}
         </Card>
 
