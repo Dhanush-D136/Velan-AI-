@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { notifyUsers } from './notificationController';
+import { rushQueueService } from '../services/rushQueueService';
+import { metricsCollector } from '../services/metricsCollector';
 import {
   startAttendanceSessionSchema,
   markAttendanceSchema,
@@ -105,6 +107,7 @@ export const startSession = async (req: Request, res: Response) => {
 
 // 5.3 Student marks GPS attendance
 export const markAttendance = async (req: Request, res: Response) => {
+  const pressedAt = new Date();
   try {
     const parseResult = markAttendanceSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -124,9 +127,9 @@ export const markAttendance = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Only enrolled students can mark attendance' });
     }
 
-    // 2. Hardware device lock check (prevent friend marking for friend)
-    const boundDevice = studentUser.devices.find((d) => d.status === 'ACTIVE');
-    if (boundDevice && boundDevice.deviceId !== deviceId) {
+    // 2. Hardware device lock check (supports up to 2 active devices)
+    const activeDevices = studentUser.devices.filter((d) => d.status === 'ACTIVE');
+    if (activeDevices.length > 0 && !activeDevices.some((d) => d.deviceId === deviceId)) {
       return res.status(403).json({
         error: 'Attendance can only be marked from your registered device. Switch detected.',
       });
@@ -142,7 +145,7 @@ export const markAttendance = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'This attendance session is no longer active' });
     }
 
-    if (new Date() > new Date(session.expiresAt)) {
+    if (pressedAt > new Date(session.expiresAt)) {
       return res.status(400).json({ error: 'Attendance session has expired' });
     }
 
@@ -187,6 +190,7 @@ export const markAttendance = async (req: Request, res: Response) => {
     );
 
     if (!geofence.isWithinRadius) {
+      rushQueueService.recordRejection();
       return res.status(400).json({
         error: `Geofence boundary exceeded. You are ${Math.round(geofence.distanceMeters)}m away (Radius: ${session.radiusMeters}m).`,
         distanceMeters: geofence.distanceMeters,
@@ -194,7 +198,35 @@ export const markAttendance = async (req: Request, res: Response) => {
       });
     }
 
-    // 8. Save verified record
+    const flagsStr = spoofCheck.flags.length > 0 ? spoofCheck.flags.join(',') : null;
+    const { shouldQueue } = rushQueueService.recordArrivalAndCheckShouldQueue();
+
+    if (shouldQueue || rushQueueService.getExistingTicket(sessionId, studentUser.studentProfile.id)) {
+      if (rushQueueService.isQueueFull() && !rushQueueService.getExistingTicket(sessionId, studentUser.studentProfile.id)) {
+        return res.status(503).json({ error: 'Server is very busy, try again in a moment' });
+      }
+      const ticket = await rushQueueService.enqueueTicket({
+        sessionId,
+        studentId: studentUser.studentProfile.id,
+        userId: studentUser.id,
+        studentName: studentUser.name,
+        rollNo: studentUser.studentProfile.rollNo,
+        pressedAt,
+        latitude,
+        longitude,
+        accuracy,
+        deviceId,
+        distanceMeters: geofence.distanceMeters,
+        flags: flagsStr,
+      });
+      return res.status(202).json({
+        queued: true,
+        ticket,
+        config: rushQueueService.getConfig(),
+      });
+    }
+
+    // 8. Save verified record immediately (queue OFF or below threshold)
     const record = await prisma.attendanceRecord.create({
       data: {
         sessionId,
@@ -204,10 +236,13 @@ export const markAttendance = async (req: Request, res: Response) => {
         distanceMeters: geofence.distanceMeters,
         accuracy,
         deviceId,
-        flags: spoofCheck.flags.length > 0 ? spoofCheck.flags.join(',') : null,
+        flags: flagsStr,
+        markedAt: pressedAt,
       },
       include: { student: true },
     });
+
+    metricsCollector.recordCheckin(Date.now() - pressedAt.getTime(), true);
 
     // 9. Real-time broadcast to faculty & admin live board
     const io = req.app.get('io');
@@ -257,16 +292,18 @@ export const getSessionLiveBoard = async (req: Request, res: Response) => {
     }
 
     const recordsMap = new Map(session.records.map((r) => [r.studentId, r]));
+    const verifyingIds = rushQueueService.getVerifyingStudentIds(sessionId);
 
     const roster = session.class.students.map((stud) => {
       const record = recordsMap.get(stud.id);
+      const isVerifying = !record && verifyingIds.has(stud.id);
       return {
         studentId: stud.id,
         name: stud.user.name,
         registerNo: stud.registerNo,
         rollNo: stud.rollNo,
         avatarUrl: stud.user.avatarUrl,
-        status: record ? record.status : 'NOT_MARKED',
+        status: record ? record.status : isVerifying ? 'VERIFYING' : 'NOT_MARKED',
         method: record ? record.method : null,
         distanceMeters: record?.distanceMeters,
         accuracy: record?.accuracy,
@@ -276,6 +313,7 @@ export const getSessionLiveBoard = async (req: Request, res: Response) => {
     });
 
     const presentCount = roster.filter((r) => r.status === 'PRESENT').length;
+    const verifyingCount = roster.filter((r) => r.status === 'VERIFYING').length;
     const absentCount = roster.filter((r) => r.status === 'ABSENT').length;
     const notMarkedCount = roster.filter((r) => r.status === 'NOT_MARKED').length;
 
@@ -294,6 +332,7 @@ export const getSessionLiveBoard = async (req: Request, res: Response) => {
         expiresAt: session.expiresAt,
         totalEnrolled: roster.length,
         presentCount,
+        verifyingCount,
         absentCount,
         notMarkedCount,
       },
@@ -464,12 +503,16 @@ export const closeSession = async (req: Request, res: Response) => {
 
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
+    // Drain any queued rush-hour tickets (up to 60s) before marking absentees
+    await rushQueueService.drainSessionQueue(sessionId, 60_000);
+
     await prisma.attendanceSession.update({
       where: { id: sessionId },
       data: { isActive: false },
     });
 
-    const markedIds = new Set(session.records.map((r) => r.studentId));
+    const latestRecords = await prisma.attendanceRecord.findMany({ where: { sessionId } });
+    const markedIds = new Set(latestRecords.map((r) => r.studentId));
 
     // Auto mark remaining students as ABSENT
     for (const student of session.class.students) {

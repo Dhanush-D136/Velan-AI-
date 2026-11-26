@@ -730,3 +730,116 @@ model AcademicSubject {
   @@index([academicSemesterId])
   @@index([subjectCode])
 }
+
+// ==========================================
+// PHASE 4: ADMIN LIVE MONITOR & SERVER HEALTH
+// ==========================================
+
+model AuthEvent {
+  id         String   @id @default(uuid())
+  userId     String?
+  role       String   @default("UNKNOWN")
+  event      String   // login, logout, login_failed, session_expired, idle_timeout, forced_logout, device_limit_blocked
+  deviceId   String?
+  deviceType String?  // phone, computer, tablet
+  browser    String?
+  os         String?
+  ip         String?
+  classId    String?
+  details    String?
+  timestamp  DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([event])
+  @@map("auth_events")
+}
+
+model UserSession {
+  id         String    @id @default(uuid())
+  userId     String
+  role       String
+  deviceId   String
+  deviceType String?   // phone, computer, tablet
+  browser    String?
+  os         String?
+  ip         String?
+  classId    String?
+  startedAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  endedAt    DateTime?
+  endReason  String?   // logout, expired, idle_timeout, forced_logout
+  socketId   String?
+
+  @@index([userId])
+  @@index([endedAt])
+  @@index([lastSeenAt])
+  @@map("user_sessions")
+}
+
+model ServerMetricMinute {
+  id                String   @id @default(uuid())
+  bucketStart       DateTime @unique
+  uptimeSec         Int
+  cpuPercent        Float
+  memoryRssMb       Float
+  memoryHeapMb      Float
+  eventLoopLagP99Ms Float
+  httpRps           Float
+  httpP50Ms         Float
+  httpP95Ms         Float
+  httpP99Ms         Float
+  error4xxRate      Float
+  error5xxRate      Float
+  connectedSockets  Int
+  dbAvgMs           Float
+  dbP95Ms           Float
+  concurrentUsers   Int
+  healthStatus      String   @default("HEALTHY") // HEALTHY, DEGRADED, STRUGGLING
+
+  @@index([bucketStart])
+}
+
+model ServerIncident {
+  id                String    @id @default(uuid())
+  status            String    // DEGRADED, STRUGGLING
+  cause             String
+  peakLagMs         Float     @default(0)
+  peakP95Ms         Float     @default(0)
+  peak5xxRate       Float     @default(0)
+  peakCpuPercent    Float     @default(0)
+  peakMemoryPercent Float     @default(0)
+  startedAt         DateTime  @default(now())
+  endedAt           DateTime?
+
+  @@index([startedAt])
+}
+
+// ==========================================
+// PHASE 5: RUSH-HOUR CHECK-IN QUEUE TICKETS
+// ==========================================
+
+model CheckinTicket {
+  id               String   @id @default(uuid())
+  sessionId        String
+  studentId        String
+  userId           String
+  state            String   @default("received") // received, queued, verifying, saved, rejected, failed
+  position         Int      @default(0)
+  estimatedSeconds Int      @default(0)
+  pressedAt        DateTime @default(now())
+  latitude         Float
+  longitude        Float
+  accuracy         Float    @default(10)
+  deviceId         String
+  flags            String?
+  distanceMeters   Float?
+  errorReason      String?
+  retries          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId, state])
+  @@index([userId])
+}

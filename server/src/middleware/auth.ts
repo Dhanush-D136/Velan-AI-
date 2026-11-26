@@ -10,6 +10,12 @@ export interface AuthenticatedUser {
   status: string;
   name: string;
   deviceId?: string;
+  sid?: string;
+}
+
+const revokedSessionIds = new Set<string>();
+export function revokeSessionToken(sessionId: string) {
+  if (sessionId) revokedSessionIds.add(sessionId);
 }
 
 declare global {
@@ -32,6 +38,21 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
+
+    if (decoded.sid) {
+      if (revokedSessionIds.has(decoded.sid)) {
+        return res.status(401).json({ error: 'Session has been logged out or expired' });
+      }
+      const sess = await prisma.userSession.findUnique({
+        where: { id: decoded.sid },
+        select: { endedAt: true },
+      });
+      if (!sess || sess.endedAt) {
+        revokedSessionIds.add(decoded.sid);
+        return res.status(401).json({ error: 'Session has been logged out or expired' });
+      }
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       include: {
@@ -45,14 +66,14 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       return res.status(403).json({ error: 'User account is inactive or suspended' });
     }
 
-    // Hardware device lock check for students and faculty
-    const requestDeviceId = req.headers['x-device-id'] as string || req.body?.deviceId;
+    // Hardware device lock check for students (supports up to 2 active devices)
+    const requestDeviceId = (req.headers['x-device-id'] as string) || req.body?.deviceId;
     if (requestDeviceId && user.role === 'STUDENT') {
-      const boundDevice = user.devices.find((d) => d.status === 'ACTIVE');
-      if (boundDevice && boundDevice.deviceId !== requestDeviceId) {
+      const activeDevices = user.devices.filter((d) => d.status === 'ACTIVE');
+      if (activeDevices.length > 0 && !activeDevices.some((d) => d.deviceId === requestDeviceId)) {
         return res.status(403).json({
           code: 'DEVICE_LOCKED',
-          error: 'This account is bound to another device. Request admin approval.',
+          error: 'This account is bound to other devices. Request admin approval.',
         });
       }
     }
@@ -65,6 +86,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       status: user.status,
       name: user.name,
       deviceId: requestDeviceId,
+      sid: decoded.sid,
     };
 
     next();

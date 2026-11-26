@@ -19,6 +19,8 @@ import * as resCtrl from '../controllers/resourceController';
 import * as reqCtrl from '../controllers/requestController';
 import * as skipCtrl from '../controllers/skipController';
 import * as acadRecCtrl from '../controllers/academicsRecordController';
+import * as monCtrl from '../controllers/monitorController';
+import * as rushCtrl from '../controllers/rushQueueController';
 
 const deviceRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -38,7 +40,10 @@ apiRouter.post('/auth/device-request', deviceRequestLimiter, authCtrl.requestDev
 apiRouter.get('/auth/me', authenticateToken, authCtrl.getCurrentUser);
 apiRouter.put('/auth/profile', authenticateToken, authCtrl.updateMyProfile);
 apiRouter.get('/auth/devices', authenticateToken, authCtrl.getMyDevices);
+apiRouter.get('/auth/my-history', authenticateToken, authCtrl.getMyAuthHistory);
 apiRouter.post('/auth/logout', authCtrl.logout);
+apiRouter.post('/logout', authCtrl.logout);
+apiRouter.post('/presence/heartbeat', authenticateToken, authCtrl.presenceHeartbeat);
 
 // Student Profile Completion & Locks
 apiRouter.post('/student/profile', authenticateToken, requireRole('STUDENT'), authCtrl.completeStudentProfile);
@@ -208,3 +213,22 @@ apiRouter.post('/academics-records/student/:studentId/semester', authenticateTok
 
 apiRouter.get('/academics-records/export/excel', authenticateToken, requireRole('FACULTY', 'ADMIN'), acadRecCtrl.exportAcademicsExcel);
 apiRouter.get('/academics-records/export/pdf', authenticateToken, requireRole('FACULTY', 'ADMIN'), acadRecCtrl.exportAcademicsPdf);
+
+// ==========================================
+// PHASE 4: ADMIN LIVE MONITOR & SERVER HEALTH
+// ==========================================
+apiRouter.get('/admin/health', authenticateToken, requireRole('ADMIN'), monCtrl.getAdminHealth);
+apiRouter.get('/admin/monitor/overview', authenticateToken, requireRole('ADMIN'), monCtrl.getMonitorOverview);
+apiRouter.get('/admin/monitor/history', authenticateToken, requireRole('ADMIN'), monCtrl.getAuthHistory);
+apiRouter.get('/admin/monitor/export/history', authenticateToken, requireRole('ADMIN'), monCtrl.exportAuthHistoryExcel);
+apiRouter.get('/admin/monitor/export/never-logged-in', authenticateToken, requireRole('ADMIN'), monCtrl.exportNeverLoggedInExcel);
+apiRouter.post('/admin/monitor/force-logout', authenticateToken, requireRole('ADMIN'), monCtrl.forceLogoutUser);
+apiRouter.put('/admin/monitor/settings', authenticateToken, requireRole('ADMIN'), monCtrl.updateMonitorSettings);
+
+// ==========================================
+// PHASE 5: RUSH-HOUR CHECK-IN QUEUE & TICKETS
+// ==========================================
+apiRouter.get('/checkin/ticket/:id', authenticateToken, rushCtrl.getCheckinTicket);
+apiRouter.get('/admin/rush-queue/config', authenticateToken, requireRole('ADMIN'), rushCtrl.getRushQueueConfig);
+apiRouter.put('/admin/rush-queue/config', authenticateToken, requireRole('ADMIN'), rushCtrl.updateRushQueueConfig);
+apiRouter.get('/admin/rush-queue/stats', authenticateToken, requireRole('ADMIN'), rushCtrl.getRushQueueStats);

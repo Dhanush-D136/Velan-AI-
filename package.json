@@ -17,6 +17,7 @@
     "start:server": "npm run start --prefix server",
     "seed": "npm run seed --prefix server",
     "reset-data": "npm run reset-data --prefix server",
+    "load-test": "npm run load-test --prefix server",
     "test": "npm run test --prefix server"
   },
   "devDependencies": {

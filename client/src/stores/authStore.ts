@@ -20,7 +20,7 @@ interface AuthState {
   isHydrating: boolean;
   setUser: (user: UserSummary | null, token?: string | null) => void;
   hydrateSession: () => Promise<void>;
-  logout: () => void;
+  logout: (reason?: string) => void;
   getDeviceId: () => string;
 }
 
@@ -87,7 +87,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
   },
-  logout: () => {
+  logout: (reason?: string) => {
+    const token = localStorage.getItem('velan_token');
+    if (token) {
+      api.post('/api/logout', { reason: reason || 'logout' }).catch(() => {});
+    }
     localStorage.removeItem('velan_token');
     localStorage.removeItem('velan_user');
     set({ user: null, token: null, isAuthenticated: false, isHydrating: false });

@@ -18,14 +18,18 @@ const SOCKET_URL =
 let sharedSocket: Socket | null = null;
 
 export const getSocket = (): Socket => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('velan_token') : null;
   if (!sharedSocket) {
     sharedSocket = io(SOCKET_URL, {
       withCredentials: true,
+      auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1500,
     });
+  } else if (token) {
+    sharedSocket.auth = { token };
   }
   return sharedSocket;
 };

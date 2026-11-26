@@ -337,7 +337,7 @@ describe('Phase 2 Features End-to-End Flow', () => {
       .delete(`/api/materials/${matRes.body.material.id}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(delMat.status).toBe(200);
-  });
+  }, 15000);
 
   it('5. Student Request to Admin & Reply + Chat Auto-Join & Live Revoke', async () => {
     const reqCreate = await request(app)

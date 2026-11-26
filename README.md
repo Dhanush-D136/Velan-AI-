@@ -79,6 +79,21 @@ npm test; npm run build:client
 - **Semester Dates & Holidays:** Navigate to **Admin → Academics & Grading → Semester & Holidays** to configure the active semester window (`startDate` / `endDate`), institutional holidays, and required/condonation attendance thresholds (`75%` / `65%` by default). These power the student **"Can I Skip?"** calculator and semester-end projections.
 - **Grading Scale & Credit Lookup:** Navigate to **Admin → Academics & Grading → Grading & Credits** to customize Regulation `2021` grade points (`O=10, A+=9, A=8, B+=7, B=6, C=5`, `RA/WH/WD/AB=0`), CGPA-to-percentage multiplier, and fallback subject credit mappings.
 
+### 6. Phase 4: Admin Live Monitor, Server Health & Uptime Monitoring
+- **Presence & Sessions:** Tracks real-time online/idle users (30s Page Visibility heartbeat, 5m idle detection, 20s disconnect grace period), unique logged-in today vs. never-logged-in users, and suspicious activity flags.
+- **Health Thresholds:**
+  - **Healthy:** Event-loop lag p99 `< 100ms`, HTTP p95 `< 500ms`, 5xx `< 1%`, memory `< 75%`, CPU `< 70%`.
+  - **Degraded:** Any threshold exceeded for 2 minutes.
+  - **Struggling:** Lag p99 `> 300ms`, HTTP p95 `> 2s`, 5xx `> 5%`, memory `> 90%`, or CPU `> 90%` sustained for 1 minute.
+- **External Uptime Monitor:** Point UptimeRobot (or any external monitor) at **`GET /api/health`** (public, minimal `ok + uptime`). A server cannot report its own total outage, so external pinging is recommended for downtime alerts.
+- **Scaling Guide:** Use PostgreSQL/Supabase for multi-hundred/thousand-student concurrency, terminate TLS behind Nginx/Vercel/Render, and add a Redis Socket.IO adapter if scaling horizontally across multiple Node instances.
+- **Privacy & Retention:** IP addresses and device metadata are used solely for security and attendance audit, visible to users in Settings, and purged automatically after 90 days (30 days for minute-level server metrics).
+
+### 7. Phase 5: Rush-Hour Check-In Queue (Default OFF)
+- **Admin Settings → Rush-Hour Waiting Queue:** Off by default. When turned **ON**, bursts exceeding the trigger threshold (default `30` waiting or `30/sec`) are admitted with a FIFO ticket and saved in `250ms` database transactions (default `25/sec`).
+- **Honesty & Fairness:** Deadlines are judged by server arrival time (`pressed_at`), invalid/out-of-range check-ins are rejected immediately, session close drains queued tickets before marking absentees, and students see a real countdown alongside **Thirukkural couplets with Tamil Porul**.
+- **Load Test:** Run `npm run load-test` to simulate 300 concurrent student arrivals and measure admission throughput and p95 latency.
+
 Open your browser at **`http://localhost:5173`**.
 
 ---

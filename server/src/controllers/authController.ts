@@ -12,6 +12,9 @@ import {
   profileUpdateSchema,
 } from '@velan/shared';
 import { notifyUsers } from './notificationController';
+import { enqueueAuthEvent, parseClientMeta } from '../services/authEventQueue';
+import { presenceService } from '../services/presenceService';
+import { revokeSessionToken } from '../middleware/auth';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'velan_jwt_secret_dev_2026';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'velan_refresh_secret_dev_2026';
@@ -24,6 +27,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     const { identifier, password, deviceId, deviceLabel, platform } = parseResult.data;
+    const meta = parseClientMeta(req, platform, deviceLabel);
     const cleanId = identifier.trim();
     const lowerId = cleanId.toLowerCase();
     const upperId = cleanId.toUpperCase();
@@ -66,16 +70,34 @@ export const login = async (req: Request, res: Response) => {
     });
 
     if (!user) {
+      enqueueAuthEvent({ event: 'login_failed', deviceId, ...meta, details: `Unknown identifier: ${cleanId}` });
       return res.status(401).json({ error: 'Invalid login credentials. User not found.' });
     }
 
     // 2. Validate password
     const passwordValid = await bcrypt.compare(password, user.passwordHash);
     if (!passwordValid) {
+      enqueueAuthEvent({
+        userId: user.id,
+        role: user.role,
+        event: 'login_failed',
+        deviceId,
+        ...meta,
+        classId: user.studentProfile?.classId || null,
+        details: 'Incorrect password',
+      });
       return res.status(401).json({ error: 'Incorrect password.' });
     }
 
     if (user.status !== 'ACTIVE') {
+      enqueueAuthEvent({
+        userId: user.id,
+        role: user.role,
+        event: 'login_failed',
+        deviceId,
+        ...meta,
+        details: `Account status ${user.status}`,
+      });
       return res.status(403).json({ error: 'Your account is inactive or suspended. Please contact administrator.' });
     }
 
@@ -97,6 +119,14 @@ export const login = async (req: Request, res: Response) => {
       } else {
         const sameSlotTaken = activeDevices.find((d) => d.deviceType === deviceType);
         if (activeDevices.length >= 2 || sameSlotTaken) {
+          enqueueAuthEvent({
+            userId: user.id,
+            role: user.role,
+            event: 'device_limit_blocked',
+            deviceId,
+            ...meta,
+            classId: user.studentProfile?.classId || null,
+          });
           return res.status(403).json({
             code: 'DEVICE_LIMIT_REACHED',
             error:
@@ -135,13 +165,50 @@ export const login = async (req: Request, res: Response) => {
       }
     }
 
-    // 4. Generate Tokens
+    // 4. Create UserSession & Generate Tokens
+    const userSession = await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        role: user.role,
+        deviceId,
+        deviceType: meta.deviceType,
+        browser: meta.browser,
+        os: meta.os,
+        ip: meta.ip,
+        classId: user.studentProfile?.classId || null,
+      },
+    });
+
+    presenceService.registerSession({
+      sessionId: userSession.id,
+      userId: user.id,
+      name: user.name,
+      role: user.role,
+      classId: user.studentProfile?.classId || null,
+      className: user.studentProfile?.class?.name || null,
+      deviceId,
+      deviceType: meta.deviceType,
+      browser: meta.browser,
+      os: meta.os,
+      startedAt: userSession.startedAt.getTime(),
+    });
+
+    enqueueAuthEvent({
+      userId: user.id,
+      role: user.role,
+      event: 'login',
+      deviceId,
+      ...meta,
+      classId: user.studentProfile?.classId || null,
+    });
+
     const tokenPayload = {
       id: user.id,
       role: user.role,
       name: user.name,
       username: user.username,
       email: user.email,
+      sid: userSession.id,
     };
 
     const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '15m' });
@@ -597,7 +664,81 @@ export const getMyDevices = async (req: Request, res: Response) => {
   }
 };
 
-export const logout = (req: Request, res: Response) => {
+export const presenceHeartbeat = async (req: Request, res: Response) => {
+  try {
+    const sid = req.user?.sid;
+    const active = req.body?.active !== false;
+    if (sid) {
+      presenceService.handleHeartbeat(sid, active);
+      await prisma.userSession.update({
+        where: { id: sid },
+        data: { lastSeenAt: new Date() },
+      }).catch(() => {});
+    }
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ error: 'Heartbeat failed' });
+  }
+};
+
+export const getMyAuthHistory = async (req: Request, res: Response) => {
+  try {
+    const events = await prisma.authEvent.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { timestamp: 'desc' },
+      take: 30,
+    });
+    return res.json({ events });
+  } catch {
+    return res.status(500).json({ error: 'Failed to load login history' });
+  }
+};
+
+export const logout = async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token =
+      authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.split(' ')[1]
+        : req.cookies?.velan_access_token;
+
+    let sid = req.user?.sid;
+    let userId = req.user?.id;
+    let role = req.user?.role;
+    if (!sid && token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        sid = decoded?.sid;
+        userId = decoded?.id;
+        role = decoded?.role;
+      } catch {
+        // expired token
+      }
+    }
+
+    const reason = req.body?.reason === 'idle_timeout' ? 'idle_timeout' : 'logout';
+    if (sid) {
+      revokeSessionToken(sid);
+      presenceService.removeSession(sid);
+      await prisma.userSession.updateMany({
+        where: { id: sid, endedAt: null },
+        data: { endedAt: new Date(), endReason: reason },
+      });
+    }
+    if (userId) {
+      const meta = parseClientMeta(req);
+      enqueueAuthEvent({
+        userId,
+        role: role || 'UNKNOWN',
+        event: reason === 'idle_timeout' ? 'idle_timeout' : 'logout',
+        deviceId: (req.headers['x-device-id'] as string) || null,
+        ...meta,
+      });
+    }
+  } catch {
+    // non-fatal
+  }
+
   res.clearCookie('velan_access_token');
   res.clearCookie('velan_refresh_token');
   return res.json({ message: 'Logged out successfully' });

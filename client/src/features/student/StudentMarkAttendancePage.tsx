@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { RushWaitingScreen, RushQueueConfigUI } from '@/components/attendance/RushWaitingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
@@ -26,6 +27,22 @@ export const StudentMarkAttendancePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [result, setResult] = useState<'SUCCESS' | 'REJECTED' | null>(null);
+  const [queuedTicket, setQueuedTicket] = useState<any>(() => {
+    try {
+      const saved = sessionStorage.getItem('velan_active_checkin_ticket');
+      return saved ? JSON.parse(saved).ticket : null;
+    } catch {
+      return null;
+    }
+  });
+  const [queueConfig, setQueueConfig] = useState<RushQueueConfigUI | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('velan_active_checkin_ticket');
+      return saved ? JSON.parse(saved).config : null;
+    } catch {
+      return null;
+    }
+  });
   const [distance, setDistance] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -85,6 +102,17 @@ export const StudentMarkAttendancePage: React.FC = () => {
             timestamp: pos.timestamp || Date.now(),
             deviceId: getDeviceId(),
           });
+
+          if (res.status === 202 && res.data?.queued && res.data?.ticket) {
+            sessionStorage.setItem(
+              'velan_active_checkin_ticket',
+              JSON.stringify({ ticket: res.data.ticket, config: res.data.config })
+            );
+            setQueuedTicket(res.data.ticket);
+            setQueueConfig(res.data.config);
+            return;
+          }
+
           setDistance(res.data.distanceMeters != null ? Math.round(res.data.distanceMeters) : null);
           setResult('SUCCESS');
           showToast('Attendance verified and recorded!', 'success');
@@ -141,6 +169,26 @@ export const StudentMarkAttendancePage: React.FC = () => {
 
   return (
     <div className="max-w-xl mx-auto space-y-6">
+      {queuedTicket && queueConfig && (
+        <RushWaitingScreen
+          ticketId={queuedTicket.ticketId}
+          initialTicket={queuedTicket}
+          config={queueConfig}
+          onSuccess={(r) => {
+            setQueuedTicket(null);
+            setDistance(r.distanceMeters != null ? Math.round(r.distanceMeters) : null);
+            setResult('SUCCESS');
+            showToast('Attendance verified and recorded!', 'success');
+            confetti({ particleCount: 80, spread: 60, origin: { y: 0.65 } });
+            fetchActiveSession();
+          }}
+          onRetry={() => {
+            sessionStorage.removeItem('velan_active_checkin_ticket');
+            setQueuedTicket(null);
+          }}
+          onClose={() => setQueuedTicket(null)}
+        />
+      )}
       {!isSecureContext && (
         <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />

@@ -15,6 +15,7 @@ import { StudentManagement } from './features/admin/StudentManagement';
 import { AcademicsManagement } from './features/admin/AcademicsManagement';
 import { AdminRequestsPage } from './features/admin/AdminRequestsPage';
 import { ReportsPage } from './features/admin/ReportsPage';
+import { AdminLiveMonitorPage } from './features/admin/AdminLiveMonitorPage';
 
 // Faculty Screens
 import { FacultyDashboard } from './features/faculty/FacultyDashboard';
@@ -103,6 +104,7 @@ export default function App() {
           {/* Admin Routes */}
           <Route path="/admin" element={user?.role === UserRole.ADMIN ? <AdminDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/live-attendance" element={user?.role === UserRole.ADMIN ? <LiveAttendanceMonitor /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/live-monitor" element={user?.role === UserRole.ADMIN ? <AdminLiveMonitorPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/attendance-history" element={user?.role === UserRole.ADMIN ? <AttendanceHistoryEditorPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/timetable" element={user?.role === UserRole.ADMIN ? <TimetableBuilder /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/faculty" element={user?.role === UserRole.ADMIN ? <FacultyManagement /> : <Navigate to={getDefaultRedirect()} replace />} />

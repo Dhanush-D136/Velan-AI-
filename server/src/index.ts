@@ -8,6 +8,10 @@ import dotenv from 'dotenv';
 import { prisma } from './lib/prisma';
 import { apiRouter } from './routes';
 import { setupSocketHandlers } from './sockets';
+import { metricsCollector } from './services/metricsCollector';
+import { presenceService } from './services/presenceService';
+import { startAuthEventFlusher } from './services/authEventQueue';
+import { rushQueueService } from './services/rushQueueService';
 
 dotenv.config();
 
@@ -59,6 +63,7 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(metricsCollector.httpMiddleware());
 
 // Setup Socket.IO
 const io = new Server(server, {
@@ -72,6 +77,11 @@ const io = new Server(server, {
 
 app.set('io', io);
 setupSocketHandlers(io);
+presenceService.setIO(io);
+metricsCollector.start(io);
+startAuthEventFlusher();
+rushQueueService.setIO(io);
+void rushQueueService.loadConfigFromDB();
 
 // Welcome endpoint
 app.get('/', (req: Request, res: Response) => {

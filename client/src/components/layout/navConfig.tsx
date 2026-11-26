@@ -30,6 +30,7 @@ export const getRoleNavItems = (role?: UserRole): NavItem[] => {
       return [
         { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
         { to: '/admin/live-attendance', label: 'Live Attendance', icon: <CalendarCheck2 className="w-5 h-5" /> },
+        { to: '/admin/live-monitor', label: 'Live Monitor', icon: <ClipboardList className="w-5 h-5" /> },
         { to: '/admin/attendance-history', label: 'Edit & Past Attendance', icon: <History className="w-5 h-5" /> },
         { to: '/admin/timetable', label: 'Timetable Builder', icon: <CalendarDays className="w-5 h-5" /> },
         { to: '/admin/faculty', label: 'Faculty Directory', icon: <Users className="w-5 h-5" /> },

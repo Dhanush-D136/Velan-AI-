@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
+import { RushWaitingScreen } from '@/components/attendance/RushWaitingScreen';
 import {
   Smartphone,
   ShieldCheck,
@@ -72,6 +73,14 @@ export const SettingsPage: React.FC = () => {
   });
   const [isSavingPrefs, setIsSavingPrefs] = useState(false);
 
+  // Student login history (Privacy Part D)
+  const [loginHistory, setLoginHistory] = useState<any[]>([]);
+
+  // Phase 5: Admin Rush-hour queue config
+  const [rushConfig, setRushConfig] = useState<any>(null);
+  const [rushStatusText, setRushStatusText] = useState('Queue is OFF');
+  const [showRushPreview, setShowRushPreview] = useState(false);
+
   // Student requests
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [reqType, setReqType] = useState('PROFILE_CORRECTION');
@@ -86,14 +95,26 @@ export const SettingsPage: React.FC = () => {
         api.get('/api/auth/devices'),
         api.get('/api/notifications/preferences'),
         api.get('/api/academics/departments').catch(() => ({ data: { departments: [] } })),
+        api.get('/api/auth/my-history').catch(() => ({ data: { events: [] } })),
       ];
       if (user?.role === 'STUDENT') {
         reqs.push(api.get('/api/requests/my'));
       }
-      const [settingsRes, devRes, prefRes, deptRes, myReqRes] = await Promise.all(reqs);
+      if (user?.role === 'ADMIN') {
+        reqs.push(api.get('/api/admin/rush-queue/config').catch(() => ({ data: null })));
+      }
+      const results = await Promise.all(reqs);
+      const [settingsRes, devRes, prefRes, deptRes, histRes] = results;
+      const myReqRes = user?.role === 'STUDENT' ? results[5] : null;
+      const rushRes = user?.role === 'ADMIN' ? results[5] : null;
       setInstitutionName(settingsRes.data?.settings?.INSTITUTION_NAME || '');
       setDevices(devRes.data?.devices || []);
       setDepartments(deptRes?.data?.departments || []);
+      setLoginHistory(histRes?.data?.events || []);
+      if (rushRes?.data?.config) {
+        setRushConfig(rushRes.data.config);
+        setRushStatusText(rushRes.data.stats?.statusText || 'Queue is OFF');
+      }
       if (prefRes.data?.preferences) {
         setPrefs((prev) => ({ ...prev, ...prefRes.data.preferences }));
       }
@@ -352,6 +373,112 @@ export const SettingsPage: React.FC = () => {
           </div>
         </form>
       </Card>
+
+      {/* Admin Rush-Hour Check-In Queue Settings (Phase 5) */}
+      {user?.role === 'ADMIN' && rushConfig && (
+        <Card className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="font-heading font-bold text-base text-content">Rush-Hour Waiting Queue</h3>
+              <p className="text-xs text-content-secondary">
+                Status: <strong>{rushStatusText}</strong> (Default OFF). Buffers burst GPS check-ins in 250ms batches.
+              </p>
+            </div>
+            <Switch
+              checked={!!rushConfig.enabled}
+              onChange={async (val) => {
+                const res = await api.put('/api/admin/rush-queue/config', { enabled: val });
+                setRushConfig(res.data.config);
+                setRushStatusText(res.data.stats?.statusText || (val ? 'Queue is ON' : 'Queue is OFF'));
+                showToast(`Rush-hour queue turned ${val ? 'ON' : 'OFF'}`, 'success');
+              }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <label>
+              <span className="text-content-muted block mb-1">Trigger Threshold</span>
+              <input
+                type="number"
+                value={rushConfig.triggerThreshold}
+                onChange={(e) => setRushConfig((p: any) => ({ ...p, triggerThreshold: Number(e.target.value) }))}
+                className="w-full px-3 py-2 rounded-xl border border-border"
+              />
+            </label>
+            <label>
+              <span className="text-content-muted block mb-1">Max Saved / Sec</span>
+              <input
+                type="number"
+                value={rushConfig.maxPerSecond}
+                onChange={(e) => setRushConfig((p: any) => ({ ...p, maxPerSecond: Number(e.target.value) }))}
+                className="w-full px-3 py-2 rounded-xl border border-border"
+              />
+            </label>
+            <label>
+              <span className="text-content-muted block mb-1">Max Wait Shown (s)</span>
+              <input
+                type="number"
+                value={rushConfig.maxWaitSeconds}
+                onChange={(e) => setRushConfig((p: any) => ({ ...p, maxWaitSeconds: Number(e.target.value) }))}
+                className="w-full px-3 py-2 rounded-xl border border-border"
+              />
+            </label>
+            <label>
+              <span className="text-content-muted block mb-1">Kural Timing (sec)</span>
+              <input
+                type="number"
+                min={4}
+                max={30}
+                value={rushConfig.quoteIntervalSeconds}
+                onChange={(e) => setRushConfig((p: any) => ({ ...p, quoteIntervalSeconds: Number(e.target.value) }))}
+                className="w-full px-3 py-2 rounded-xl border border-border"
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-wrap gap-6 text-xs pt-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Switch checked={!!rushConfig.showQuotes} onChange={(v) => setRushConfig((p: any) => ({ ...p, showQuotes: v }))} />
+              <span>Show Thirukkural &amp; Tamil Porul</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Switch checked={!!rushConfig.showPosition} onChange={(v) => setRushConfig((p: any) => ({ ...p, showPosition: v }))} />
+              <span>Show Queue Position</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Switch checked={!!rushConfig.playSound} onChange={(v) => setRushConfig((p: any) => ({ ...p, playSound: v }))} />
+              <span>Play Sound at End</span>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap justify-between gap-2 pt-2 border-t border-border">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setShowRushPreview(true)}>
+              Preview the waiting screen
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={async () => {
+                const res = await api.put('/api/admin/rush-queue/config', rushConfig);
+                setRushConfig(res.data.config);
+                setRushStatusText(res.data.stats?.statusText || 'Updated');
+                showToast('Rush-hour queue settings saved!', 'success');
+              }}
+            >
+              Save Queue Settings
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {showRushPreview && rushConfig && (
+        <RushWaitingScreen
+          previewMode
+          initialTicket={{ position: 12, totalInQueue: 45, estimatedSeconds: 8, state: 'queued' }}
+          config={rushConfig}
+          onClose={() => setShowRushPreview(false)}
+        />
+      )}
 
       {/* Institution Name Configuration (Admin only) */}
       {user?.role === 'ADMIN' && (
@@ -637,6 +764,30 @@ export const SettingsPage: React.FC = () => {
           )}
         </Card>
       )}
+
+      {/* Own Login History & Privacy Notice */}
+      <Card className="space-y-3">
+        <h3 className="font-heading font-bold text-base text-content">My Recent Login Activity</h3>
+        <p className="text-[11px] text-content-secondary">
+          IP address and browser/device info are recorded only for campus security and attendance integrity.
+        </p>
+        {loginHistory.length === 0 ? (
+          <p className="text-xs text-content-muted">No recent sign-in events recorded.</p>
+        ) : (
+          <div className="space-y-1.5 max-h-48 overflow-y-auto text-xs">
+            {loginHistory.slice(0, 10).map((ev) => (
+              <div key={ev.id} className="p-2.5 rounded-xl bg-surface-soft border border-border flex items-center justify-between gap-2">
+                <span>
+                  <strong className="uppercase">{ev.event}</strong> • {ev.deviceType || 'device'} ({ev.browser || 'Web'} / {ev.os || 'OS'})
+                </span>
+                <span className="text-[11px] text-content-muted font-mono">
+                  {new Date(ev.timestamp).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 };

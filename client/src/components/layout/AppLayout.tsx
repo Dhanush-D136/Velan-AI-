@@ -76,6 +76,65 @@ export const AppLayout: React.FC = () => {
     { userId: user?.id }
   );
 
+  // Forced logout listener
+  useRealtimeSync(
+    ['auth:forced_logout'],
+    (payload: any) => {
+      showToast(payload?.reason || 'Your session was ended by an administrator.', 'error');
+      logout('forced_logout');
+      navigate('/login');
+    },
+    { userId: user?.id }
+  );
+
+  // 30-second Page Visibility API heartbeat + Idle auto-logout (30 min default, 1 min warning)
+  const [idleWarningOpen, setIdleWarningOpen] = useState(false);
+  useEffect(() => {
+    if (!user?.id) return;
+    let lastInteractionAt = Date.now();
+    const markInteraction = () => {
+      lastInteractionAt = Date.now();
+    };
+    window.addEventListener('mousemove', markInteraction, { passive: true });
+    window.addEventListener('keydown', markInteraction, { passive: true });
+    window.addEventListener('touchstart', markInteraction, { passive: true });
+
+    const sendHeartbeat = () => {
+      if (document.visibilityState !== 'visible') return;
+      const isRecentlyActive = Date.now() - lastInteractionAt < 5 * 60 * 1000;
+      api.post('/api/presence/heartbeat', { active: isRecentlyActive }).catch(() => {});
+    };
+
+    sendHeartbeat();
+    const hbTimer = setInterval(sendHeartbeat, 30_000);
+
+    const idleLimitMs = 30 * 60 * 1000;
+    const idleCheckTimer = setInterval(() => {
+      const idleFor = Date.now() - lastInteractionAt;
+      if (idleFor >= idleLimitMs) {
+        setIdleWarningOpen(false);
+        logout('idle_timeout');
+        navigate('/login');
+      } else if (idleFor >= idleLimitMs - 60_000) {
+        setIdleWarningOpen(true);
+      }
+    }, 15_000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') sendHeartbeat();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      clearInterval(hbTimer);
+      clearInterval(idleCheckTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('mousemove', markInteraction);
+      window.removeEventListener('keydown', markInteraction);
+      window.removeEventListener('touchstart', markInteraction);
+    };
+  }, [user?.id, logout, navigate]);
+
   const handleMarkRead = async (notificationId?: string) => {
     try {
       await api.post('/api/notifications/read', notificationId ? { notificationId } : {});
@@ -423,6 +482,37 @@ export const AppLayout: React.FC = () => {
               ))
             )}
           </div>
+        </div>
+      </Modal>
+
+      {/* Idle Auto-Logout 1-Minute Warning */}
+      <Modal
+        isOpen={idleWarningOpen}
+        onClose={() => setIdleWarningOpen(false)}
+        title="Are you still there?"
+        description="You have been inactive for 29 minutes. You will be logged out in 1 minute for security."
+        size="sm"
+      >
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => {
+              setIdleWarningOpen(false);
+              logout('idle_timeout');
+              navigate('/login');
+            }}
+            className="px-4 py-2 rounded-xl border border-border text-xs font-semibold"
+          >
+            Sign Out
+          </button>
+          <button
+            onClick={() => {
+              setIdleWarningOpen(false);
+              api.post('/api/presence/heartbeat', { active: true }).catch(() => {});
+            }}
+            className="px-4 py-2 rounded-xl bg-brand-gradient text-white text-xs font-bold"
+          >
+            Stay Logged In
+          </button>
         </div>
       </Modal>
     </div>
