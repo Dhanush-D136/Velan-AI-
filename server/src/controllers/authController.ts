@@ -608,6 +608,11 @@ export const updateMyProfile = async (req: Request, res: Response) => {
                 advisor: { include: { user: true } },
               },
             },
+            menteeAssignments: {
+              include: {
+                mentor: { include: { user: true, department: true } },
+              },
+            },
           },
         },
         devices: { where: { status: 'ACTIVE' } },

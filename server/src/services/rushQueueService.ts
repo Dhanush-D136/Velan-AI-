@@ -4,9 +4,20 @@ import { metricsCollector } from './metricsCollector';
 
 export interface ThirukkuralItem {
   id: string;
+  kural_number?: number;
+  chapter_ta?: string;
+  chapter_en?: string;
+  line1_ta: string;
+  line2_ta: string;
+  transliteration?: string;
+  meaning_ta: string;
+  meaning_en?: string;
+  explanation_source?: string;
+  isCollegeMessage?: boolean;
+  // Legacy compatibility
   number?: string;
-  kural: string;
-  porul: string;
+  kural?: string;
+  porul?: string;
 }
 
 export interface RushQueueConfig {
@@ -17,6 +28,7 @@ export interface RushQueueConfig {
   maxQueueLength: number; // default 5000
   showQuotes: boolean; // default true
   showPosition: boolean; // default true
+  showTransliteration: boolean; // default false
   playSound: boolean; // default false
   quoteIntervalSeconds: number; // default 9s for reading Tamil Kural + Porul
   headline: string;
@@ -27,33 +39,51 @@ export interface RushQueueConfig {
 export const DEFAULT_THIRUKKURAL_LIST: ThirukkuralItem[] = [
   {
     id: 'k611',
-    number: 'குறள் 611',
-    kural: 'அருமை உடைத்தென் றசாவாமை வேண்டும் / பெருமை முயற்சி தரும்.',
-    porul: 'செய்வதற்கு அரிய செயல் என்று சோர்வு கொள்ளாமல் முயற்சி செய்தால் அது பெருமையைத் தரும்.',
+    kural_number: 611,
+    chapter_ta: 'ஆள்வினையுடைமை',
+    chapter_en: 'Perseverance',
+    line1_ta: 'அருமை உடைத்தென் றசாவாமை வேண்டும்',
+    line2_ta: 'பெருமை முயற்சி தரும்.',
+    transliteration: 'Arumai udaiththen rasaavaamai vendum / Perumai muyarchi tharum.',
+    meaning_ta: 'செய்வதற்கு அரிய செயல் என்று சோர்வு கொள்ளாமல் முயற்சி செய்தால் அது பெருமையைத் தரும்.',
+    meaning_en: 'Do not give up thinking "this is too hard"; effort brings greatness.',
+    explanation_source: 'மு. வரதராசனார் உரை · Tamil Virtual Academy',
+  },
+  {
+    id: 'k616',
+    kural_number: 616,
+    chapter_ta: 'ஆள்வினையுடைமை',
+    chapter_en: 'Perseverance',
+    line1_ta: 'முயற்சி திருவினை ஆக்கும் முயற்றின்மை',
+    line2_ta: 'இன்மை புகுத்தி விடும்.',
+    transliteration: 'Muyarchi thiruvinai aakkum muyatrinmai / Inmai puguththi vidum.',
+    meaning_ta: 'முயற்சி ஒருவருக்குச் செல்வத்தைப் பெருகச் செய்யும்; முயற்சி இல்லாமை வறுமையைச் சேர்த்துவிடும்.',
+    meaning_en: 'Effort creates prosperity; lack of effort brings poverty.',
+    explanation_source: 'மு. வரதராசனார் உரை · Tamil Virtual Academy',
   },
   {
     id: 'k619',
-    number: 'குறள் 619',
-    kural: 'தெய்வத்தான் ஆகா தெனினும் முயற்சிதன் / மெய்வருத்தக் கூலி தரும்.',
-    porul: 'விதியால் முடியாவிட்டாலும், முயற்சி தன் உடல் உழைப்புக்கு ஏற்ற பலனைத் தவறாமல் தரும்.',
-  },
-  {
-    id: 'k595',
-    number: 'குறள் 595',
-    kural: 'வெள்ளத் தனைய மலர்நீட்டம் மாந்தர்தம் / உள்ளத் தனைய துயர்வு.',
-    porul: 'நீரின் அளவுக்குத் தக்கபடி தாமரை உயரும்; அதுபோல மக்களின் ஊக்கத்தின் அளவுக்குத் தக்கபடி உயர்வு உண்டாகும்.',
+    kural_number: 619,
+    chapter_ta: 'ஆள்வினையுடைமை',
+    chapter_en: 'Perseverance',
+    line1_ta: 'தெய்வத்தான் ஆகா தெனினும் முயற்சிதன்',
+    line2_ta: 'மெய்வருத்தக் கூலி தரும்.',
+    transliteration: 'Deivaththaan aagaa dheninum muyarchithan / Meivaruththak kooli tharum.',
+    meaning_ta: 'விதியால் முடியாவிட்டாலும், முயற்சி தன் உடல் உழைப்புக்கு ஏற்ற பலனைத் தவறாமல் தரும்.',
+    meaning_en: 'Even if fate denies it, diligent effort will surely reward your hard work.',
+    explanation_source: 'மு. வரதராசனார் உரை · Tamil Virtual Academy',
   },
   {
     id: 'k620',
-    number: 'குறள் 620',
-    kural: 'ஊழையும் உப்பக்கம் காண்பர் உலைவின்றித் / தாழாது உஞற்று பவர்.',
-    porul: 'சோர்வு இல்லாமல் தொடர்ந்து முயற்சி செய்கிறவர்கள் விதியையும் வென்று வெற்றி காண்பார்கள்.',
-  },
-  {
-    id: 'k483',
-    number: 'குறள் 483',
-    kural: 'அருவினை யென்ப உளவோ கருவியான் / காலம் அறிந்து செயின்.',
-    porul: 'ஏற்ற கருவிகளுடன் தக்க காலத்தை அறிந்து செய்தால் முடியாத செயல் எதுவும் இல்லை.',
+    kural_number: 620,
+    chapter_ta: 'ஆள்வினையுடைமை',
+    chapter_en: 'Perseverance',
+    line1_ta: 'ஊழையும் உப்பக்கம் காண்பர் உலைவின்றித்',
+    line2_ta: 'தாழாது உஞற்று பவர்.',
+    transliteration: 'Oozhaiyum uppakkam kaanbar ulaivindrith / Thaazhaadhu unyatru pavar.',
+    meaning_ta: 'சோர்வு இல்லாமல் தொடர்ந்து முயற்சி செய்கிறவர்கள் விதியையும் வென்று வெற்றி காண்பார்கள்.',
+    meaning_en: 'Those who persevere tirelessly without faltering will overcome even fate.',
+    explanation_source: 'மு. வரதராசனார் உரை · Tamil Virtual Academy',
   },
 ];
 
@@ -65,6 +95,7 @@ export const DEFAULT_RUSH_CONFIG: RushQueueConfig = {
   maxQueueLength: 5000,
   showQuotes: true,
   showPosition: true,
+  showTransliteration: false,
   playSound: false,
   quoteIntervalSeconds: 9,
   headline: 'Please wait, we are verifying your attendance.',

@@ -16,6 +16,8 @@ import { AcademicsManagement } from './features/admin/AcademicsManagement';
 import { AdminRequestsPage } from './features/admin/AdminRequestsPage';
 import { ReportsPage } from './features/admin/ReportsPage';
 import { AdminLiveMonitorPage } from './features/admin/AdminLiveMonitorPage';
+import { AdminMentorAssignmentPage } from './features/admin/AdminMentorAssignmentPage';
+import { MentoringPortalPage } from './features/faculty/MentoringPortalPage';
 
 // Faculty Screens
 import { FacultyDashboard } from './features/faculty/FacultyDashboard';
@@ -111,6 +113,7 @@ export default function App() {
           <Route path="/admin/students" element={user?.role === UserRole.ADMIN ? <StudentManagement /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/academics" element={user?.role === UserRole.ADMIN ? <AcademicsManagement /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/academics-records" element={user?.role === UserRole.ADMIN ? <AdminAcademicsPortal /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/admin/mentors" element={user?.role === UserRole.ADMIN ? <AdminMentorAssignmentPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/requests" element={user?.role === UserRole.ADMIN ? <AdminRequestsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/devices" element={user?.role === UserRole.ADMIN ? <AdminRequestsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/admin/reports" element={user?.role === UserRole.ADMIN ? <ReportsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
@@ -122,6 +125,7 @@ export default function App() {
           <Route path="/faculty/timetable" element={user?.role === UserRole.FACULTY ? <FacultyDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/classes" element={user?.role === UserRole.FACULTY ? <AttendanceHistoryEditorPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/advisees" element={user?.role === UserRole.FACULTY ? <AdvisorAcademicsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
+          <Route path="/faculty/mentoring" element={user?.role === UserRole.FACULTY ? <MentoringPortalPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/assignments" element={user?.role === UserRole.FACULTY ? <AssignmentsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
           <Route path="/faculty/marks" element={<GenericSubPage title="Marks & Internals" subtitle="Semester marks entry and topper/at-risk analytics" />} />
           <Route path="/faculty/materials" element={user?.role === UserRole.FACULTY ? <MaterialsPage /> : <Navigate to={getDefaultRedirect()} replace />} />
