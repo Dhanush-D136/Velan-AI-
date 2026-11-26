@@ -136,13 +136,14 @@ export const AdminMentorAssignmentPage: React.FC = () => {
     }
   };
 
-  const handleSaveMentors = async () => {
+  const handleSaveMentors = async (idsToSave = selectedMentorIds) => {
     try {
       await api.put(`/api/admin/mentors/class/${selectedClassId}/mentors`, {
-        facultyIds: selectedMentorIds,
+        facultyIds: idsToSave,
       });
       showToast('Class mentors updated!', 'success');
       fetchBoard();
+      fetchOverview();
     } catch (err: any) {
       showToast(err?.response?.data?.error || 'Failed to update mentors', 'error');
     }
@@ -279,7 +280,7 @@ export const AdminMentorAssignmentPage: React.FC = () => {
                 <Button size="sm" variant="secondary" onClick={handleAutoDistributePreview} leftIcon={<Wand2 className="w-3.5 h-3.5" />}>
                   Auto-distribute evenly
                 </Button>
-                <Button size="sm" onClick={handleSaveMentors}>
+                <Button size="sm" onClick={() => handleSaveMentors()}>
                   Save Mentors ({selectedMentorIds.length})
                 </Button>
               </div>
@@ -294,11 +295,13 @@ export const AdminMentorAssignmentPage: React.FC = () => {
                     key={f.facultyId}
                     type="button"
                     disabled={isAdvisor}
-                    onClick={() =>
-                      setSelectedMentorIds((prev) =>
-                        prev.includes(f.facultyId) ? prev.filter((id) => id !== f.facultyId) : [...prev, f.facultyId]
-                      )
-                    }
+                    onClick={() => {
+                      const next = isSelected
+                        ? selectedMentorIds.filter((id) => id !== f.facultyId)
+                        : [...selectedMentorIds, f.facultyId];
+                      setSelectedMentorIds(next);
+                      void handleSaveMentors(next);
+                    }}
                     className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition ${
                       isSelected
                         ? 'bg-brand-600 text-white border-brand-600'
@@ -423,7 +426,6 @@ export const AdminMentorAssignmentPage: React.FC = () => {
                     key={m.facultyId}
                     size="sm"
                     onClick={() => handleBulkAssign(m.facultyId)}
-                    disabled={selectedStudentIds.length === 0}
                   >
                     Assign to {m.name} ({m.classMenteeCount}/{board.rules.targetGroupSize})
                   </Button>
@@ -433,32 +435,40 @@ export const AdminMentorAssignmentPage: React.FC = () => {
               {/* Student Rows */}
               <div className="max-h-96 overflow-y-auto divide-y divide-border text-xs">
                 {students.map((s: any, idx: number) => {
-                  const mentorObj = (board.mentors || []).find((m: any) => m.facultyId === s.mentorId);
                   return (
-                    <label
+                    <div
                       key={s.studentId}
                       draggable
                       onDragStart={(e) => {
                         const dragIds = selectedStudentIds.includes(s.studentId) ? selectedStudentIds : [s.studentId];
                         e.dataTransfer.setData('text/plain', JSON.stringify(dragIds));
                       }}
-                      className="py-2 px-2 flex items-center justify-between gap-2 hover:bg-slate-50 cursor-pointer"
+                      className="py-2 px-2 flex items-center justify-between gap-2 hover:bg-slate-50"
                     >
-                      <div className="flex items-center gap-2.5">
+                      <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
                         <input
                           type="checkbox"
                           checked={selectedStudentIds.includes(s.studentId)}
                           onChange={(e) => toggleStudentCheck(s.studentId, idx, (e.nativeEvent as any).shiftKey)}
                         />
-                        <div>
+                        <div className="truncate">
                           <span className="font-bold text-content">{s.name}</span>
                           <span className="text-content-muted font-mono ml-2">{s.rollNo} • {s.registerNo}</span>
                         </div>
-                      </div>
-                      <Badge variant={mentorObj ? 'neutral' : 'warning'} size="sm">
-                        {mentorObj ? mentorObj.name : 'Unassigned'}
-                      </Badge>
-                    </label>
+                      </label>
+                      <select
+                        value={s.mentorId || ''}
+                        onChange={(e) => {
+                          if (e.target.value) void handleBulkAssign(e.target.value, [s.studentId]);
+                        }}
+                        className="px-2 py-1 rounded-lg border border-border text-[11px] font-semibold bg-white shrink-0"
+                      >
+                        <option value="">Unassigned</option>
+                        {(board.mentors || []).map((m: any) => (
+                          <option key={m.facultyId} value={m.facultyId}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   );
                 })}
               </div>

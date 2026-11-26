@@ -245,39 +245,41 @@ export const bulkAssignMentees = async (req: Request, res: Response) => {
     });
     const prevMentorMap = new Map(existingLinks.map((l) => [l.studentId, l.mentorId]));
 
-    await prisma.$transaction(async (tx) => {
-      for (const s of students) {
-        const prevMentorId = prevMentorMap.get(s.id) || null;
-        await tx.menteeAssignment.upsert({
-          where: { studentId_academicYear: { studentId: s.id, academicYear: DEFAULT_ACADEMIC_YEAR } },
-          update: { mentorId, classId, assignedBy: req.user!.id, assignedAt: new Date() },
-          create: {
+    await prisma.$transaction(
+      async (tx) => {
+        const ids = students.map((s) => s.id);
+        await tx.menteeAssignment.deleteMany({
+          where: { studentId: { in: ids }, academicYear: DEFAULT_ACADEMIC_YEAR },
+        });
+        await tx.menteeAssignment.createMany({
+          data: students.map((s) => ({
             studentId: s.id,
             classId,
             mentorId,
             academicYear: DEFAULT_ACADEMIC_YEAR,
             assignedBy: req.user!.id,
-          },
+            assignedAt: new Date(),
+          })),
         });
-        await tx.mentorAssignmentHistory.create({
-          data: {
+        await tx.mentorAssignmentHistory.createMany({
+          data: students.map((s) => ({
             studentId: s.id,
-            fromMentorId: prevMentorId,
+            fromMentorId: prevMentorMap.get(s.id) || null,
             toMentorId: mentorId,
             byUserId: req.user!.id,
             reason: reason || 'Bulk assignment',
+          })),
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: req.user!.id,
+            action: 'MENTEES_BULK_ASSIGNED',
+            details: JSON.stringify({ classId, mentorId, count: students.length }),
           },
         });
-      }
-
-      await tx.auditLog.create({
-        data: {
-          userId: req.user!.id,
-          action: 'MENTEES_BULK_ASSIGNED',
-          details: JSON.stringify({ classId, mentorId, count: students.length }),
-        },
-      });
-    });
+      },
+      { timeout: 20000 }
+    );
 
     const io = req.app.get('io');
     if (io) io.emit('data:updated', { resource: 'mentors', classId });
@@ -353,30 +355,35 @@ export const autoDistributeMentees = async (req: Request, res: Response) => {
       return res.json({ preview: plan });
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const group of plan) {
-        for (const sid of group.studentIds) {
-          await tx.menteeAssignment.upsert({
-            where: { studentId_academicYear: { studentId: sid, academicYear: DEFAULT_ACADEMIC_YEAR } },
-            update: { mentorId: group.mentorId, classId, assignedBy: req.user!.id, assignedAt: new Date() },
-            create: {
-              studentId: sid,
-              classId,
-              mentorId: group.mentorId,
-              academicYear: DEFAULT_ACADEMIC_YEAR,
-              assignedBy: req.user!.id,
-            },
-          });
+    await prisma.$transaction(
+      async (tx) => {
+        const allStudentIds = cls.students.map((s) => s.id);
+        await tx.menteeAssignment.deleteMany({
+          where: { studentId: { in: allStudentIds }, academicYear: DEFAULT_ACADEMIC_YEAR },
+        });
+        const rowsToCreate = plan.flatMap((group) =>
+          group.studentIds.map((sid) => ({
+            studentId: sid,
+            classId,
+            mentorId: group.mentorId,
+            academicYear: DEFAULT_ACADEMIC_YEAR,
+            assignedBy: req.user!.id,
+            assignedAt: new Date(),
+          }))
+        );
+        if (rowsToCreate.length > 0) {
+          await tx.menteeAssignment.createMany({ data: rowsToCreate });
         }
-      }
-      await tx.auditLog.create({
-        data: {
-          userId: req.user!.id,
-          action: 'MENTEES_AUTO_DISTRIBUTED',
-          details: JSON.stringify({ classId, groups: plan.map((g) => ({ mentorId: g.mentorId, count: g.studentIds.length })) }),
-        },
-      });
-    });
+        await tx.auditLog.create({
+          data: {
+            userId: req.user!.id,
+            action: 'MENTEES_AUTO_DISTRIBUTED',
+            details: JSON.stringify({ classId, groups: plan.map((g) => ({ mentorId: g.mentorId, count: g.studentIds.length })) }),
+          },
+        });
+      },
+      { timeout: 20000 }
+    );
 
     const io = req.app.get('io');
     if (io) io.emit('data:updated', { resource: 'mentors', classId });
