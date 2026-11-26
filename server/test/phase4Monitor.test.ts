@@ -49,6 +49,7 @@ describe('Phase 4: Admin Live Monitor, Presence, Logout & Server Health', () => 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: `P4 Student1 ${runId}`, rollNo: `P4RO1_${runId}`, registerNo: reg1, classId });
     student1UserId = s1.body.student.userId;
+    (globalThis as any).__p4_st1Pwd = s1.body.tempPassword;
 
     // Student 2 never logs in
     const s2 = await request(app)
@@ -70,7 +71,7 @@ describe('Phase 4: Admin Live Monitor, Presence, Logout & Server Health', () => 
     const loginRes = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg1, password: '1234', deviceId: `p4_pc_${runId}` });
+      .send({ identifier: reg1, password: (globalThis as any).__p4_st1Pwd, deviceId: `p4_pc_${runId}` });
     expect(loginRes.status).toBe(200);
     const stToken = loginRes.body.token;
 
@@ -143,7 +144,7 @@ describe('Phase 4: Admin Live Monitor, Presence, Logout & Server Health', () => 
     const login2 = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg1, password: '1234', deviceId: `p4_pc_${runId}` });
+      .send({ identifier: reg1, password: (globalThis as any).__p4_st1Pwd, deviceId: `p4_pc_${runId}` });
     expect(login2.status).toBe(200);
     const tok2 = login2.body.token;
 

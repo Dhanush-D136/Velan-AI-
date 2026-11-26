@@ -94,6 +94,11 @@ npm test; npm run build:client
 - **Honesty & Fairness:** Deadlines are judged by server arrival time (`pressed_at`), invalid/out-of-range check-ins are rejected immediately, session close drains queued tickets before marking absentees, and students see a real countdown alongside **Thirukkural couplets with Tamil Porul**.
 - **Load Test:** Run `npm run load-test` to simulate 300 concurrent student arrivals and measure admission throughput and p95 latency.
 
+### 8. Phase 9: Session Persistence, Class Mentors & Password Security
+- **Refresh Persistence & Last-Page Restore:** Short-lived access JWTs (`15m`) automatically refresh silently via a rotating 30-day `httpOnly` `RefreshToken` cookie (`POST /api/auth/refresh`) with multi-tab `BroadcastChannel` sync and server-persisted `lastRoute` (`PUT /api/auth/last-route`), keeping users signed in on the exact page across browser refreshes. Idle auto-logout is **OFF by default** and configurable in Admin Settings.
+- **Class Advisor + 2 Mentors:** Each Class supports one **Class Advisor** plus up to two **Mentors** (`Mentor 1`, `Mentor 2`) — three distinct active faculty members. Mentors receive the exact same whole-class academic, attendance, export, and class-chat access as the Class Advisor.
+- **Server-Enforced Password Rules & One-Time Temporary Passwords:** New accounts and admin password resets generate a random 10-character temporary password (valid for 7 days, shown once with CSV export for bulk imports). Accounts with `mustChangePassword: true` receive a restricted `password_change_only` token blocked (`403 PASSWORD_CHANGE_REQUIRED`) from all APIs and sockets until a strong password (8+ chars, upper, lower, digit, symbol, no personal identifiers, no reuse of last 3 passwords) is set. Admin resets revoke all active sessions immediately.
+
 Open your browser at **`http://localhost:5173`**.
 
 ---

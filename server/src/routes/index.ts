@@ -28,16 +28,25 @@ const deviceRequestLimiter = rateLimit({
   message: { error: 'Too many device reset requests. Please try again later.' },
 });
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: 'Too many authentication attempts. Please try again later.' },
+});
+
 export const apiRouter = Router();
 
 // ==========================================
 // AUTHENTICATION & PASSWORD FLOWS
 // ==========================================
-apiRouter.post('/auth/login', authCtrl.login);
-apiRouter.post('/auth/change-password', authenticateToken, authCtrl.changePassword);
-apiRouter.post('/auth/forgot-password', authCtrl.requestPasswordReset);
+apiRouter.post('/auth/login', authLimiter, authCtrl.login);
+apiRouter.post('/auth/refresh', authCtrl.refreshAccessToken);
+apiRouter.post('/auth/change-password', authenticateToken, authLimiter, authCtrl.changePassword);
+apiRouter.post('/auth/forgot-password', authLimiter, authCtrl.requestPasswordReset);
 apiRouter.post('/auth/device-request', deviceRequestLimiter, authCtrl.requestDeviceChange);
 apiRouter.get('/auth/me', authenticateToken, authCtrl.getCurrentUser);
+apiRouter.get('/me', authenticateToken, authCtrl.getCurrentUser);
+apiRouter.put('/auth/last-route', authenticateToken, authCtrl.updateLastRoute);
 apiRouter.put('/auth/profile', authenticateToken, authCtrl.updateMyProfile);
 apiRouter.get('/auth/devices', authenticateToken, authCtrl.getMyDevices);
 apiRouter.get('/auth/my-history', authenticateToken, authCtrl.getMyAuthHistory);

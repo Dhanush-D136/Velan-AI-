@@ -87,8 +87,16 @@ export const AppLayout: React.FC = () => {
     { userId: user?.id }
   );
 
-  // 30-second Page Visibility API heartbeat + Idle auto-logout (30 min default, 1 min warning)
+  // 30-second Page Visibility API heartbeat + Optional Idle auto-logout (DEFAULT OFF)
   const [idleWarningOpen, setIdleWarningOpen] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
+  useEffect(() => {
+    const onReconnect = (ev: any) => setIsReconnecting(!!ev.detail);
+    window.addEventListener('velan:reconnecting', onReconnect);
+    return () => window.removeEventListener('velan:reconnecting', onReconnect);
+  }, []);
+
   useEffect(() => {
     if (!user?.id) return;
     let lastInteractionAt = Date.now();
@@ -108,17 +116,24 @@ export const AppLayout: React.FC = () => {
     sendHeartbeat();
     const hbTimer = setInterval(sendHeartbeat, 30_000);
 
-    const idleLimitMs = 30 * 60 * 1000;
-    const idleCheckTimer = setInterval(() => {
-      const idleFor = Date.now() - lastInteractionAt;
-      if (idleFor >= idleLimitMs) {
-        setIdleWarningOpen(false);
-        logout('idle_timeout');
-        navigate('/login');
-      } else if (idleFor >= idleLimitMs - 60_000) {
-        setIdleWarningOpen(true);
-      }
-    }, 15_000);
+    // Idle auto-logout is OPTIONAL and OFF by default (only active if admin enables IDLE_AUTO_LOGOUT_ENABLED)
+    let idleCheckTimer: any = null;
+    api.get('/api/settings').then((res) => {
+      const enabled = res.data?.settings?.IDLE_AUTO_LOGOUT_ENABLED === 'true';
+      const mins = Number(res.data?.settings?.IDLE_TIMEOUT_MINUTES || 30);
+      if (!enabled) return;
+      const idleLimitMs = Math.max(5, mins) * 60 * 1000;
+      idleCheckTimer = setInterval(() => {
+        const idleFor = Date.now() - lastInteractionAt;
+        if (idleFor >= idleLimitMs) {
+          setIdleWarningOpen(false);
+          logout('idle_timeout');
+          navigate('/login');
+        } else if (idleFor >= idleLimitMs - 60_000) {
+          setIdleWarningOpen(true);
+        }
+      }, 15_000);
+    }).catch(() => {});
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible') sendHeartbeat();
@@ -127,7 +142,7 @@ export const AppLayout: React.FC = () => {
 
     return () => {
       clearInterval(hbTimer);
-      clearInterval(idleCheckTimer);
+      if (idleCheckTimer) clearInterval(idleCheckTimer);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('mousemove', markInteraction);
       window.removeEventListener('keydown', markInteraction);
@@ -231,6 +246,14 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white flex flex-col antialiased">
+      {/* Reconnecting banner on transient network/5xx errors */}
+      {isReconnecting && (
+        <div className="bg-amber-500 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 shadow-sm z-50">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span>Reconnecting to server… Your session is preserved.</span>
+        </div>
+      )}
+
       {/* Calm free-tier waking up server banner */}
       {isServerWaking && (
         <div className="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2 shadow-sm animate-pulse z-50">

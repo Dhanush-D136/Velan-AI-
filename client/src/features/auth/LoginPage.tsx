@@ -49,6 +49,8 @@ export const LoginPage: React.FC = () => {
   // Forgot Password Modal
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotId, setForgotId] = useState('');
+  const [forgotVerify, setForgotVerify] = useState('');
+  const [forgotReason, setForgotReason] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
   // Device Lock Modal
@@ -87,8 +89,7 @@ export const LoginPage: React.FC = () => {
       setUser(user, token);
 
       if (mustChangePassword) {
-        setCurrentPwd(password);
-        setShowForcedPasswordChange(true);
+        navigate('/set-password', { replace: true });
         return;
       }
 
@@ -168,11 +169,15 @@ export const LoginPage: React.FC = () => {
     if (!forgotId.trim()) return;
 
     try {
-      await api.post('/auth/forgot-password', { identifier: forgotId.trim() });
+      await api.post('/auth/forgot-password', {
+        identifier: forgotId.trim(),
+        verifyValue: forgotVerify.trim() || undefined,
+        reason: forgotReason.trim() || undefined,
+      });
       setForgotSubmitted(true);
-      toast.success('Password reset request submitted for admin review.');
+      toast.success('Request received. If an account matches, an administrator will review it.');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to submit reset request');
+      toast.error(err?.response?.data?.error || err.message || 'Failed to submit reset request');
     }
   };
 
@@ -413,7 +418,7 @@ export const LoginPage: React.FC = () => {
         isOpen={showForgotPassword}
         onClose={() => setShowForgotPassword(false)}
         title="Reset Password Request"
-        description="Submit your Register Number, Employee ID, or Username. When approved by admin, your password will be reset to 1234."
+        description="Submit your Register Number, Employee ID, or Username. An administrator will generate a one-time temporary password if verified."
       >
         {!forgotSubmitted ? (
           <form onSubmit={handleForgotSubmit} className="space-y-4">
@@ -423,6 +428,18 @@ export const LoginPage: React.FC = () => {
               value={forgotId}
               onChange={(e) => setForgotId(e.target.value)}
               placeholder="e.g. 710024104001 or FAC001 or Vel"
+            />
+            <Input
+              label="Verification (Register No / Last 4 digits of phone)"
+              value={forgotVerify}
+              onChange={(e) => setForgotVerify(e.target.value)}
+              placeholder="Optional verification detail"
+            />
+            <Input
+              label="Note for Admin (Optional)"
+              value={forgotReason}
+              onChange={(e) => setForgotReason(e.target.value)}
+              placeholder="e.g. Forgot password after device change"
             />
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button
@@ -442,10 +459,10 @@ export const LoginPage: React.FC = () => {
           <div className="text-center py-4 space-y-3">
             <CheckCircle2 className="w-10 h-10 text-accent-emerald mx-auto" />
             <p className="text-xs font-semibold text-content">
-              Your password reset request has been submitted to the administrator.
+              If an account matching that identifier exists, a password reset request has been submitted to the administrator.
             </p>
             <p className="text-[11px] text-content-secondary">
-              Once approved, your password will be reset to 1234 and you will be prompted to set a new password on your next login.
+              Once approved, the administrator will share a one-time temporary password with you. You will be prompted to set a new password on your next login.
             </p>
             <Button size="sm" onClick={() => setShowForgotPassword(false)}>
               Done

@@ -5,6 +5,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import { prisma } from './lib/prisma';
 import { apiRouter } from './routes';
 import { setupSocketHandlers } from './sockets';
@@ -12,6 +14,7 @@ import { metricsCollector } from './services/metricsCollector';
 import { presenceService } from './services/presenceService';
 import { startAuthEventFlusher } from './services/authEventQueue';
 import { rushQueueService } from './services/rushQueueService';
+import { flagDefaultPasswordAccounts } from './services/passwordService';
 
 dotenv.config();
 
@@ -126,8 +129,22 @@ app.get(['/health', '/api/health'], async (req: Request, res: Response) => {
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
 
+// SPA catch-all for non-/api and non-/socket.io routes (if client/dist is present)
+const clientDistDir = path.resolve(__dirname, '../../client/dist');
+const clientIndexHtml = path.join(clientDistDir, 'index.html');
+if (fs.existsSync(clientIndexHtml)) {
+  app.use(express.static(clientDistDir));
+  app.get('*', (req: Request, res: Response, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path.startsWith('/health')) {
+      return next();
+    }
+    return res.sendFile(clientIndexHtml);
+  });
+}
+
 // Start Server (only if not running under tests)
 if (process.env.NODE_ENV !== 'test') {
+  void flagDefaultPasswordAccounts();
   // Server-side auto-close job for expired GPS attendance sessions (every 30s)
   setInterval(async () => {
     try {

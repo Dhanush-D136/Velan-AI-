@@ -13,6 +13,7 @@ import {
   GradeScaleEntry,
 } from '../utils/gpaMath';
 import { notifyUsers } from './notificationController';
+import { getAdvisorAndMentorClasses, canActAsAdvisor } from '../utils/advisorAccess';
 
 async function ensureDefaultGradingScale(regulation = '2021') {
   const existing = await prisma.gradingScale.findMany({ where: { regulation } });
@@ -379,24 +380,30 @@ export const deleteMySemester = async (req: Request, res: Response) => {
 
 export const getAdviseeAcademics = async (req: Request, res: Response) => {
   try {
-    const faculty = await prisma.facultyProfile.findUnique({
-      where: { userId: req.user!.id },
-      include: { advisedClasses: true },
-    });
-    if (!faculty) return res.status(403).json({ error: 'Faculty profile required' });
-    if (faculty.advisedClasses.length === 0) {
-      return res.status(403).json({ error: 'Only class advisors can access My Advisees Academics' });
+    const advisorClasses = await getAdvisorAndMentorClasses(req.user!.id);
+    if (advisorClasses.length === 0) {
+      return res.status(403).json({ error: 'Only class advisors or mentors can access My Advisees Academics' });
     }
 
-    const advisedIds = faculty.advisedClasses.map((c) => c.id);
+    const advisedIds = advisorClasses.map((c) => c.classId);
+    const { classId } = req.query;
+    if (classId && classId !== 'ALL' && !advisedIds.includes(String(classId))) {
+      return res.status(403).json({ error: 'Forbidden: you are not assigned as advisor or mentor for this class' });
+    }
+
+    const targetIds = classId && classId !== 'ALL' ? [String(classId)] : advisedIds;
     const students = await prisma.studentProfile.findMany({
-      where: { classId: { in: advisedIds } },
+      where: { classId: { in: targetIds } },
       include: {
         user: true,
         class: true,
         academicSemesters: {
           include: { subjects: true },
           orderBy: { semesterNumber: 'asc' },
+        },
+        attendanceRecords: {
+          where: { session: { isActive: false } },
+          select: { status: true },
         },
       },
       orderBy: { rollNo: 'asc' },
@@ -407,6 +414,10 @@ export const getAdviseeAcademics = async (req: Request, res: Response) => {
       const summary = buildStudentSummary(s.academicSemesters, multiplier);
       const latestSem =
         summary.semesters.length > 0 ? summary.semesters[summary.semesters.length - 1] : null;
+      const totalAtt = s.attendanceRecords.length;
+      const presentAtt = s.attendanceRecords.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+      const attendancePercent = totalAtt > 0 ? Math.round((presentAtt / totalAtt) * 100) : null;
+
       return {
         studentId: s.id,
         name: s.user.name,
@@ -419,13 +430,14 @@ export const getAdviseeAcademics = async (req: Request, res: Response) => {
         cgpa: summary.cgpa,
         totalCredits: summary.totalCredits,
         arrearsCount: summary.arrearsCount,
+        attendancePercent,
         hasUploaded: summary.semesters.length > 0,
         lastUpdated: summary.lastUpdated,
       };
     });
 
     return res.json({
-      advisedClasses: faculty.advisedClasses,
+      advisedClasses: advisorClasses.map((c) => ({ id: c.classId, name: c.className, role: c.role })),
       students: list,
     });
   } catch (err) {
@@ -525,9 +537,9 @@ export const getStudentAcademicDetail = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Forbidden: you can only view your own academics' });
     }
     if (role === 'FACULTY') {
-      const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
-      if (!fac || student.class.advisorId !== fac.id) {
-        return res.status(403).json({ error: 'Forbidden: only the assigned class advisor can view this student' });
+      const allowed = await canActAsAdvisor(req.user!, student.classId);
+      if (!allowed) {
+        return res.status(403).json({ error: 'Forbidden: only the assigned class advisor or mentor can view this student' });
       }
     }
 
@@ -664,18 +676,22 @@ export const exportAcademicsExcel = async (req: Request, res: Response) => {
 
     const where: any = {};
     if (role === 'FACULTY') {
-      const fac = await prisma.facultyProfile.findUnique({
-        where: { userId: req.user!.id },
-        include: { advisedClasses: true },
+      const advisorClasses = await getAdvisorAndMentorClasses(req.user!.id);
+      if (advisorClasses.length === 0) {
+        return res.status(403).json({ error: 'Only class advisors or mentors can export advisee academics' });
+      }
+      const advisedIds = advisorClasses.map((c) => c.classId);
+      if (classId && classId !== 'ALL' && !advisedIds.includes(String(classId))) {
+        return res.status(403).json({ error: 'Forbidden: you are not assigned to this class' });
+      }
+      where.classId = classId && classId !== 'ALL' ? String(classId) : { in: advisedIds };
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'ADVISOR_DATA_EXPORTED',
+          details: JSON.stringify({ format: 'EXCEL', classId: classId || 'ALL' }),
+        },
       });
-      if (!fac || fac.advisedClasses.length === 0) {
-        return res.status(403).json({ error: 'Only class advisors can export advisee academics' });
-      }
-      const advisedIds = fac.advisedClasses.map((c) => c.id);
-      if (classId && !advisedIds.includes(String(classId))) {
-        return res.status(403).json({ error: 'Forbidden: you do not advise this class' });
-      }
-      where.classId = classId ? String(classId) : { in: advisedIds };
     } else if (classId && classId !== 'ALL') {
       where.classId = String(classId);
     }
@@ -774,18 +790,22 @@ export const exportAcademicsPdf = async (req: Request, res: Response) => {
 
     const where: any = {};
     if (role === 'FACULTY') {
-      const fac = await prisma.facultyProfile.findUnique({
-        where: { userId: req.user!.id },
-        include: { advisedClasses: true },
-      });
-      if (!fac || fac.advisedClasses.length === 0) {
-        return res.status(403).json({ error: 'Only class advisors can export advisee PDFs' });
+      const advisorClasses = await getAdvisorAndMentorClasses(req.user!.id);
+      if (advisorClasses.length === 0) {
+        return res.status(403).json({ error: 'Only class advisors or mentors can export advisee PDFs' });
       }
-      const advisedIds = fac.advisedClasses.map((c) => c.id);
-      if (classId && !advisedIds.includes(String(classId))) {
+      const advisedIds = advisorClasses.map((c) => c.classId);
+      if (classId && classId !== 'ALL' && !advisedIds.includes(String(classId))) {
         return res.status(403).json({ error: 'Forbidden' });
       }
-      where.classId = classId ? String(classId) : { in: advisedIds };
+      where.classId = classId && classId !== 'ALL' ? String(classId) : { in: advisedIds };
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'ADVISOR_DATA_EXPORTED',
+          details: JSON.stringify({ format: 'PDF', classId: classId || 'ALL' }),
+        },
+      });
     } else if (classId && classId !== 'ALL') {
       where.classId = String(classId);
     }

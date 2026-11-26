@@ -36,6 +36,10 @@ export const AcademicsManagement: React.FC = () => {
   const [editSection, setEditSection] = useState('');
   const [editRoom, setEditRoom] = useState('');
   const [editAdvisorId, setEditAdvisorId] = useState('');
+  const [classMentor1Id, setClassMentor1Id] = useState('');
+  const [classMentor2Id, setClassMentor2Id] = useState('');
+  const [editMentor1Id, setEditMentor1Id] = useState('');
+  const [editMentor2Id, setEditMentor2Id] = useState('');
 
   // Modals
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
@@ -155,6 +159,10 @@ export const AcademicsManagement: React.FC = () => {
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedYearId) return toast.error('Please choose an academic year');
+    const chosen = [classAdvisorId, classMentor1Id, classMentor2Id].filter(Boolean);
+    if (new Set(chosen).size !== chosen.length) {
+      return toast.error('Advisor, Mentor 1, and Mentor 2 must be three different faculty members.');
+    }
     setIsSaving(true);
     try {
       await api.post('/academics/classes', {
@@ -162,38 +170,51 @@ export const AcademicsManagement: React.FC = () => {
         section: classSection.trim().toUpperCase(),
         roomNumber: classRoom.trim() || undefined,
         advisorId: classAdvisorId || undefined,
+        mentor1Id: classMentor1Id || undefined,
+        mentor2Id: classMentor2Id || undefined,
       });
       toast.success(`Class Section ${classSection} created!`);
       setIsClassModalOpen(false);
       setClassSection('A');
       setClassRoom('');
+      setClassMentor1Id('');
+      setClassMentor2Id('');
       fetchData();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err?.response?.data?.error || err.message);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // 3b. Update Class Section (section, room, advisor)
+  // 3b. Update Class Section (section, room, advisor, mentor 1 & 2)
   const openEditClassModal = (cls: any) => {
     setEditingClass(cls);
     setEditSection(cls.section || 'A');
     setEditRoom(cls.roomNumber || '');
     setEditAdvisorId(cls.advisorId || '');
+    const mentors = (cls.mentors || []).filter((m: any) => m.role === 'mentor');
+    setEditMentor1Id(mentors[0]?.facultyId || '');
+    setEditMentor2Id(mentors[1]?.facultyId || '');
   };
 
   const handleUpdateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingClass) return;
+    const chosen = [editAdvisorId, editMentor1Id, editMentor2Id].filter(Boolean);
+    if (new Set(chosen).size !== chosen.length) {
+      return toast.error('Advisor, Mentor 1, and Mentor 2 must be three different faculty members.');
+    }
     setIsSaving(true);
     try {
       await api.put(`/academics/classes/${editingClass.id}`, {
         section: editSection.trim().toUpperCase(),
         roomNumber: editRoom.trim() || null,
         advisorId: editAdvisorId || null,
+        mentor1Id: editMentor1Id || null,
+        mentor2Id: editMentor2Id || null,
       });
-      toast.success('Class details & advisor updated!');
+      toast.success('Class details, advisor & mentors updated!');
       setEditingClass(null);
       fetchData();
     } catch (err: any) {
@@ -434,7 +455,11 @@ export const AcademicsManagement: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-content text-base">{cls.name}</h4>
                     <p className="text-xs text-content-secondary mt-0.5">
-                      Room: <span className="font-mono text-content font-semibold">{cls.roomNumber || 'Not assigned'}</span> • Class Advisor: <span className="font-semibold text-brand-600">{cls.advisor?.user?.name || 'Unassigned'}</span>
+                      Room: <span className="font-mono text-content font-semibold">{cls.roomNumber || 'Not assigned'}</span> • Advisor: <span className="font-semibold text-brand-600">{cls.advisor?.user?.name || 'Unassigned'}</span>
+                      {' '}• Mentors:{' '}
+                      <span className="font-semibold text-content">
+                        {(cls.mentors || []).filter((m: any) => m.role === 'mentor').map((m: any) => m.faculty?.user?.name).filter(Boolean).join(', ') || 'None'}
+                      </span>
                     </p>
                   </div>
 
@@ -788,6 +813,43 @@ export const AcademicsManagement: React.FC = () => {
             </select>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-content-secondary uppercase mb-1">
+                Mentor 1 (Optional)
+              </label>
+              <select
+                value={classMentor1Id}
+                onChange={(e) => setClassMentor1Id(e.target.value)}
+                className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-semibold"
+              >
+                <option value="">No Mentor 1</option>
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.user?.name} ({f.employeeId})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-content-secondary uppercase mb-1">
+                Mentor 2 (Optional)
+              </label>
+              <select
+                value={classMentor2Id}
+                onChange={(e) => setClassMentor2Id(e.target.value)}
+                className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-semibold"
+              >
+                <option value="">No Mentor 2</option>
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.user?.name} ({f.employeeId})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="pt-4 flex items-center justify-end gap-2 border-t border-border">
             <Button type="button" variant="secondary" size="sm" onClick={() => setIsClassModalOpen(false)}>
               Cancel
@@ -838,6 +900,43 @@ export const AcademicsManagement: React.FC = () => {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-content-secondary uppercase mb-1">
+                Mentor 1 (Optional)
+              </label>
+              <select
+                value={editMentor1Id}
+                onChange={(e) => setEditMentor1Id(e.target.value)}
+                className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-semibold"
+              >
+                <option value="">No Mentor 1 (Clear)</option>
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.user?.name} ({f.employeeId})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-content-secondary uppercase mb-1">
+                Mentor 2 (Optional)
+              </label>
+              <select
+                value={editMentor2Id}
+                onChange={(e) => setEditMentor2Id(e.target.value)}
+                className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-semibold"
+              >
+                <option value="">No Mentor 2 (Clear)</option>
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.user?.name} ({f.employeeId})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="pt-4 flex items-center justify-end gap-2 border-t border-border">

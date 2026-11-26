@@ -11,11 +11,7 @@ export interface AuthenticatedUser {
   name: string;
   deviceId?: string;
   sid?: string;
-}
-
-const revokedSessionIds = new Set<string>();
-export function revokeSessionToken(sessionId: string) {
-  if (sessionId) revokedSessionIds.add(sessionId);
+  scope?: string;
 }
 
 declare global {
@@ -26,18 +22,44 @@ declare global {
   }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'velan_jwt_secret_dev_2026';
+const revokedSessionIds = new Set<string>();
+export function revokeSessionToken(sessionId: string) {
+  if (sessionId) revokedSessionIds.add(sessionId);
+}
+
+export function getJwtSecret(): string {
+  if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET environment variable is required in production.');
+  }
+  return process.env.JWT_SECRET || 'velan_jwt_secret_dev_2026';
+}
+
+const PASSWORD_CHANGE_ALLOWED_PATHS = new Set([
+  '/me',
+  '/api/me',
+  '/auth/me',
+  '/api/auth/me',
+  '/auth/change-password',
+  '/api/auth/change-password',
+  '/logout',
+  '/api/logout',
+  '/auth/logout',
+  '/api/auth/logout',
+]);
 
 export const authenticateToken = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.cookies?.velan_access_token;
+  const token =
+    authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : req.cookies?.velan_access_token;
 
   if (!token) {
     return res.status(401).json({ error: 'Authentication token required' });
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
+    const decoded = jwt.verify(token, getJwtSecret()) as AuthenticatedUser;
 
     if (decoded.sid) {
       if (revokedSessionIds.has(decoded.sid)) {
@@ -63,7 +85,18 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     });
 
     if (!user || user.status !== 'ACTIVE') {
-      return res.status(403).json({ error: 'User account is inactive or suspended' });
+      return res.status(401).json({ error: 'User account is inactive or suspended' });
+    }
+
+    // Server-enforced password change gate
+    const fullPath = `${req.baseUrl || ''}${req.path || ''}`;
+    if (decoded.scope === 'password_change_only' || user.mustChangePassword) {
+      if (!PASSWORD_CHANGE_ALLOWED_PATHS.has(fullPath) && !PASSWORD_CHANGE_ALLOWED_PATHS.has(req.path)) {
+        return res.status(403).json({
+          code: 'PASSWORD_CHANGE_REQUIRED',
+          error: 'Password change required before accessing this resource.',
+        });
+      }
     }
 
     // Hardware device lock check for students (supports up to 2 active devices)
@@ -87,11 +120,12 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       name: user.name,
       deviceId: requestDeviceId,
       sid: decoded.sid,
+      scope: decoded.scope,
     };
 
     next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 

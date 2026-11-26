@@ -114,6 +114,7 @@ describe('Full Production Platform End-to-End Flow', () => {
       .send({ name: `Prof ${runId}`, employeeId: empId, departmentId: deptId, designation: 'Professor' });
     expect(fRes.status).toBe(201);
     facultyId = fRes.body.faculty.id;
+    (globalThis as any).__ff_fPwd = fRes.body.tempPassword;
 
     const st1 = await request(app)
       .post('/api/academics/students')
@@ -121,6 +122,7 @@ describe('Full Production Platform End-to-End Flow', () => {
       .send({ name: 'Student Inside', registerNo: regIn, rollNo: '01', classId: classAId });
     expect(st1.status).toBe(201);
     studentInId = st1.body.student.id;
+    (globalThis as any).__ff_s1Pwd = st1.body.tempPassword;
 
     const st2 = await request(app)
       .post('/api/academics/students')
@@ -128,6 +130,7 @@ describe('Full Production Platform End-to-End Flow', () => {
       .send({ name: 'Student Outside', registerNo: regOut, rollNo: '02', classId: classAId });
     expect(st2.status).toBe(201);
     studentOutId = st2.body.student.id;
+    (globalThis as any).__ff_s2Pwd = st2.body.tempPassword;
   }, 25000);
 
   it('2. Admin builds timetable and clash is blocked with 409', async () => {
@@ -164,29 +167,44 @@ describe('Full Production Platform End-to-End Flow', () => {
   });
 
   it('3. Student cannot edit timetable (403) and Faculty/Students log in', async () => {
+    const fPwd0 = (globalThis as any).__ff_fPwd;
     const fLogin = await request(app).post('/api/auth/login').send({
       identifier: empId,
-      password: '1234',
+      password: fPwd0,
       deviceId: `fac_dev_${runId}`,
     });
     expect(fLogin.status).toBe(200);
-    facultyToken = fLogin.body.token;
+    const fChg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${fLogin.body.token}`)
+      .send({ currentPassword: fPwd0, newPassword: 'VelanTest#2026' });
+    facultyToken = fChg.body.token;
 
+    const s1Pwd0 = (globalThis as any).__ff_s1Pwd;
     const s1Login = await request(app).post('/api/auth/login').send({
       identifier: regIn,
-      password: '1234',
+      password: s1Pwd0,
       deviceId: `st1_dev_${runId}`,
     });
     expect(s1Login.status).toBe(200);
-    studentInToken = s1Login.body.token;
+    const s1Chg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${s1Login.body.token}`)
+      .send({ currentPassword: s1Pwd0, newPassword: 'VelanTest#2026' });
+    studentInToken = s1Chg.body.token;
 
+    const s2Pwd0 = (globalThis as any).__ff_s2Pwd;
     const s2Login = await request(app).post('/api/auth/login').send({
       identifier: regOut,
-      password: '1234',
+      password: s2Pwd0,
       deviceId: `st2_dev_${runId}`,
     });
     expect(s2Login.status).toBe(200);
-    studentOutToken = s2Login.body.token;
+    const s2Chg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${s2Login.body.token}`)
+      .send({ currentPassword: s2Pwd0, newPassword: 'VelanTest#2026' });
+    studentOutToken = s2Chg.body.token;
 
     const forbidden = await request(app)
       .post('/api/timetable/slot')
@@ -202,7 +220,7 @@ describe('Full Production Platform End-to-End Flow', () => {
         roomNumber: 'R101',
       });
     expect(forbidden.status).toBe(403);
-  });
+  }, 20000);
 
   it('4. Faculty starts GPS session, inside student succeeds, outside fails, double-tap blocked, close auto-absents', async () => {
     const startRes = await request(app)

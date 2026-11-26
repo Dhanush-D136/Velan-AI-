@@ -3,6 +3,9 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { prisma } from '../lib/prisma';
+import { MAX_MENTORS_PER_CLASS } from '../utils/advisorAccess';
+import { generateTempPassword, setPassword } from '../services/passwordService';
+import { notifyUsers } from './notificationController';
 import {
   departmentCreateSchema,
   academicYearCreateSchema,
@@ -60,6 +63,7 @@ export const getClasses = async (req: Request, res: Response) => {
       include: {
         academicYear: { include: { department: true } },
         advisor: { include: { user: true } },
+        mentors: { include: { faculty: { include: { user: true } } }, orderBy: { createdAt: 'asc' } },
         _count: { select: { students: true, classSubjects: true } },
       },
       orderBy: { name: 'asc' },
@@ -79,6 +83,7 @@ export const getAcademicHierarchy = async (req: Request, res: Response) => {
             classes: {
               include: {
                 advisor: { include: { user: true } },
+                mentors: { include: { faculty: { include: { user: true } } }, orderBy: { createdAt: 'asc' } },
                 _count: { select: { students: true, classSubjects: true } },
               },
             },
@@ -175,12 +180,52 @@ export const deleteAcademicYear = async (req: Request, res: Response) => {
   }
 };
 
+async function validateClassRoles(
+  advisorId?: string | null,
+  mentor1Id?: string | null,
+  mentor2Id?: string | null
+): Promise<{ error?: string; cleanAdvisor: string | null; mentorIds: string[] }> {
+  const cleanAdvisor = advisorId ? String(advisorId).trim() : null;
+  const rawMentors = [mentor1Id, mentor2Id]
+    .map((m) => (m ? String(m).trim() : ''))
+    .filter(Boolean);
+
+  if (rawMentors.length > MAX_MENTORS_PER_CLASS) {
+    return { error: `A class can have at most ${MAX_MENTORS_PER_CLASS} mentors.`, cleanAdvisor: null, mentorIds: [] };
+  }
+
+  const allChosen = [...(cleanAdvisor ? [cleanAdvisor] : []), ...rawMentors];
+  if (new Set(allChosen).size !== allChosen.length) {
+    return {
+      error: 'Class Advisor, Mentor 1, and Mentor 2 must be three different faculty members.',
+      cleanAdvisor: null,
+      mentorIds: [],
+    };
+  }
+
+  if (allChosen.length > 0) {
+    const faculties = await prisma.facultyProfile.findMany({
+      where: { id: { in: allChosen }, user: { status: 'ACTIVE' } },
+      select: { id: true },
+    });
+    if (faculties.length !== allChosen.length) {
+      return { error: 'All selected advisors and mentors must be registered, active faculty.', cleanAdvisor: null, mentorIds: [] };
+    }
+  }
+
+  return { cleanAdvisor, mentorIds: rawMentors };
+}
+
 export const createClass = async (req: Request, res: Response) => {
   try {
     const parse = classCreateSchema.safeParse(req.body);
     if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
 
     const { academicYearId, section, roomNumber, advisorId } = parse.data;
+    const { mentor1Id, mentor2Id } = req.body;
+
+    const roleCheck = await validateClassRoles(advisorId, mentor1Id, mentor2Id);
+    if (roleCheck.error) return res.status(400).json({ error: roleCheck.error });
 
     const ay = await prisma.academicYear.findUnique({
       where: { id: academicYearId },
@@ -195,20 +240,47 @@ export const createClass = async (req: Request, res: Response) => {
     });
     if (existing) return res.status(409).json({ error: `Section ${section} already exists for this year.` });
 
-    const cls = await prisma.class.create({
-      data: {
-        academicYearId,
-        section,
-        name: className,
-        roomNumber,
-        advisorId: advisorId || null,
-      },
+    const cls = await prisma.$transaction(async (tx) => {
+      const created = await tx.class.create({
+        data: {
+          academicYearId,
+          section,
+          name: className,
+          roomNumber,
+          advisorId: roleCheck.cleanAdvisor,
+        },
+      });
+
+      const mentorRows = [
+        ...(roleCheck.cleanAdvisor ? [{ classId: created.id, facultyId: roleCheck.cleanAdvisor, role: 'advisor' }] : []),
+        ...roleCheck.mentorIds.map((fid) => ({ classId: created.id, facultyId: fid, role: 'mentor' })),
+      ];
+      if (mentorRows.length > 0) {
+        await tx.classMentor.createMany({ data: mentorRows });
+      }
+
+      await tx.chatRoom.create({ data: { classId: created.id } });
+      return tx.class.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          mentors: { include: { faculty: { include: { user: true } } } },
+        },
+      });
     });
 
-    // Auto-create class-exclusive chat room
-    await prisma.chatRoom.create({
-      data: { classId: cls.id },
-    });
+    const assignedFacIds = [...(roleCheck.cleanAdvisor ? [roleCheck.cleanAdvisor] : []), ...roleCheck.mentorIds];
+    if (assignedFacIds.length > 0) {
+      const facs = await prisma.facultyProfile.findMany({
+        where: { id: { in: assignedFacIds } },
+        select: { userId: true },
+      });
+      await notifyUsers(req.app.get('io'), facs.map((f) => f.userId), {
+        title: 'Class Assignment Updated',
+        message: `You have been assigned to ${cls.name}.`,
+        type: 'CLASS_ASSIGNMENT',
+        link: '/faculty/advisees',
+      });
+    }
 
     emitDataUpdate(req, 'classes');
     return res.status(201).json({ message: 'Class section created successfully', class: cls, data: cls });
@@ -221,26 +293,78 @@ export const createClass = async (req: Request, res: Response) => {
 export const updateClass = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { section, roomNumber, advisorId } = req.body;
+    const { section, roomNumber, advisorId, mentor1Id, mentor2Id } = req.body;
 
     const existing = await prisma.class.findUnique({
       where: { id },
-      include: { academicYear: { include: { department: true } } },
+      include: {
+        academicYear: { include: { department: true } },
+        mentors: true,
+      },
     });
     if (!existing) return res.status(404).json({ error: 'Class not found' });
+
+    const nextAdvisor = advisorId !== undefined ? advisorId : existing.advisorId;
+    const existingMentors = existing.mentors.filter((m) => m.role === 'mentor').map((m) => m.facultyId);
+    const nextMentor1 = mentor1Id !== undefined ? mentor1Id : existingMentors[0] || null;
+    const nextMentor2 = mentor2Id !== undefined ? mentor2Id : existingMentors[1] || null;
+
+    const roleCheck = await validateClassRoles(nextAdvisor, nextMentor1, nextMentor2);
+    if (roleCheck.error) return res.status(400).json({ error: roleCheck.error });
 
     const nextSection = section ? String(section).toUpperCase().trim() : existing.section;
     const nextName = `${existing.academicYear.department.code} – Year ${existing.academicYear.year} – ${nextSection}`;
 
-    const cls = await prisma.class.update({
-      where: { id },
-      data: {
-        section: nextSection,
-        name: nextName,
-        roomNumber: roomNumber !== undefined ? roomNumber : existing.roomNumber,
-        advisorId: advisorId !== undefined ? advisorId || null : existing.advisorId,
-      },
+    const cls = await prisma.$transaction(async (tx) => {
+      const updated = await tx.class.update({
+        where: { id },
+        data: {
+          section: nextSection,
+          name: nextName,
+          roomNumber: roomNumber !== undefined ? roomNumber : existing.roomNumber,
+          advisorId: roleCheck.cleanAdvisor,
+        },
+      });
+
+      await tx.classMentor.deleteMany({ where: { classId: id } });
+      const mentorRows = [
+        ...(roleCheck.cleanAdvisor ? [{ classId: id, facultyId: roleCheck.cleanAdvisor, role: 'advisor' }] : []),
+        ...roleCheck.mentorIds.map((fid) => ({ classId: id, facultyId: fid, role: 'mentor' })),
+      ];
+      if (mentorRows.length > 0) {
+        await tx.classMentor.createMany({ data: mentorRows });
+      }
+      return updated;
     });
+
+    const oldFacIds = new Set([...(existing.advisorId ? [existing.advisorId] : []), ...existingMentors]);
+    const newFacIds = new Set([...(roleCheck.cleanAdvisor ? [roleCheck.cleanAdvisor] : []), ...roleCheck.mentorIds]);
+    const affectedFacIds = Array.from(new Set([...oldFacIds, ...newFacIds]));
+
+    if (affectedFacIds.length > 0) {
+      const facs = await prisma.facultyProfile.findMany({
+        where: { id: { in: affectedFacIds } },
+        select: { id: true, userId: true },
+      });
+      const addedUsers = facs.filter((f) => !oldFacIds.has(f.id) && newFacIds.has(f.id)).map((f) => f.userId);
+      const removedUsers = facs.filter((f) => oldFacIds.has(f.id) && !newFacIds.has(f.id)).map((f) => f.userId);
+      const io = req.app.get('io');
+      if (addedUsers.length > 0) {
+        await notifyUsers(io, addedUsers, {
+          title: 'Assigned to Class',
+          message: `You were assigned as advisor/mentor for ${cls.name}.`,
+          type: 'CLASS_ASSIGNMENT',
+          link: '/faculty/advisees',
+        });
+      }
+      if (removedUsers.length > 0) {
+        await notifyUsers(io, removedUsers, {
+          title: 'Class Assignment Removed',
+          message: `You were removed from advisor/mentor role for ${cls.name}.`,
+          type: 'CLASS_ASSIGNMENT',
+        });
+      }
+    }
 
     emitDataUpdate(req, 'classes');
     return res.json({ message: 'Class updated successfully', class: cls, data: cls });
@@ -403,8 +527,8 @@ export const createFaculty = async (req: Request, res: Response) => {
     const existingEmail = await prisma.user.findUnique({ where: { email: resolvedEmail } });
     if (existingEmail) return res.status(409).json({ error: `Email ${resolvedEmail} is already in use.` });
 
-    // Default password is 1234 unless admin explicitly provided an initial password
-    const initialPwd = password && password.trim() ? password.trim() : '1234';
+    // Generate secure 10-char temp password if none provided
+    const initialPwd = password && password.trim() ? password.trim() : generateTempPassword(10);
     const defaultPasswordHash = await bcrypt.hash(initialPwd, 10);
 
     const user = await prisma.user.create({
@@ -416,6 +540,8 @@ export const createFaculty = async (req: Request, res: Response) => {
         role: 'FACULTY',
         status: 'ACTIVE',
         mustChangePassword: true,
+        passwordSetBy: 'admin',
+        tempPasswordExpiresAt: new Date(Date.now() + 7 * 86400000),
       },
     });
 
@@ -431,7 +557,8 @@ export const createFaculty = async (req: Request, res: Response) => {
 
     emitDataUpdate(req, 'faculty');
     return res.status(201).json({
-      message: `Faculty registered successfully with initial password ${initialPwd}`,
+      message: 'Faculty registered successfully with a temporary password.',
+      tempPassword: initialPwd,
       faculty: profile,
       data: profile,
     });
@@ -494,9 +621,21 @@ export const deleteFaculty = async (req: Request, res: Response) => {
       where: { id },
       include: {
         timetableSlots: { include: { class: true } },
+        advisedClasses: { select: { name: true } },
+        classMentors: { include: { class: { select: { name: true } } } },
       },
     });
     if (!profile) return res.status(404).json({ error: 'Faculty not found' });
+
+    const assignedClasses = [
+      ...profile.advisedClasses.map((c) => `${c.name} (Advisor)`),
+      ...profile.classMentors.map((m) => `${m.class.name} (${m.role})`),
+    ];
+    if (assignedClasses.length > 0) {
+      return res.status(409).json({
+        error: `Cannot delete faculty: assigned to ${assignedClasses.join(', ')}. Replace them in the Class form first.`,
+      });
+    }
 
     if (profile.timetableSlots.length > 0) {
       const assignedLocations = profile.timetableSlots
@@ -536,9 +675,10 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
         .filter(Boolean) as string[]
     );
 
-    const defaultHash = await bcrypt.hash('1234', 10);
     const created: any[] = [];
+    const credentials: { name: string; identifier: string; tempPassword: string }[] = [];
     const errors: { row: number; employeeId: string; error: string }[] = [];
+    const expiresAt = new Date(Date.now() + 7 * 86400000);
 
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
@@ -571,16 +711,20 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
       }
 
       try {
+        const tempPassword = generateTempPassword(10);
+        const passwordHash = await bcrypt.hash(tempPassword, 10);
         const result = await prisma.$transaction(async (tx) => {
           const user = await tx.user.create({
             data: {
               name,
               email: resolvedEmail,
               phone,
-              passwordHash: defaultHash,
+              passwordHash,
               role: 'FACULTY',
               status: 'ACTIVE',
               mustChangePassword: true,
+              passwordSetBy: 'admin',
+              tempPasswordExpiresAt: expiresAt,
             },
           });
           return tx.facultyProfile.create({
@@ -595,6 +739,7 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
         existingEmpIds.add(employeeId);
         existingEmails.add(resolvedEmail);
         created.push(result);
+        credentials.push({ name, identifier: employeeId, tempPassword });
       } catch (err: any) {
         errors.push({ row: i + 1, employeeId, error: 'Database error creating faculty' });
       }
@@ -605,6 +750,7 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
       message: `Import completed: ${created.length} faculty created, ${errors.length} skipped.`,
       successCount: created.length,
       errorCount: errors.length,
+      credentials,
       errors,
     });
   } catch (error: any) {
@@ -618,16 +764,19 @@ export const resetFacultyPassword = async (req: Request, res: Response) => {
     const profile = await prisma.facultyProfile.findUnique({ where: { id } });
     if (!profile) return res.status(404).json({ error: 'Faculty not found' });
 
-    const defaultPasswordHash = await bcrypt.hash('1234', 10);
-    await prisma.user.update({
-      where: { id: profile.userId },
-      data: {
-        passwordHash: defaultPasswordHash,
-        mustChangePassword: true,
-      },
+    const customPwd = req.body?.password ? String(req.body.password).trim() : '';
+    const tempPassword = customPwd || generateTempPassword(10);
+    await setPassword(profile.userId, tempPassword, {
+      by: 'admin',
+      mustChange: true,
+      actorUserId: req.user?.id,
+      io: req.app.get('io'),
     });
 
-    return res.json({ message: 'Password reset to 1234. Faculty must change password at next login.' });
+    return res.json({
+      message: 'Temporary password generated. Faculty must change it at next login.',
+      tempPassword,
+    });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to reset faculty password' });
   }
@@ -672,7 +821,9 @@ export const createStudent = async (req: Request, res: Response) => {
     });
     if (existingRoll) return res.status(409).json({ error: `Roll Number ${rollNo} already exists in this class.` });
 
-    const defaultPasswordHash = await bcrypt.hash('1234', 10);
+    const customPwd = req.body?.password ? String(req.body.password).trim() : '';
+    const initialPwd = customPwd || generateTempPassword(10);
+    const defaultPasswordHash = await bcrypt.hash(initialPwd, 10);
 
     const profile = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -684,6 +835,8 @@ export const createStudent = async (req: Request, res: Response) => {
           role: 'STUDENT',
           status: 'ACTIVE',
           mustChangePassword: true,
+          passwordSetBy: 'admin',
+          tempPasswordExpiresAt: new Date(Date.now() + 7 * 86400000),
         },
       });
 
@@ -701,7 +854,8 @@ export const createStudent = async (req: Request, res: Response) => {
 
     emitDataUpdate(req, 'students');
     return res.status(201).json({
-      message: 'Student registered successfully with default password 1234',
+      message: 'Student registered successfully with a temporary password.',
+      tempPassword: initialPwd,
       student: profile,
       data: profile,
     });
@@ -788,16 +942,19 @@ export const resetStudentPassword = async (req: Request, res: Response) => {
     const profile = await prisma.studentProfile.findUnique({ where: { id } });
     if (!profile) return res.status(404).json({ error: 'Student not found' });
 
-    const defaultPasswordHash = await bcrypt.hash('1234', 10);
-    await prisma.user.update({
-      where: { id: profile.userId },
-      data: {
-        passwordHash: defaultPasswordHash,
-        mustChangePassword: true,
-      },
+    const customPwd = req.body?.password ? String(req.body.password).trim() : '';
+    const tempPassword = customPwd || generateTempPassword(10);
+    await setPassword(profile.userId, tempPassword, {
+      by: 'admin',
+      mustChange: true,
+      actorUserId: req.user?.id,
+      io: req.app.get('io'),
     });
 
-    return res.json({ message: 'Password reset to 1234. Student must change password at next login.' });
+    return res.json({
+      message: 'Temporary password generated. Student must change it at next login.',
+      tempPassword,
+    });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to reset student password' });
   }
@@ -962,8 +1119,6 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
       });
     }
 
-    const defaultPasswordHash = await bcrypt.hash('1234', 10);
-
     const existingEmails = new Set(
       (await prisma.user.findMany({ select: { email: true } }))
         .map((u) => u.email?.toLowerCase())
@@ -972,6 +1127,8 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
 
     const usersToCreate: any[] = [];
     const profilesToCreate: any[] = [];
+    const credentials: { name: string; identifier: string; tempPassword: string }[] = [];
+    const expiresAt = new Date(Date.now() + 7 * 86400000);
 
     for (const item of validRows) {
       let email = `${item.registerNo.toLowerCase()}@student.local`;
@@ -980,16 +1137,20 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
       }
       existingEmails.add(email);
 
+      const tempPassword = generateTempPassword(10);
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
       const userId = crypto.randomUUID();
       usersToCreate.push({
         id: userId,
         name: item.name,
         email,
         phone: item.phone || null,
-        passwordHash: defaultPasswordHash,
+        passwordHash,
         role: 'STUDENT',
         status: 'ACTIVE',
         mustChangePassword: true,
+        passwordSetBy: 'admin',
+        tempPasswordExpiresAt: expiresAt,
       });
 
       profilesToCreate.push({
@@ -1000,6 +1161,8 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
         classId,
         phone: item.phone || null,
       });
+
+      credentials.push({ name: item.name, identifier: item.registerNo, tempPassword });
     }
 
     if (usersToCreate.length > 0) {
@@ -1018,6 +1181,7 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
       totalProcessed: rawStudents.length,
       successCount: profilesToCreate.length,
       errorCount: errorList.length,
+      credentials,
       errors: errorList,
     });
   } catch (error: any) {
@@ -1087,13 +1251,12 @@ export const decidePasswordReset = async (req: Request, res: Response) => {
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
     if (action === 'APPROVE') {
-      const defaultPasswordHash = await bcrypt.hash('1234', 10);
-      await prisma.user.update({
-        where: { id: request.userId },
-        data: {
-          passwordHash: defaultPasswordHash,
-          mustChangePassword: true,
-        },
+      const tempPassword = generateTempPassword(10);
+      await setPassword(request.userId, tempPassword, {
+        by: 'admin',
+        mustChange: true,
+        actorUserId: req.user?.id,
+        io: req.app.get('io'),
       });
 
       await prisma.passwordResetRequest.update({
@@ -1105,7 +1268,16 @@ export const decidePasswordReset = async (req: Request, res: Response) => {
         },
       });
 
-      return res.json({ message: 'Password reset to 1234. User must change it at next login.' });
+      await notifyUsers(req.app.get('io'), [request.userId], {
+        title: 'Password Reset Approved',
+        message: 'Your password reset request was approved. Use the temporary password provided by Admin.',
+        type: 'SECURITY',
+      });
+
+      return res.json({
+        message: 'One-time temporary password generated. User must change it at next login.',
+        tempPassword,
+      });
     } else {
       await prisma.passwordResetRequest.update({
         where: { id },

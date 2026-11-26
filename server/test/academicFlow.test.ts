@@ -9,6 +9,8 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
   let classId: string;
   let facultyId: string;
   let studentId: string;
+  let facultyTempPwd = '';
+  let studentTempPwd = '';
 
   const runId = Math.floor(1000 + Math.random() * 9000);
   const deptCode = `CS${runId}`;
@@ -78,7 +80,7 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     classId = res.body.class.id;
   });
 
-  it('4. Admin registers a new Faculty member (default password 1234)', async () => {
+  it('4. Admin registers a new Faculty member (one-time temp password)', async () => {
     const res = await request(app)
       .post('/api/academics/faculty')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -93,10 +95,12 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     expect(res.status).toBe(201);
     expect(res.body.faculty).toBeDefined();
     expect(res.body.faculty.employeeId).toBe(empId);
+    expect(res.body.tempPassword).toBeTruthy();
+    facultyTempPwd = res.body.tempPassword;
     facultyId = res.body.faculty.id;
   });
 
-  it('5. Admin registers a Student inside the Class (default password 1234)', async () => {
+  it('5. Admin registers a Student inside the Class (one-time temp password)', async () => {
     const res = await request(app)
       .post('/api/academics/students')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -110,6 +114,8 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     expect(res.status).toBe(201);
     expect(res.body.student).toBeDefined();
     expect(res.body.student.registerNo).toBe(regNo);
+    expect(res.body.tempPassword).toBeTruthy();
+    studentTempPwd = res.body.tempPassword;
     studentId = res.body.student.id;
   });
 
@@ -143,12 +149,12 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     expect(stud).toBeDefined();
   });
 
-  it('7. Student can authenticate with Register Number and default password 1234', async () => {
+  it('7. Student can authenticate with Register Number and temp password', async () => {
     const studentLogin = await request(app)
       .post('/api/auth/login')
       .send({
         identifier: regNo,
-        password: '1234',
+        password: studentTempPwd,
         deviceId: `dev_student_phone_${runId}`,
       });
 
@@ -157,12 +163,12 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     expect(studentLogin.body.mustChangePassword).toBe(true);
   });
 
-  it('8. Faculty can authenticate with Employee ID and default password 1234', async () => {
+  it('8. Faculty can authenticate with Employee ID and temp password', async () => {
     const facultyLogin = await request(app)
       .post('/api/auth/login')
       .send({
         identifier: empId,
-        password: '1234',
+        password: facultyTempPwd,
         deviceId: 'dev_faculty_laptop',
       });
 

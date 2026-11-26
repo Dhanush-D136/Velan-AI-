@@ -7,6 +7,7 @@ import { Table, Column } from '@/components/ui/Table';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { TempPasswordModal, TempCredentialInfo } from '@/components/ui/TempPasswordModal';
 import {
   KeyRound,
   UserCheck,
@@ -28,6 +29,7 @@ export const AdminRequestsPage: React.FC = () => {
   const [deviceRequests, setDeviceRequests] = useState<any[]>([]);
   const [generalRequests, setGeneralRequests] = useState<any[]>([]);
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [tempCred, setTempCred] = useState<TempCredentialInfo | null>(null);
 
   const fetchRequests = async () => {
     setIsLoading(true);
@@ -55,6 +57,14 @@ export const AdminRequestsPage: React.FC = () => {
     try {
       const res = await api.post(`/api/academics/requests/password/${id}/decision`, { action });
       showToast(res.data.message || `Password request ${action.toLowerCase()}d`, 'success');
+      if (action === 'APPROVE' && res.data.tempPassword) {
+        const reqItem = passwordRequests.find((r) => r.id === id);
+        setTempCred({
+          name: reqItem?.user?.name || reqItem?.identifier || 'User',
+          identifier: reqItem?.identifier || '',
+          tempPassword: res.data.tempPassword,
+        });
+      }
       fetchRequests();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Action failed', 'error');
@@ -152,7 +162,7 @@ export const AdminRequestsPage: React.FC = () => {
                 onClick={() => handlePasswordDecision(r.id, 'APPROVE')}
                 leftIcon={<Check className="w-3.5 h-3.5" />}
               >
-                Reset to 1234
+                Approve & Temp Password
               </Button>
             </>
           ) : (
@@ -551,6 +561,8 @@ export const AdminRequestsPage: React.FC = () => {
           )}
         </div>
       )}
+
+      <TempPasswordModal credential={tempCred} onClose={() => setTempCred(null)} />
     </div>
   );
 };

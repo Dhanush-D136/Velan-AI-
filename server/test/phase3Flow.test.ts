@@ -64,6 +64,8 @@ describe('Phase 3 Integration Flow: C1, C2, C3, Skip & Academics Permissions', (
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: `Other Prof ${runId}`, employeeId: emp2, departmentId: deptId });
     otherFacultyUserId = f2Res.body.faculty.userId;
+    (globalThis as any).__p3_f1Pwd = f1Res.body.tempPassword;
+    (globalThis as any).__p3_f2Pwd = f2Res.body.tempPassword;
 
     const cARes = await request(app)
       .post('/api/academics/classes')
@@ -96,6 +98,7 @@ describe('Phase 3 Integration Flow: C1, C2, C3, Skip & Academics Permissions', (
       .send({ name: `Student One ${runId}`, rollNo: `RO1_${runId}`, registerNo: reg1, classId: classAId });
     student1Id = st1Res.body.student.id;
     student1UserId = st1Res.body.student.userId;
+    (globalThis as any).__p3_st1Pwd = st1Res.body.tempPassword;
 
     const st2Res = await request(app)
       .post('/api/academics/students')
@@ -106,23 +109,35 @@ describe('Phase 3 Integration Flow: C1, C2, C3, Skip & Academics Permissions', (
 
     const f1Login = await request(app).post('/api/auth/login').send({
       identifier: emp1,
-      password: '1234',
+      password: (globalThis as any).__p3_f1Pwd,
       deviceId: `fac1_p3_${runId}`,
     });
-    facultyToken = f1Login.body.token;
+    const f1Chg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${f1Login.body.token}`)
+      .send({ currentPassword: (globalThis as any).__p3_f1Pwd, newPassword: 'VelanTest#2026' });
+    facultyToken = f1Chg.body.token;
 
     const f2Login = await request(app).post('/api/auth/login').send({
       identifier: emp2,
-      password: '1234',
+      password: (globalThis as any).__p3_f2Pwd,
       deviceId: `fac2_p3_${runId}`,
     });
-    otherFacultyToken = f2Login.body.token;
+    const f2Chg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${f2Login.body.token}`)
+      .send({ currentPassword: (globalThis as any).__p3_f2Pwd, newPassword: 'VelanTest#2026' });
+    otherFacultyToken = f2Chg.body.token;
 
     const st2Login = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg2, password: '1234', deviceId: `st2_pc_${runId}` });
-    student2Token = st2Login.body.token;
+      .send({ identifier: reg2, password: st2Res.body.tempPassword, deviceId: `st2_pc_${runId}` });
+    const st2Chg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${st2Login.body.token}`)
+      .send({ currentPassword: st2Res.body.tempPassword, newPassword: 'VelanTest#2026' });
+    student2Token = st2Chg.body.token;
   }, 25000);
 
   afterAll(async () => {
@@ -138,31 +153,36 @@ describe('Phase 3 Integration Flow: C1, C2, C3, Skip & Academics Permissions', (
   });
 
   it('C3. Device limit: phone + computer allowed, 3rd refused with DEVICE_LIMIT_REACHED, unauth reset works', async () => {
+    const st1Pwd0 = (globalThis as any).__p3_st1Pwd;
     const phoneRes = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Linux; Android 14) Mobile')
-      .send({ identifier: reg1, password: '1234', deviceId: `p3_phone_${runId}` });
+      .send({ identifier: reg1, password: st1Pwd0, deviceId: `p3_phone_${runId}` });
     expect(phoneRes.status).toBe(200);
-    student1Token = phoneRes.body.token;
+    const st1Chg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${phoneRes.body.token}`)
+      .send({ currentPassword: st1Pwd0, newPassword: 'VelanTest#2026' });
+    student1Token = st1Chg.body.token;
 
     const pcRes = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg1, password: '1234', deviceId: `p3_pc_${runId}` });
+      .send({ identifier: reg1, password: 'VelanTest#2026', deviceId: `p3_pc_${runId}` });
     expect(pcRes.status).toBe(200);
 
     // Same registered device re-logs in normally
     const relogin = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Linux; Android 14) Mobile')
-      .send({ identifier: reg1, password: '1234', deviceId: `p3_phone_${runId}` });
+      .send({ identifier: reg1, password: 'VelanTest#2026', deviceId: `p3_phone_${runId}` });
     expect(relogin.status).toBe(200);
 
     // 3rd device refused with exact code & message
     const third = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Mobile')
-      .send({ identifier: reg1, password: '1234', deviceId: `p3_third_${runId}` });
+      .send({ identifier: reg1, password: 'VelanTest#2026', deviceId: `p3_third_${runId}` });
     expect(third.status).toBe(403);
     expect(third.body.code).toBe('DEVICE_LIMIT_REACHED');
     expect(third.body.error).toContain('already signed in on 2 devices');

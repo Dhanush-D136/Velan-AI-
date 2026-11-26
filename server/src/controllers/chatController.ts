@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { chatMessageSchema } from '@velan/shared';
 import { notifyUsers } from './notificationController';
+import { getAdvisorAndMentorClasses } from '../utils/advisorAccess';
 
-// Helper: check if user is authorized for classId (Faculty: TimetableSlot or ClassAdvisor; Student: enrolled classId; Admin: all)
+// Helper: check if user is authorized for classId (Faculty: TimetableSlot, ClassAdvisor or ClassMentor; Student: enrolled classId; Admin: all)
 const checkClassChatMembership = async (userId: string, role: string, classId: string): Promise<boolean> => {
   if (role === 'ADMIN') return true;
   if (role === 'STUDENT') {
@@ -11,17 +12,17 @@ const checkClassChatMembership = async (userId: string, role: string, classId: s
     return st?.classId === classId;
   }
   if (role === 'FACULTY') {
-    const fac = await prisma.facultyProfile.findUnique({
-      where: { userId },
-      include: {
-        timetableSlots: { select: { classId: true } },
-        advisedClasses: { select: { id: true } },
-      },
-    });
+    const [fac, advisorClasses] = await Promise.all([
+      prisma.facultyProfile.findUnique({
+        where: { userId },
+        include: { timetableSlots: { select: { classId: true } } },
+      }),
+      getAdvisorAndMentorClasses(userId),
+    ]);
     if (!fac) return false;
     return (
       fac.timetableSlots.some((s) => s.classId === classId) ||
-      fac.advisedClasses.some((c) => c.id === classId)
+      advisorClasses.some((c) => c.classId === classId)
     );
   }
   return false;
@@ -41,17 +42,17 @@ export const getChatRooms = async (req: Request, res: Response) => {
       const st = await prisma.studentProfile.findUnique({ where: { userId } });
       if (st) classIds = [st.classId];
     } else if (role === 'FACULTY') {
-      const fac = await prisma.facultyProfile.findUnique({
-        where: { userId },
-        include: {
-          timetableSlots: { select: { classId: true } },
-          advisedClasses: { select: { id: true } },
-        },
-      });
+      const [fac, advisorClasses] = await Promise.all([
+        prisma.facultyProfile.findUnique({
+          where: { userId },
+          include: { timetableSlots: { select: { classId: true } } },
+        }),
+        getAdvisorAndMentorClasses(userId),
+      ]);
       if (fac) {
         const set = new Set<string>([
           ...fac.timetableSlots.map((s) => s.classId),
-          ...fac.advisedClasses.map((c) => c.id),
+          ...advisorClasses.map((c) => c.classId),
         ]);
         classIds = Array.from(set);
       }

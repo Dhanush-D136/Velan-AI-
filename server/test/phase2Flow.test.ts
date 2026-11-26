@@ -86,11 +86,15 @@ describe('Phase 2 Features End-to-End Flow', () => {
 
     const fLogin = await request(app).post('/api/auth/login').send({
       identifier: empId,
-      password: '1234',
+      password: fRes.body.tempPassword,
       deviceId: `fac_p2_${runId}`,
     });
     expect(fLogin.status).toBe(200);
-    facultyToken = fLogin.body.token;
+    const fPwd = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${fLogin.body.token}`)
+      .send({ currentPassword: fRes.body.tempPassword, newPassword: 'VelanTest#2026' });
+    facultyToken = fPwd.body.token;
 
     const st1Res = await request(app)
       .post('/api/academics/students')
@@ -99,6 +103,7 @@ describe('Phase 2 Features End-to-End Flow', () => {
     expect(st1Res.status).toBe(201);
     student1Id = st1Res.body.student.id;
     student1UserId = st1Res.body.student.userId;
+    const st1TempPwd = st1Res.body.tempPassword;
 
     const st2Res = await request(app)
       .post('/api/academics/students')
@@ -111,9 +116,14 @@ describe('Phase 2 Features End-to-End Flow', () => {
     const st2Login = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg2, password: '1234', deviceId: `st2_pc_${runId}` });
+      .send({ identifier: reg2, password: st2Res.body.tempPassword, deviceId: `st2_pc_${runId}` });
     expect(st2Login.status).toBe(200);
-    student2Token = st2Login.body.token;
+    const st2Pwd = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${st2Login.body.token}`)
+      .send({ currentPassword: st2Res.body.tempPassword, newPassword: 'VelanTest#2026' });
+    student2Token = st2Pwd.body.token;
+    (globalThis as any).__p2_st1Pwd = st1TempPwd;
 
     // Assign timetable slot for today in Class A
     const ttRes = await request(app)
@@ -132,7 +142,7 @@ describe('Phase 2 Features End-to-End Flow', () => {
       });
     expect(ttRes.status).toBe(200);
     slotId = ttRes.body.slot.id;
-  });
+  }, 25000);
 
   afterAll(async () => {
     if (classAId) await prisma.class.delete({ where: { id: classAId } }).catch(() => {});
@@ -146,23 +156,28 @@ describe('Phase 2 Features End-to-End Flow', () => {
   });
 
   it('1. 2-Device Limit: allows 1 Phone + 1 Computer, blocks 3rd, and allows after Admin revoke', async () => {
+    const st1Pwd = (globalThis as any).__p2_st1Pwd;
     const phoneLogin = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile')
-      .send({ identifier: reg1, password: '1234', deviceId: `st1_phone_${runId}` });
+      .send({ identifier: reg1, password: st1Pwd, deviceId: `st1_phone_${runId}` });
     expect(phoneLogin.status).toBe(200);
-    student1Token = phoneLogin.body.token;
+    const chg = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${phoneLogin.body.token}`)
+      .send({ currentPassword: st1Pwd, newPassword: 'VelanTest#2026' });
+    student1Token = chg.body.token;
 
     const pcLogin = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg1, password: '1234', deviceId: `st1_pc_${runId}` });
+      .send({ identifier: reg1, password: 'VelanTest#2026', deviceId: `st1_pc_${runId}` });
     expect(pcLogin.status).toBe(200);
 
     const thirdLogin = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile')
-      .send({ identifier: reg1, password: '1234', deviceId: `st1_phone2_${runId}` });
+      .send({ identifier: reg1, password: 'VelanTest#2026', deviceId: `st1_phone2_${runId}` });
     expect(thirdLogin.status).toBe(403);
     expect(thirdLogin.body.error).toContain('already signed in on 2 devices');
 
@@ -181,7 +196,7 @@ describe('Phase 2 Features End-to-End Flow', () => {
     const retryPhoneLogin = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile')
-      .send({ identifier: reg1, password: '1234', deviceId: `st1_phone2_${runId}` });
+      .send({ identifier: reg1, password: 'VelanTest#2026', deviceId: `st1_phone2_${runId}` });
     expect(retryPhoneLogin.status).toBe(200);
   });
 

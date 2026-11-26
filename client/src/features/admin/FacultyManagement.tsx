@@ -10,6 +10,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
+import {
+  TempPasswordModal,
+  TempCredentialInfo,
+  PasswordStatusBadge,
+} from '@/components/ui/TempPasswordModal';
 import { Plus, Search, KeyRound, Trash2, Users, AlertCircle } from 'lucide-react';
 
 interface FacultyMember {
@@ -26,6 +31,9 @@ interface FacultyMember {
     email: string | null;
     phone: string | null;
     status: string;
+    mustChangePassword?: boolean;
+    passwordSetBy?: string | null;
+    tempPasswordExpiresAt?: string | null;
   };
   department?: {
     id: string;
@@ -69,6 +77,7 @@ export const FacultyManagement: React.FC = () => {
 
   // Modal State
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [tempCred, setTempCred] = useState<TempCredentialInfo | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
@@ -122,9 +131,16 @@ export const FacultyManagement: React.FC = () => {
         designation: designation.trim() || 'Faculty',
       });
       showToast(
-        res.data.message || 'Faculty registered successfully with default password 1234',
+        res.data.message || 'Faculty registered successfully with a temporary password',
         'success'
       );
+      if (res.data.tempPassword) {
+        setTempCred({
+          name: name.trim(),
+          identifier: employeeId.trim(),
+          tempPassword: res.data.tempPassword,
+        });
+      }
       setName('');
       setEmployeeId('');
       setEmail('');
@@ -140,11 +156,19 @@ export const FacultyManagement: React.FC = () => {
 
   const handleResetPassword = async (fac: FacultyMember) => {
     const facName = fac.user?.name || fac.name || fac.employeeId;
-    if (!confirm(`Reset password for ${facName} (${fac.employeeId}) to 1234?`)) return;
+    if (!confirm(`Generate a new one-time temporary password for ${facName} (${fac.employeeId})? All active sessions will be signed out.`)) return;
 
     try {
       const res = await api.post(`/api/academics/faculty/${fac.id}/reset-password`);
-      showToast(res.data.message || 'Password reset to 1234 successfully', 'success');
+      showToast(res.data.message || 'Temporary password generated successfully', 'success');
+      if (res.data.tempPassword) {
+        setTempCred({
+          name: facName,
+          identifier: fac.employeeId,
+          tempPassword: res.data.tempPassword,
+        });
+      }
+      fetchData();
     } catch (err: any) {
       showToast(err.response?.data?.error || err.response?.data?.message || 'Failed to reset password', 'error');
     }
@@ -239,6 +263,11 @@ export const FacultyManagement: React.FC = () => {
       ),
     },
     {
+      key: 'passwordStatus',
+      header: 'Password Status',
+      render: (f) => <PasswordStatusBadge user={f.user} />,
+    },
+    {
       key: 'actions',
       header: 'Actions',
       align: 'right',
@@ -246,7 +275,7 @@ export const FacultyManagement: React.FC = () => {
         <div className="flex items-center justify-end gap-1">
           <button
             onClick={() => handleResetPassword(f)}
-            title="Reset Password to 1234"
+            title="Reset Password (One-Time Temp)"
             className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition"
           >
             <KeyRound className="w-4 h-4" />
@@ -397,8 +426,7 @@ export const FacultyManagement: React.FC = () => {
           <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 text-xs text-indigo-900 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
             <span>
-              The faculty member can log in immediately using Employee ID and default password{' '}
-              <strong className="font-mono">1234</strong>. They will be forced to change it upon first login.
+              A random 10-character temporary password will be generated and shown once after creation. The faculty member will be required to set their own password on first login.
             </span>
           </div>
 
@@ -418,6 +446,8 @@ export const FacultyManagement: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      <TempPasswordModal credential={tempCred} onClose={() => setTempCred(null)} />
     </div>
   );
 };

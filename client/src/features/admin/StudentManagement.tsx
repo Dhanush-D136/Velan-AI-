@@ -11,6 +11,12 @@ import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
 import {
+  TempPasswordModal,
+  TempCredentialInfo,
+  PasswordStatusBadge,
+  downloadCredentialsCsv,
+} from '@/components/ui/TempPasswordModal';
+import {
   Plus,
   Search,
   Upload,
@@ -54,6 +60,9 @@ interface StudentItem {
     name: string;
     email: string;
     status: string;
+    mustChangePassword?: boolean;
+    passwordSetBy?: string | null;
+    tempPasswordExpiresAt?: string | null;
     devices?: {
       id: string;
       deviceId: string;
@@ -97,6 +106,7 @@ export const StudentManagement: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedStudentForView, setSelectedStudentForView] = useState<StudentItem | null>(null);
+  const [tempCred, setTempCred] = useState<TempCredentialInfo | null>(null);
 
   // Manual Add Form State
   const [isSavingStudent, setIsSavingStudent] = useState(false);
@@ -180,9 +190,16 @@ export const StudentManagement: React.FC = () => {
         classId: addClassId,
       });
       showToast(
-        res.data.message || 'Student added successfully with default password 1234',
+        res.data.message || 'Student added successfully with a temporary password',
         'success'
       );
+      if (res.data.tempPassword) {
+        setTempCred({
+          name: addName.trim(),
+          identifier: addRegisterNo.trim(),
+          tempPassword: res.data.tempPassword,
+        });
+      }
       setAddName('');
       setAddRollNo('');
       setAddRegisterNo('');
@@ -196,11 +213,19 @@ export const StudentManagement: React.FC = () => {
   };
 
   const handleResetPassword = async (student: StudentItem) => {
-    if (!confirm(`Reset password for ${student.user.name} (${student.registerNo}) to 1234?`)) return;
+    if (!confirm(`Generate a new one-time temporary password for ${student.user.name} (${student.registerNo})? All active sessions will be signed out.`)) return;
 
     try {
       const res = await api.post(`/api/academics/students/${student.id}/reset-password`);
-      showToast(res.data.message || 'Password reset to 1234 successfully', 'success');
+      showToast(res.data.message || 'Temporary password generated successfully', 'success');
+      if (res.data.tempPassword) {
+        setTempCred({
+          name: student.user.name,
+          identifier: student.registerNo,
+          tempPassword: res.data.tempPassword,
+        });
+      }
+      fetchStudents();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to reset password', 'error');
     }
@@ -281,6 +306,10 @@ export const StudentManagement: React.FC = () => {
 
       const res = await api.post('/api/academics/students/import-excel', formData);
       showToast(res.data.message || 'Students imported successfully!', 'success');
+      if (Array.isArray(res.data.credentials) && res.data.credentials.length > 0) {
+        downloadCredentialsCsv(res.data.credentials, 'Student_Temp_Credentials.csv');
+        showToast('Temporary credentials CSV downloaded — share securely with students.', 'info');
+      }
       setIsImportModalOpen(false);
       setSelectedFile(null);
       setPreviewData(null);
@@ -378,6 +407,11 @@ export const StudentManagement: React.FC = () => {
       ),
     },
     {
+      key: 'passwordStatus',
+      header: 'Password Status',
+      render: (s) => <PasswordStatusBadge user={s.user} />,
+    },
+    {
       key: 'actions',
       header: 'Actions',
       align: 'right',
@@ -392,7 +426,7 @@ export const StudentManagement: React.FC = () => {
           </button>
           <button
             onClick={() => handleResetPassword(s)}
-            title="Reset Password to 1234"
+            title="Reset Password (One-Time Temp)"
             className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 transition"
           >
             <KeyRound className="w-4 h-4" />
@@ -919,6 +953,8 @@ export const StudentManagement: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      <TempPasswordModal credential={tempCred} onClose={() => setTempCred(null)} />
     </div>
   );
 };

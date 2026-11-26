@@ -26,6 +26,7 @@ export const AdvisorAcademicsPage: React.FC = () => {
   const { showToast } = useToast();
   const [students, setStudents] = useState<any[]>([]);
   const [advisedClasses, setAdvisedClasses] = useState<any[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState('ALL');
   const [isLoading, setIsLoading] = useState(true);
   const [notAdvisor, setNotAdvisor] = useState(false);
 
@@ -36,7 +37,7 @@ export const AdvisorAcademicsPage: React.FC = () => {
 
   const fetchAdvisees = useCallback(async () => {
     try {
-      const res = await api.get('/api/academics-records/advisees');
+      const res = await api.get(`/api/academics-records/advisees?classId=${selectedClassId}`);
       setStudents(res.data?.students || []);
       setAdvisedClasses(res.data?.advisedClasses || []);
       setNotAdvisor(false);
@@ -49,7 +50,7 @@ export const AdvisorAcademicsPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, selectedClassId]);
 
   useEffect(() => {
     fetchAdvisees();
@@ -108,9 +109,24 @@ export const AdvisorAcademicsPage: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
             My Advisees / Academics
           </h1>
-          <p className="text-xs sm:text-sm text-content-secondary mt-1">
-            Advising: {advisedClasses.map((c) => c.name).join(', ')}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            {advisedClasses.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedClassId(selectedClassId === c.id ? 'ALL' : c.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition ${
+                  selectedClassId === c.id
+                    ? 'bg-brand-gradient text-white border-transparent'
+                    : 'bg-white border-border text-content hover:bg-surface-soft'
+                }`}
+              >
+                <span>{c.name}</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] uppercase ${selectedClassId === c.id ? 'bg-white/20 text-white' : 'bg-brand-50 text-brand-700'}`}>
+                  {c.role === 'advisor' ? 'Advisor' : 'Mentor'}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -176,6 +192,7 @@ export const AdvisorAcademicsPage: React.FC = () => {
                 <th className="p-3">Roll / Reg No</th>
                 <th className="p-3">Latest GPA</th>
                 <th className="p-3">CGPA</th>
+                <th className="p-3">Attendance</th>
                 <th className="p-3">Credits</th>
                 <th className="p-3">Arrears</th>
                 <th className="p-3">Last Updated</th>
@@ -194,6 +211,15 @@ export const AdvisorAcademicsPage: React.FC = () => {
                     <Badge variant={s.hasUploaded ? (s.cgpa >= 7 ? 'success' : 'warning') : 'neutral'} size="sm">
                       {s.hasUploaded ? s.cgpa.toFixed(2) : 'Pending'}
                     </Badge>
+                  </td>
+                  <td className="p-3">
+                    {s.attendancePercent !== null && s.attendancePercent !== undefined ? (
+                      <Badge variant={s.attendancePercent < 75 ? 'danger' : 'success'} size="sm">
+                        {s.attendancePercent}%
+                      </Badge>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="p-3">{s.totalCredits}</td>
                   <td className="p-3">

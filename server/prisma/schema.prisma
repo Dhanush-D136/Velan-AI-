@@ -19,10 +19,17 @@ model User {
   phone              String?
   avatarUrl          String?
   role               String               @default("STUDENT") // ADMIN, FACULTY, STUDENT
-  status             String               @default("ACTIVE")  // ACTIVE, INACTIVE, SUSPENDED
-  mustChangePassword Boolean              @default(true)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  status                String               @default("ACTIVE")  // ACTIVE, INACTIVE, SUSPENDED
+  mustChangePassword    Boolean              @default(true)
+  passwordChangedAt     DateTime?
+  passwordSetBy         String?              @default("system") // self, admin, system
+  tempPasswordExpiresAt DateTime?
+  passwordHistory       String?              // JSON array of last 3 bcrypt hashes
+  lastRoute             String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  refreshTokens         RefreshToken[]
 
   facultyProfile        FacultyProfile?
   studentProfile        StudentProfile?
@@ -132,6 +139,7 @@ model Class {
   roomNumber     String?
   advisorId      String?
   advisor        FacultyProfile? @relation("ClassAdvisor", fields: [advisorId], references: [id])
+  mentors        ClassMentor[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -160,6 +168,7 @@ model FacultyProfile {
   joinedAt       DateTime       @default(now())
 
   advisedClasses Class[]        @relation("ClassAdvisor")
+  classMentors   ClassMentor[]
   classSubjects  ClassSubject[]
   sessions       AttendanceSession[]
   timetableSlots TimetableSlot[]
@@ -842,4 +851,37 @@ model CheckinTicket {
   @@unique([sessionId, studentId])
   @@index([sessionId, state])
   @@index([userId])
+}
+
+// ==========================================
+// PHASE 9: REFRESH TOKENS & CLASS MENTORS
+// ==========================================
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("refresh_tokens")
+}
+
+model ClassMentor {
+  id        String         @id @default(uuid())
+  classId   String
+  class     Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  facultyId String
+  faculty   FacultyProfile @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  role      String         @default("mentor") // advisor, mentor
+  createdAt DateTime       @default(now())
+
+  @@unique([classId, facultyId])
+  @@index([facultyId])
+  @@map("class_mentors")
 }

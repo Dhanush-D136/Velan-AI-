@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { api } from './lib/api';
 import { UserRole } from '@velan/shared';
 import { BrandLogo } from './components/ui/BrandLogo';
 import { LoginPage } from './features/auth/LoginPage';
+import { ForcePasswordChangePage } from './features/auth/ForcePasswordChangePage';
 import { AppLayout } from './components/layout/AppLayout';
 
 // Admin Screens
@@ -53,8 +55,26 @@ const GenericSubPage: React.FC<{ title: string; subtitle?: string }> = ({ title,
   </div>
 );
 
+function RouteTracker() {
+  const location = useLocation();
+  const { isAuthenticated, user } = useAuthStore();
+
+  useEffect(() => {
+    if (!isAuthenticated || !user || user.mustChangePassword) return;
+    const full = `${location.pathname}${location.search}`;
+    if (full === '/login' || full === '/set-password') return;
+    localStorage.setItem('velan_last_route', full);
+    const t = setTimeout(() => {
+      api.put('/api/auth/last-route', { route: full }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(t);
+  }, [location.pathname, location.search, isAuthenticated, user]);
+
+  return null;
+}
+
 export default function App() {
-  const { user, isAuthenticated, isHydrating, hydrateSession } = useAuthStore();
+  const { user, isAuthenticated, initialising, hydrateSession } = useAuthStore();
 
   useEffect(() => {
     hydrateSession();
@@ -62,16 +82,25 @@ export default function App() {
 
   const getDefaultRedirect = () => {
     if (!isAuthenticated || !user) return '/login';
+    if (user.mustChangePassword) return '/set-password';
+    const saved = localStorage.getItem('velan_last_route') || (user as any).lastRoute;
+    if (saved && typeof saved === 'string' && saved.startsWith('/')) {
+      if (user.role === UserRole.ADMIN && (saved.startsWith('/admin') || saved === '/chat' || saved === '/settings')) return saved;
+      if (user.role === UserRole.FACULTY && (saved.startsWith('/faculty') || saved === '/chat' || saved === '/settings')) return saved;
+      if (user.role === UserRole.STUDENT && (saved.startsWith('/student') || saved === '/chat' || saved === '/settings')) return saved;
+    }
     if (user.role === UserRole.ADMIN) return '/admin';
     if (user.role === UserRole.FACULTY) return '/faculty';
     return '/student';
   };
 
-  if (isHydrating) {
+  if (initialising) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50/40 to-cyan-50/40 px-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white px-4">
         <div className="relative flex flex-col items-center">
-          <BrandLogo size="xl" animated />
+          <div className="animate-pulse">
+            <BrandLogo size="xl" />
+          </div>
           <div className="mt-6 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-brand-600 animate-ping" />
             <h2 className="text-lg font-heading font-extrabold text-content tracking-tight">
@@ -81,9 +110,6 @@ export default function App() {
           <p className="text-xs text-content-secondary mt-1.5 font-medium">
             Restoring your session &amp; syncing live data...
           </p>
-          <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden mt-4">
-            <div className="h-full w-1/2 bg-brand-gradient rounded-full animate-pulse" />
-          </div>
         </div>
       </div>
     );
@@ -91,15 +117,28 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <RouteTracker />
       <Routes>
         <Route
           path="/login"
           element={isAuthenticated && user ? <Navigate to={getDefaultRedirect()} replace /> : <LoginPage />}
         />
+        <Route
+          path="/set-password"
+          element={isAuthenticated && user ? <ForcePasswordChangePage /> : <Navigate to="/login" replace />}
+        />
 
         {/* Protected Application Routes */}
         <Route
-          element={isAuthenticated && user ? <AppLayout /> : <Navigate to="/login" replace />}
+          element={
+            !isAuthenticated || !user ? (
+              <Navigate to="/login" replace />
+            ) : user.mustChangePassword ? (
+              <Navigate to="/set-password" replace />
+            ) : (
+              <AppLayout />
+            )
+          }
         >
           {/* Admin Routes */}
           <Route path="/admin" element={user?.role === UserRole.ADMIN ? <AdminDashboard /> : <Navigate to={getDefaultRedirect()} replace />} />
