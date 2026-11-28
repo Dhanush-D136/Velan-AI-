@@ -36,7 +36,12 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const msg = sessionStorage.getItem('velan_forced_logout_msg') || '';
+    if (msg) sessionStorage.removeItem('velan_forced_logout_msg');
+    return msg;
+  });
 
   // Forced Password Change Modal (for first login with default 1234)
   const [showForcedPasswordChange, setShowForcedPasswordChange] = useState(false);
@@ -293,6 +298,8 @@ export const LoginPage: React.FC = () => {
             <Input
               label={getIdentifierLabel()}
               type="text"
+              name="username"
+              autoComplete="username"
               required
               autoFocus
               value={identifier}
@@ -305,6 +312,8 @@ export const LoginPage: React.FC = () => {
               <Input
                 label="Password"
                 type={showPassword ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

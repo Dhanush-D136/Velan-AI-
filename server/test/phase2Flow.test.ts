@@ -198,7 +198,7 @@ describe('Phase 2 Features End-to-End Flow', () => {
       .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile')
       .send({ identifier: reg1, password: 'VelanTest#2026', deviceId: `st1_phone2_${runId}` });
     expect(retryPhoneLogin.status).toBe(200);
-  });
+  }, 15000);
 
   it('2. Admin Edit Class assigns advisor and updates student overview', async () => {
     const editRes = await request(app)

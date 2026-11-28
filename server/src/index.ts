@@ -3,6 +3,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -12,7 +13,7 @@ import { apiRouter } from './routes';
 import { setupSocketHandlers } from './sockets';
 import { metricsCollector } from './services/metricsCollector';
 import { presenceService } from './services/presenceService';
-import { startAuthEventFlusher } from './services/authEventQueue';
+import { startAuthEventFlusher, flushAuthEvents } from './services/authEventQueue';
 import { rushQueueService } from './services/rushQueueService';
 import { flagDefaultPasswordAccounts } from './services/passwordService';
 
@@ -63,6 +64,7 @@ app.use(
   })
 );
 
+app.use(compression());
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -191,6 +193,18 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`📡 Socket.IO real-time hub listening`);
     console.log(`🌐 Client Origin locked to: ${CLIENT_ORIGIN}`);
   });
+
+  const gracefulShutdown = async (signal: string) => {
+    console.log(`Received ${signal}, shutting down gracefully (DB sessions preserved)...`);
+    server.close(async () => {
+      await flushAuthEvents().catch(() => {});
+      await prisma.$disconnect().catch(() => {});
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
 }
 
 export { app, server, io };

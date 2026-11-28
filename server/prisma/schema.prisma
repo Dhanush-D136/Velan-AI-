@@ -761,6 +761,8 @@ model AuthEvent {
   @@index([userId])
   @@index([timestamp])
   @@index([event])
+  @@index([event, timestamp])
+  @@index([userId, event])
   @@map("auth_events")
 }
 
@@ -783,6 +785,8 @@ model UserSession {
   @@index([userId])
   @@index([endedAt])
   @@index([lastSeenAt])
+  @@index([userId, endedAt])
+  @@index([startedAt])
   @@map("user_sessions")
 }
 

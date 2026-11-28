@@ -36,33 +36,33 @@ function formatUserSummary(user: any) {
     avatarUrl: user.avatarUrl,
     facultyProfile: user.facultyProfile
       ? {
-          id: user.facultyProfile.id,
-          employeeId: user.facultyProfile.employeeId,
-          departmentId: user.facultyProfile.departmentId,
-          departmentName: user.facultyProfile.department?.name,
-          designation: user.facultyProfile.designation,
-        }
+        id: user.facultyProfile.id,
+        employeeId: user.facultyProfile.employeeId,
+        departmentId: user.facultyProfile.departmentId,
+        departmentName: user.facultyProfile.department?.name,
+        designation: user.facultyProfile.designation,
+      }
       : null,
     studentProfile: user.studentProfile
       ? {
-          id: user.studentProfile.id,
-          registerNo: user.studentProfile.registerNo,
-          rollNo: user.studentProfile.rollNo,
-          classId: user.studentProfile.classId,
-          className: user.studentProfile.class?.name,
-          departmentName: user.studentProfile.class?.academicYear?.department?.name,
-          personalEmail: user.studentProfile.personalEmail,
-          phone: user.studentProfile.phone,
-          dob: user.studentProfile.dob ? user.studentProfile.dob.toISOString() : null,
-          gender: user.studentProfile.gender,
-          bloodGroup: user.studentProfile.bloodGroup,
-          address: user.studentProfile.address,
-          guardianName: user.studentProfile.guardianName,
-          guardianPhone: user.studentProfile.guardianPhone,
-          photoUrl: user.studentProfile.photoUrl,
-          isProfileLocked: user.studentProfile.isProfileLocked,
-          canEditProfile: user.studentProfile.canEditProfile,
-        }
+        id: user.studentProfile.id,
+        registerNo: user.studentProfile.registerNo,
+        rollNo: user.studentProfile.rollNo,
+        classId: user.studentProfile.classId,
+        className: user.studentProfile.class?.name,
+        departmentName: user.studentProfile.class?.academicYear?.department?.name,
+        personalEmail: user.studentProfile.personalEmail,
+        phone: user.studentProfile.phone,
+        dob: user.studentProfile.dob ? user.studentProfile.dob.toISOString() : null,
+        gender: user.studentProfile.gender,
+        bloodGroup: user.studentProfile.bloodGroup,
+        address: user.studentProfile.address,
+        guardianName: user.studentProfile.guardianName,
+        guardianPhone: user.studentProfile.guardianPhone,
+        photoUrl: user.studentProfile.photoUrl,
+        isProfileLocked: user.studentProfile.isProfileLocked,
+        canEditProfile: user.studentProfile.canEditProfile,
+      }
       : null,
   };
 }
@@ -86,7 +86,8 @@ async function issueSessionTokens(
   const accessToken = jwt.sign(tokenPayload, getJwtSecret(), { expiresIn: '20m' });
   const rawRefresh = crypto.randomBytes(48).toString('hex');
   const tokenHash = hashRefreshToken(rawRefresh);
-  const expiresAt = new Date(Date.now() + 30 * 86400000); // 30 days sliding
+  const REFRESH_TTL_MS = 90 * 86400000; // 90 days sliding
+  const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
 
   await prisma.refreshToken.create({
     data: {
@@ -98,25 +99,25 @@ async function issueSessionTokens(
   });
 
   const isProd = process.env.NODE_ENV === 'production';
-  res.cookie('velan_refresh_token', rawRefresh, {
+  const cookieOpts = {
     httpOnly: true,
     secure: isProd,
-    sameSite: isProd ? 'none' : 'lax',
-    maxAge: 30 * 86400000,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    path: '/',
+  };
+
+  res.cookie('velan_refresh_token', rawRefresh, {
+    ...cookieOpts,
+    maxAge: REFRESH_TTL_MS,
   });
 
   res.cookie('velan_access_token', accessToken, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'lax',
+    ...cookieOpts,
     maxAge: 20 * 60 * 1000,
   });
 
   return { accessToken };
 }
-
-const JWT_SECRET = process.env.JWT_SECRET || 'velan_jwt_secret_dev_2026';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'velan_refresh_secret_dev_2026';
 
 export const login = async (req: Request, res: Response) => {
   try {
@@ -377,6 +378,21 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
       data: { lastSeenAt: new Date() },
     });
 
+    // Re-register in presence map in case server restarted
+    presenceService.registerSession({
+      sessionId: sess.id,
+      userId: existing.user.id,
+      name: existing.user.name,
+      role: existing.user.role,
+      classId: existing.user.studentProfile?.classId || null,
+      className: existing.user.studentProfile?.class?.name || null,
+      deviceId: sess.deviceId,
+      deviceType: sess.deviceType || 'unknown',
+      browser: sess.browser || 'Unknown',
+      os: sess.os || 'Unknown',
+      startedAt: sess.startedAt.getTime(),
+    });
+
     const scope: 'full' | 'password_change_only' = existing.user.mustChangePassword
       ? 'password_change_only'
       : 'full';
@@ -444,9 +460,12 @@ export const changePassword = async (req: Request, res: Response) => {
       }
     }
 
-    const minSetting = await prisma.setting.findUnique({ where: { key: 'PASSWORD_MIN_LENGTH' } });
-    const minLen = minSetting ? Math.max(8, Number(minSetting.value) || 8) : 8;
-    const validation = await validateNewPassword(newPassword, user, minLen);
+    const { confirmPassword } = req.body || {};
+    if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+      return res.status(400).json({ error: 'New password and confirmation do not match.' });
+    }
+
+    const validation = await validateNewPassword(newPassword, user);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
@@ -856,7 +875,7 @@ export const presenceHeartbeat = async (req: Request, res: Response) => {
       await prisma.userSession.update({
         where: { id: sid },
         data: { lastSeenAt: new Date() },
-      }).catch(() => {});
+      }).catch(() => { });
     }
     return res.json({ ok: true });
   } catch {
@@ -890,7 +909,7 @@ export const logout = async (req: Request, res: Response) => {
     let role = req.user?.role;
     if (!sid && token) {
       try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        const decoded = jwt.verify(token, getJwtSecret()) as any;
         sid = decoded?.sid;
         userId = decoded?.id;
         role = decoded?.role;
@@ -926,7 +945,14 @@ export const logout = async (req: Request, res: Response) => {
     // non-fatal
   }
 
-  res.clearCookie('velan_access_token');
-  res.clearCookie('velan_refresh_token');
+  const isProd = process.env.NODE_ENV === 'production';
+  const clearOpts = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    path: '/',
+  };
+  res.clearCookie('velan_access_token', clearOpts);
+  res.clearCookie('velan_refresh_token', clearOpts);
   return res.json({ message: 'Logged out successfully' });
 };

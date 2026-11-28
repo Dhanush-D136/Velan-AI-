@@ -151,7 +151,7 @@ describe('Phase 4: Admin Live Monitor, Presence, Logout & Server Health', () => 
     const forceRes = await request(app)
       .post('/api/admin/monitor/force-logout')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ userId: student1UserId });
+      .send({ userId: student1UserId, adminPassword: process.env.ADMIN_PASSWORD || 'elite minds' });
     expect(forceRes.status).toBe(200);
 
     const afterForce = await request(app)

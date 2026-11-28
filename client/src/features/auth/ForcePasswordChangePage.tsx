@@ -19,20 +19,14 @@ export const ForcePasswordChangePage: React.FC = () => {
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const hasMinLen = newPassword.length >= 8;
-  const hasLetter = /[A-Za-z]/.test(newPassword);
-  const hasNumber = /[0-9]/.test(newPassword);
-  const matchesConfirm = newPassword.length > 0 && newPassword === confirmPassword;
-
-  const strengthScore = [hasMinLen, hasLetter, hasNumber, newPassword.length >= 12].filter(Boolean).length;
-  const strengthLabel = strengthScore <= 1 ? 'Weak' : strengthScore === 2 ? 'Fair' : strengthScore === 3 ? 'Good' : 'Strong';
-  const strengthColor = strengthScore <= 1 ? 'bg-rose-500' : strengthScore === 2 ? 'bg-amber-500' : strengthScore === 3 ? 'bg-blue-500' : 'bg-emerald-500';
+  const isNonEmpty = newPassword.trim().length > 0;
+  const matchesConfirm = isNonEmpty && newPassword === confirmPassword;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!hasMinLen || !hasLetter || !hasNumber) {
-      setError('Password must be at least 8 characters and include a letter and a number.');
+    if (!isNonEmpty) {
+      setError('Password cannot be empty.');
       return;
     }
     if (!matchesConfirm) {
@@ -89,7 +83,7 @@ export const ForcePasswordChangePage: React.FC = () => {
                 required
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="At least 8 characters"
+                placeholder="Enter any new password"
                 className="w-full px-3.5 py-2.5 pr-10 rounded-2xl border border-border text-sm outline-none focus:border-brand-500"
               />
               <button
@@ -100,13 +94,6 @@ export const ForcePasswordChangePage: React.FC = () => {
               >
                 {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
-            </div>
-            {/* Strength Meter */}
-            <div className="mt-2 space-y-1">
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className={`h-full transition-all ${strengthColor}`} style={{ width: `${(strengthScore / 4) * 100}%` }} />
-              </div>
-              <div className="text-[10px] font-bold text-content-muted text-right">Strength: {strengthLabel}</div>
             </div>
           </div>
 
@@ -127,9 +114,7 @@ export const ForcePasswordChangePage: React.FC = () => {
           {/* Rules Checklist */}
           <div className="p-3 rounded-2xl bg-surface-soft border border-border space-y-1.5 text-xs">
             {[
-              { ok: hasMinLen, label: 'Minimum 8 characters' },
-              { ok: hasLetter, label: 'At least one letter (A–Z)' },
-              { ok: hasNumber, label: 'At least one number (0–9)' },
+              { ok: isNonEmpty, label: 'Password is not empty (any length/characters allowed)' },
               { ok: matchesConfirm, label: 'Passwords match' },
             ].map((r) => (
               <div key={r.label} className={`flex items-center gap-2 ${r.ok ? 'text-emerald-700 font-semibold' : 'text-content-muted'}`}>

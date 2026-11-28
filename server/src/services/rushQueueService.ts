@@ -5,9 +5,46 @@ import { metricsCollector } from './metricsCollector';
 export interface ThirukkuralItem {
   id: string;
   number?: string;
+  chapter?: string;
   kural: string;
   porul: string;
+  english?: string;
 }
+
+export const DEFAULT_THIRUKKURAL_LIST: ThirukkuralItem[] = [
+  {
+    id: 'k611',
+    number: 'குறள் 611',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'அருமை உடைத்தென் றசாவாமை வேண்டும் / பெருமை முயற்சி தரும்.',
+    porul: 'செய்வதற்கு அரிய செயல் என்று சோர்வு கொள்ளாமல் முயற்சி செய்தால் அது பெருமையைத் தரும்.',
+    english: 'Yield not to weakness, saying a task is too difficult; earnest effort will bring greatness.',
+  },
+  {
+    id: 'k616',
+    number: 'குறள் 616',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'முயற்சி திருவினை ஆக்கும் முயற்றின்மை / இன்மை புகுத்தி விடும்.',
+    porul: 'முயற்சி ஒருவருக்குச் செல்வத்தைப் பெருக்கும்; முயற்சி இல்லாமை வறுமையைக் கொண்டு வந்து சேர்த்துவிடும்.',
+    english: 'Persevering effort brings prosperity; lack of effort leads only to poverty.',
+  },
+  {
+    id: 'k619',
+    number: 'குறள் 619',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'தெய்வத்தான் ஆகா தெனினும் முயற்சிதன் / மெய்வருத்தக் கூலி தரும்.',
+    porul: 'விதியால் முடியாவிட்டாலும், முயற்சி தன் உடல் உழைப்புக்கு ஏற்ற பலனைத் தவறாமல் தரும்.',
+    english: "Though fate may deny success, persistent effort will always reward the labour of one's body.",
+  },
+  {
+    id: 'k620',
+    number: 'குறள் 620',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'ஊழையும் உப்பக்கம் காண்பர் உலைவின்றித் / தாழாது உஞற்று பவர்.',
+    porul: 'சோர்வு இல்லாமல் தொடர்ந்து முயற்சி செய்கிறவர்கள் விதியையும் வென்று வெற்றி காண்பார்கள்.',
+    english: 'Those who labour tirelessly without faltering will triumph even over fate.',
+  },
+];
 
 export interface RushQueueConfig {
   enabled: boolean; // DEFAULT OFF
@@ -23,39 +60,6 @@ export interface RushQueueConfig {
   subline: string;
   quotes: ThirukkuralItem[];
 }
-
-export const DEFAULT_THIRUKKURAL_LIST: ThirukkuralItem[] = [
-  {
-    id: 'k611',
-    number: 'குறள் 611',
-    kural: 'அருமை உடைத்தென் றசாவாமை வேண்டும் / பெருமை முயற்சி தரும்.',
-    porul: 'செய்வதற்கு அரிய செயல் என்று சோர்வு கொள்ளாமல் முயற்சி செய்தால் அது பெருமையைத் தரும்.',
-  },
-  {
-    id: 'k619',
-    number: 'குறள் 619',
-    kural: 'தெய்வத்தான் ஆகா தெனினும் முயற்சிதன் / மெய்வருத்தக் கூலி தரும்.',
-    porul: 'விதியால் முடியாவிட்டாலும், முயற்சி தன் உடல் உழைப்புக்கு ஏற்ற பலனைத் தவறாமல் தரும்.',
-  },
-  {
-    id: 'k595',
-    number: 'குறள் 595',
-    kural: 'வெள்ளத் தனைய மலர்நீட்டம் மாந்தர்தம் / உள்ளத் தனைய துயர்வு.',
-    porul: 'நீரின் அளவுக்குத் தக்கபடி தாமரை உயரும்; அதுபோல மக்களின் ஊக்கத்தின் அளவுக்குத் தக்கபடி உயர்வு உண்டாகும்.',
-  },
-  {
-    id: 'k620',
-    number: 'குறள் 620',
-    kural: 'ஊழையும் உப்பக்கம் காண்பர் உலைவின்றித் / தாழாது உஞற்று பவர்.',
-    porul: 'சோர்வு இல்லாமல் தொடர்ந்து முயற்சி செய்கிறவர்கள் விதியையும் வென்று வெற்றி காண்பார்கள்.',
-  },
-  {
-    id: 'k483',
-    number: 'குறள் 483',
-    kural: 'அருவினை யென்ப உளவோ கருவியான் / காலம் அறிந்து செயின்.',
-    porul: 'ஏற்ற கருவிகளுடன் தக்க காலத்தை அறிந்து செய்தால் முடியாத செயல் எதுவும் இல்லை.',
-  },
-];
 
 export const DEFAULT_RUSH_CONFIG: RushQueueConfig = {
   enabled: false,
@@ -113,13 +117,52 @@ class RushQueueService {
 
   async loadConfigFromDB() {
     try {
-      const row = await prisma.setting.findUnique({ where: { key: 'RUSH_HOUR_QUEUE_CONFIG' } });
+      const [row, seedFlag] = await Promise.all([
+        prisma.setting.findUnique({ where: { key: 'RUSH_HOUR_QUEUE_CONFIG' } }),
+        prisma.setting.findUnique({ where: { key: 'THIRUKKURAL_SEEDED_V1' } }),
+      ]);
       if (row?.value) {
         const parsed = JSON.parse(row.value);
-        this.config = { ...DEFAULT_RUSH_CONFIG, ...parsed };
+        const rawQuotes: ThirukkuralItem[] = Array.isArray(parsed.quotes) ? parsed.quotes : [];
+        const existingQuotes = rawQuotes.filter(
+          (q) => q && typeof q.kural === 'string' && q.kural.trim().length > 0 && typeof q.porul === 'string' && q.porul.trim().length > 0
+        );
+        if (!seedFlag || existingQuotes.length !== rawQuotes.length || existingQuotes.length === 0) {
+          // Idempotent seed: insert missing default couplets without deleting valid admin edits
+          const existingIds = new Set(existingQuotes.map((q) => q.id));
+          const mergedQuotes = [
+            ...existingQuotes,
+            ...DEFAULT_THIRUKKURAL_LIST.filter((d) => !existingIds.has(d.id)),
+          ];
+          this.config = { ...DEFAULT_RUSH_CONFIG, ...parsed, quotes: mergedQuotes };
+          await prisma.setting.upsert({
+            where: { key: 'RUSH_HOUR_QUEUE_CONFIG' },
+            update: { value: JSON.stringify(this.config) },
+            create: { key: 'RUSH_HOUR_QUEUE_CONFIG', value: JSON.stringify(this.config) },
+          });
+          await prisma.setting.upsert({
+            where: { key: 'THIRUKKURAL_SEEDED_V1' },
+            update: { value: 'true' },
+            create: { key: 'THIRUKKURAL_SEEDED_V1', value: 'true' },
+          });
+        } else {
+          this.config = { ...DEFAULT_RUSH_CONFIG, ...parsed, quotes: existingQuotes };
+        }
+      } else if (!seedFlag) {
+        this.config = { ...DEFAULT_RUSH_CONFIG, quotes: [...DEFAULT_THIRUKKURAL_LIST] };
+        await prisma.setting.upsert({
+          where: { key: 'RUSH_HOUR_QUEUE_CONFIG' },
+          update: { value: JSON.stringify(this.config) },
+          create: { key: 'RUSH_HOUR_QUEUE_CONFIG', value: JSON.stringify(this.config) },
+        });
+        await prisma.setting.upsert({
+          where: { key: 'THIRUKKURAL_SEEDED_V1' },
+          update: { value: 'true' },
+          create: { key: 'THIRUKKURAL_SEEDED_V1', value: 'true' },
+        });
       }
     } catch {
-      // keep default OFF
+      // keep default OFF with seeded couplets
     }
     return this.getConfig();
   }

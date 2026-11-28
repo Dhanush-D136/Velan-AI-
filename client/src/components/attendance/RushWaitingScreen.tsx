@@ -8,9 +8,46 @@ import { CheckCircle2, AlertTriangle, RefreshCw, X } from 'lucide-react';
 export interface ThirukkuralItem {
   id: string;
   number?: string;
+  chapter?: string;
   kural: string;
   porul: string;
+  english?: string;
 }
+
+const FALLBACK_PREVIEW_KURALS: ThirukkuralItem[] = [
+  {
+    id: 'k611',
+    number: 'குறள் 611',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'அருமை உடைத்தென் றசாவாமை வேண்டும் / பெருமை முயற்சி தரும்.',
+    porul: 'செய்வதற்கு அரிய செயல் என்று சோர்வு கொள்ளாமல் முயற்சி செய்தால் அது பெருமையைத் தரும்.',
+    english: 'Yield not to weakness, saying a task is too difficult; earnest effort will bring greatness.',
+  },
+  {
+    id: 'k616',
+    number: 'குறள் 616',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'முயற்சி திருவினை ஆக்கும் முயற்றின்மை / இன்மை புகுத்தி விடும்.',
+    porul: 'முயற்சி ஒருவருக்குச் செல்வத்தைப் பெருக்கும்; முயற்சி இல்லாமை வறுமையைக் கொண்டு வந்து சேர்த்துவிடும்.',
+    english: 'Persevering effort brings prosperity; lack of effort leads only to poverty.',
+  },
+  {
+    id: 'k619',
+    number: 'குறள் 619',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'தெய்வத்தான் ஆகா தெனினும் முயற்சிதன் / மெய்வருத்தக் கூலி தரும்.',
+    porul: 'விதியால் முடியாவிட்டாலும், முயற்சி தன் உடல் உழைப்புக்கு ஏற்ற பலனைத் தவறாமல் தரும்.',
+    english: "Though fate may deny success, persistent effort will always reward the labour of one's body.",
+  },
+  {
+    id: 'k620',
+    number: 'குறள் 620',
+    chapter: 'ஆள்வினையுடைமை (Perseverance)',
+    kural: 'ஊழையும் உப்பக்கம் காண்பர் உலைவின்றித் / தாழாது உஞற்று பவர்.',
+    porul: 'சோர்வு இல்லாமல் தொடர்ந்து முயற்சி செய்கிறவர்கள் விதியையும் வென்று வெற்றி காண்பார்கள்.',
+    english: 'Those who labour tirelessly without faltering will triumph even over fate.',
+  },
+];
 
 export interface RushQueueConfigUI {
   showQuotes: boolean;
@@ -52,13 +89,19 @@ export const RushWaitingScreen: React.FC<RushWaitingScreenProps> = ({
   const [secondsLeft, setSecondsLeft] = useState(initialTicket?.estimatedSeconds || 8);
   const [errorReason, setErrorReason] = useState('');
   const [quoteIdx, setQuoteIdx] = useState(0);
+  const [previewTheme, setPreviewTheme] = useState<'light' | 'dark' | 'emerald'>('light');
 
   const reducedMotion = useMemo(
     () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
     []
   );
 
-  const quotes = config.quotes?.length > 0 ? config.quotes : [];
+  const quotes =
+    config.quotes?.length > 0
+      ? config.quotes
+      : previewMode
+        ? FALLBACK_PREVIEW_KURALS
+        : [];
 
   // Rotate Thirukkural + Tamil Porul without back-to-back repeats
   useEffect(() => {
@@ -84,20 +127,10 @@ export const RushWaitingScreen: React.FC<RushWaitingScreenProps> = ({
     return () => clearInterval(t);
   }, [state]);
 
-  // Preview mode simulator
+  // Preview mode is interactive (admin switches states/themes/couplets manually)
   useEffect(() => {
     if (!previewMode) return;
-    const t1 = setTimeout(() => {
-      setState('verifying');
-      setPosition(1);
-    }, 5000);
-    const t2 = setTimeout(() => {
-      setState('saved');
-    }, 8000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
+    setErrorReason('Sample preview: you appear to be outside the geofence radius.');
   }, [previewMode]);
 
   // Real ticket Socket.IO + polling fallback
@@ -158,16 +191,84 @@ export const RushWaitingScreen: React.FC<RushWaitingScreenProps> = ({
   const progressPct =
     state === 'saved' ? 100 : Math.min(95, Math.max(10, Math.round(((maxEst - secondsLeft) / maxEst) * 100)));
 
-  const currentQuote = quotes[quoteIdx];
+  const currentQuote = quotes[quoteIdx % Math.max(1, quotes.length)];
   const stepIndex = state === 'saved' ? 3 : state === 'verifying' ? 2 : 1;
+  const themeShell =
+    previewTheme === 'dark'
+      ? 'bg-slate-950 text-white'
+      : previewTheme === 'emerald'
+        ? 'bg-emerald-50 text-slate-900'
+        : 'bg-white text-content';
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto"
+      className={`fixed inset-0 z-50 ${themeShell} flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto`}
       role="dialog"
       aria-modal="true"
       aria-label="Attendance verification queue"
     >
+      {previewMode && (
+        <div className="w-full max-w-2xl mb-4 p-2.5 rounded-2xl border border-slate-200 bg-white/95 text-slate-900 shadow-sm flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-1">
+            {([
+              { id: 'queued', label: 'Queued' },
+              { id: 'verifying', label: 'Saving' },
+              { id: 'saved', label: 'Success' },
+              { id: 'failed', label: 'Failed' },
+            ] as const).map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setState(s.id)}
+                className={`px-2.5 py-1 rounded-lg font-bold ${
+                  state === s.id ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            {([
+              { id: 'light', label: 'Classic' },
+              { id: 'dark', label: 'Slate Dark' },
+              { id: 'emerald', label: 'Emerald' },
+            ] as const).map((th) => (
+              <button
+                key={th.id}
+                type="button"
+                onClick={() => setPreviewTheme(th.id)}
+                className={`px-2 py-1 rounded-lg font-semibold ${
+                  previewTheme === th.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                {th.label}
+              </button>
+            ))}
+          </div>
+          {quotes.length > 0 && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setQuoteIdx((i) => (i - 1 + quotes.length) % quotes.length)}
+                className="px-2 py-1 rounded-lg bg-slate-100 font-semibold hover:bg-slate-200"
+              >
+                Prev
+              </button>
+              <span className="px-1 font-mono text-[11px]">
+                {(quoteIdx % quotes.length) + 1}/{quotes.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuoteIdx((i) => (i + 1) % quotes.length)}
+                className="px-2 py-1 rounded-lg bg-slate-100 font-semibold hover:bg-slate-200"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {onClose && (
         <button
           onClick={onClose}
@@ -265,17 +366,37 @@ export const RushWaitingScreen: React.FC<RushWaitingScreenProps> = ({
         </div>
 
         {/* Thirukkural + Tamil Porul Card */}
-        {config.showQuotes && currentQuote && state !== 'saved' && (
-          <div className="w-full p-4 rounded-2xl bg-surface-soft border border-border text-left space-y-2 transition-opacity duration-300">
-            {currentQuote.number && (
-              <div className="text-[10px] font-bold uppercase text-brand-600">{currentQuote.number}</div>
-            )}
-            <p className="text-xs sm:text-sm font-bold text-content leading-relaxed whitespace-pre-line">
+        {(config.showQuotes || previewMode) && currentQuote && (previewMode || state !== 'saved') && (
+          <div
+            className={`w-full p-4 rounded-2xl border text-left space-y-2 transition-opacity duration-300 ${
+              previewTheme === 'dark'
+                ? 'bg-slate-900 border-slate-800 text-white'
+                : 'bg-surface-soft border-border text-content'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              {currentQuote.number && (
+                <div className="text-[10px] font-bold uppercase text-brand-500">{currentQuote.number}</div>
+              )}
+              {currentQuote.chapter && (
+                <div className="text-[10px] opacity-75">{currentQuote.chapter}</div>
+              )}
+            </div>
+            <p
+              className="text-xs sm:text-sm font-bold leading-relaxed whitespace-pre-line"
+              style={{ fontFamily: "'Noto Serif Tamil', 'Noto Sans Tamil', serif" }}
+            >
               {currentQuote.kural.replace(' / ', '\n')}
             </p>
-            <p className="text-xs text-content-secondary leading-relaxed">
+            <p
+              className="text-xs opacity-90 leading-relaxed"
+              style={{ fontFamily: "'Noto Sans Tamil', sans-serif" }}
+            >
               <strong>பொருள்:</strong> {currentQuote.porul}
             </p>
+            {currentQuote.english && (
+              <p className="text-[11px] opacity-75 leading-relaxed italic">{currentQuote.english}</p>
+            )}
           </div>
         )}
 

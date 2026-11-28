@@ -451,6 +451,39 @@ export const SettingsPage: React.FC = () => {
             </label>
           </div>
 
+          <div className="p-3 rounded-xl bg-surface-soft border border-border space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-content">
+                Thirukkural Couplets ({Array.isArray(rushConfig.quotes) ? rushConfig.quotes.length : 0})
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const num = window.prompt('Kural number (e.g. குறள் 611):', 'குறள் ');
+                  const kural = window.prompt('Thirukkural Tamil text (use " / " between lines):');
+                  const porul = window.prompt('Tamil meaning (பொருள்):');
+                  if (!kural || !porul) return;
+                  setRushConfig((p: any) => ({
+                    ...p,
+                    quotes: [
+                      ...(Array.isArray(p.quotes) ? p.quotes : []),
+                      { id: `custom_${Date.now()}`, number: num || undefined, kural, porul },
+                    ],
+                  }));
+                }}
+              >
+                Add couplet
+              </Button>
+            </div>
+            {(!rushConfig.quotes || rushConfig.quotes.length === 0) && (
+              <p className="text-xs text-content-muted">
+                No couplets configured yet. Click &ldquo;Add couplet&rdquo; or save settings to restore defaults.
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-wrap justify-between gap-2 pt-2 border-t border-border">
             <Button type="button" size="sm" variant="secondary" onClick={() => setShowRushPreview(true)}>
               Preview the waiting screen

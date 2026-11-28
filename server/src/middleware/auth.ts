@@ -23,8 +23,17 @@ declare global {
 }
 
 const revokedSessionIds = new Set<string>();
+const authCache = new Map<string, { user: any; expiresAt: number }>();
+
 export function revokeSessionToken(sessionId: string) {
   if (sessionId) revokedSessionIds.add(sessionId);
+}
+
+export function invalidateUserAuthCache(userId: string) {
+  if (!userId) return;
+  for (const [key, val] of authCache.entries()) {
+    if (val.user?.id === userId) authCache.delete(key);
+  }
 }
 
 export function getJwtSecret(): string {
@@ -61,28 +70,40 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as AuthenticatedUser;
 
-    if (decoded.sid) {
-      if (revokedSessionIds.has(decoded.sid)) {
-        return res.status(401).json({ error: 'Session has been logged out or expired' });
-      }
-      const sess = await prisma.userSession.findUnique({
-        where: { id: decoded.sid },
-        select: { endedAt: true },
-      });
-      if (!sess || sess.endedAt) {
-        revokedSessionIds.add(decoded.sid);
-        return res.status(401).json({ error: 'Session has been logged out or expired' });
-      }
+    if (decoded.sid && revokedSessionIds.has(decoded.sid)) {
+      return res.status(401).json({ error: 'Session has been logged out or expired' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      include: {
-        devices: true,
-        facultyProfile: { include: { department: true } },
-        studentProfile: { include: { class: true } },
-      },
-    });
+    const cacheKey = `${decoded.id}:${decoded.sid || 'nosid'}`;
+    const cached = authCache.get(cacheKey);
+    let user = cached && cached.expiresAt > Date.now() ? cached.user : null;
+
+    if (!user) {
+      if (decoded.sid) {
+        const sess = await prisma.userSession.findUnique({
+          where: { id: decoded.sid },
+          select: { endedAt: true },
+        });
+        if (!sess || sess.endedAt) {
+          revokedSessionIds.add(decoded.sid);
+          authCache.delete(cacheKey);
+          return res.status(401).json({ error: 'Session has been logged out or expired' });
+        }
+      }
+
+      user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        include: {
+          devices: true,
+          facultyProfile: { include: { department: true } },
+          studentProfile: { include: { class: true } },
+        },
+      });
+
+      if (user && user.status === 'ACTIVE') {
+        authCache.set(cacheKey, { user, expiresAt: Date.now() + 10_000 });
+      }
+    }
 
     if (!user || user.status !== 'ACTIVE') {
       return res.status(401).json({ error: 'User account is inactive or suspended' });
@@ -102,8 +123,8 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     // Hardware device lock check for students (supports up to 2 active devices)
     const requestDeviceId = (req.headers['x-device-id'] as string) || req.body?.deviceId;
     if (requestDeviceId && user.role === 'STUDENT') {
-      const activeDevices = user.devices.filter((d) => d.status === 'ACTIVE');
-      if (activeDevices.length > 0 && !activeDevices.some((d) => d.deviceId === requestDeviceId)) {
+      const activeDevices = user.devices.filter((d: any) => d.status === 'ACTIVE');
+      if (activeDevices.length > 0 && !activeDevices.some((d: any) => d.deviceId === requestDeviceId)) {
         return res.status(403).json({
           code: 'DEVICE_LOCKED',
           error: 'This account is bound to other devices. Request admin approval.',

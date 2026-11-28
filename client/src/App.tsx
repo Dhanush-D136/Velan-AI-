@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { api } from './lib/api';
@@ -8,37 +8,77 @@ import { LoginPage } from './features/auth/LoginPage';
 import { ForcePasswordChangePage } from './features/auth/ForcePasswordChangePage';
 import { AppLayout } from './components/layout/AppLayout';
 
-// Admin Screens
-import { AdminDashboard } from './features/admin/AdminDashboard';
-import { LiveAttendanceMonitor } from './features/admin/LiveAttendanceMonitor';
-import { TimetableBuilder } from './features/admin/TimetableBuilder';
-import { FacultyManagement } from './features/admin/FacultyManagement';
-import { StudentManagement } from './features/admin/StudentManagement';
-import { AcademicsManagement } from './features/admin/AcademicsManagement';
-import { AdminRequestsPage } from './features/admin/AdminRequestsPage';
-import { ReportsPage } from './features/admin/ReportsPage';
-import { AdminLiveMonitorPage } from './features/admin/AdminLiveMonitorPage';
+// Lazy-loaded Route Bundles (Role & Feature Code Splitting)
+const AdminDashboard = lazy(() => import('./features/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const LiveAttendanceMonitor = lazy(() => import('./features/admin/LiveAttendanceMonitor').then((m) => ({ default: m.LiveAttendanceMonitor })));
+const TimetableBuilder = lazy(() => import('./features/admin/TimetableBuilder').then((m) => ({ default: m.TimetableBuilder })));
+const FacultyManagement = lazy(() => import('./features/admin/FacultyManagement').then((m) => ({ default: m.FacultyManagement })));
+const StudentManagement = lazy(() => import('./features/admin/StudentManagement').then((m) => ({ default: m.StudentManagement })));
+const AcademicsManagement = lazy(() => import('./features/admin/AcademicsManagement').then((m) => ({ default: m.AcademicsManagement })));
+const AdminRequestsPage = lazy(() => import('./features/admin/AdminRequestsPage').then((m) => ({ default: m.AdminRequestsPage })));
+const ReportsPage = lazy(() => import('./features/admin/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const AdminLiveMonitorPage = lazy(() => import('./features/admin/AdminLiveMonitorPage').then((m) => ({ default: m.AdminLiveMonitorPage })));
+const AdminAcademicsPortal = lazy(() => import('./features/admin/AdminAcademicsPortal').then((m) => ({ default: m.AdminAcademicsPortal })));
 
-// Faculty Screens
-import { FacultyDashboard } from './features/faculty/FacultyDashboard';
-import { FacultyAttendancePage } from './features/faculty/FacultyAttendancePage';
-import { AdvisorAcademicsPage } from './features/faculty/AdvisorAcademicsPage';
+const FacultyDashboard = lazy(() => import('./features/faculty/FacultyDashboard').then((m) => ({ default: m.FacultyDashboard })));
+const FacultyAttendancePage = lazy(() => import('./features/faculty/FacultyAttendancePage').then((m) => ({ default: m.FacultyAttendancePage })));
+const AdvisorAcademicsPage = lazy(() => import('./features/faculty/AdvisorAcademicsPage').then((m) => ({ default: m.AdvisorAcademicsPage })));
 
-// Student Screens
-import { StudentDashboard } from './features/student/StudentDashboard';
-import { StudentMarkAttendancePage } from './features/student/StudentMarkAttendancePage';
-import { StudentAttendanceHistoryPage } from './features/student/StudentAttendanceHistoryPage';
-import { SkipCalculatorPage } from './features/student/SkipCalculatorPage';
-import { AcademicsCGPAPage } from './features/student/AcademicsCGPAPage';
-import { AdminAcademicsPortal } from './features/admin/AdminAcademicsPortal';
+const StudentDashboard = lazy(() => import('./features/student/StudentDashboard').then((m) => ({ default: m.StudentDashboard })));
+const StudentMarkAttendancePage = lazy(() => import('./features/student/StudentMarkAttendancePage').then((m) => ({ default: m.StudentMarkAttendancePage })));
+const StudentAttendanceHistoryPage = lazy(() => import('./features/student/StudentAttendanceHistoryPage').then((m) => ({ default: m.StudentAttendanceHistoryPage })));
+const SkipCalculatorPage = lazy(() => import('./features/student/SkipCalculatorPage').then((m) => ({ default: m.SkipCalculatorPage })));
+const AcademicsCGPAPage = lazy(() => import('./features/student/AcademicsCGPAPage').then((m) => ({ default: m.AcademicsCGPAPage })));
 
-// Shared Screens
-import { ClassChatPage } from './features/chat/ClassChatPage';
-import { AIAssistantPage } from './features/ai/AIAssistantPage';
-import { SettingsPage } from './features/settings/SettingsPage';
-import { AttendanceHistoryEditorPage } from './features/shared/AttendanceHistoryEditorPage';
-import { AssignmentsPage } from './features/shared/AssignmentsPage';
-import { MaterialsPage } from './features/shared/MaterialsPage';
+const ClassChatPage = lazy(() => import('./features/chat/ClassChatPage').then((m) => ({ default: m.ClassChatPage })));
+const AIAssistantPage = lazy(() => import('./features/ai/AIAssistantPage').then((m) => ({ default: m.AIAssistantPage })));
+const SettingsPage = lazy(() => import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AttendanceHistoryEditorPage = lazy(() => import('./features/shared/AttendanceHistoryEditorPage').then((m) => ({ default: m.AttendanceHistoryEditorPage })));
+const AssignmentsPage = lazy(() => import('./features/shared/AssignmentsPage').then((m) => ({ default: m.AssignmentsPage })));
+const MaterialsPage = lazy(() => import('./features/shared/MaterialsPage').then((m) => ({ default: m.MaterialsPage })));
+
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center space-y-4">
+          <BrandLogo size="lg" />
+          <h1 className="text-xl font-heading font-extrabold text-content">Something went wrong</h1>
+          <p className="text-xs text-content-secondary max-w-sm">
+            Your session is safe. Reload the page to continue where you left off.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-xl bg-brand-600 text-white text-xs font-bold"
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const PageSkeleton: React.FC = () => (
+  <div className="space-y-4 p-4 animate-pulse">
+    <div className="h-8 w-56 bg-slate-200 rounded-xl" />
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="h-24 bg-slate-100 rounded-2xl" />
+      <div className="h-24 bg-slate-100 rounded-2xl" />
+      <div className="h-24 bg-slate-100 rounded-2xl" />
+    </div>
+    <div className="h-56 bg-slate-100 rounded-2xl" />
+  </div>
+);
 
 // Generic placeholder for sub-pages
 const GenericSubPage: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => (
@@ -116,8 +156,10 @@ export default function App() {
   }
 
   return (
+    <AppErrorBoundary>
     <BrowserRouter>
       <RouteTracker />
+      <Suspense fallback={<PageSkeleton />}>
       <Routes>
         <Route
           path="/login"
@@ -187,6 +229,8 @@ export default function App() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to={getDefaultRedirect()} replace />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
+    </AppErrorBoundary>
   );
 }

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
 import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
@@ -100,14 +102,56 @@ export const AdminLiveMonitorPage: React.FC = () => {
     };
   }, [fetchAll, showToast]);
 
-  const handleForceLogout = async (userId: string, name: string, sessionId?: string) => {
-    if (!window.confirm(`Force logout ${sessionId ? 'this session of ' : 'ALL sessions for '}${name}?`)) return;
+  const [forceLogoutTarget, setForceLogoutTarget] = useState<{
+    mode: 'single' | 'all';
+    userId?: string;
+    sessionId?: string;
+    name: string;
+    deviceSummary?: string;
+  } | null>(null);
+  const [adminPwdInput, setAdminPwdInput] = useState('');
+  const [forceLogoutError, setForceLogoutError] = useState('');
+  const [isForcingLogout, setIsForcingLogout] = useState(false);
+
+  const openForceLogoutModal = (userId: string, name: string, deviceSummary?: string, sessionId?: string) => {
+    setForceLogoutTarget({ mode: 'single', userId, sessionId, name, deviceSummary });
+    setAdminPwdInput('');
+    setForceLogoutError('');
+  };
+
+  const openForceLogoutAllModal = () => {
+    setForceLogoutTarget({ mode: 'all', name: 'All Other Active Users' });
+    setAdminPwdInput('');
+    setForceLogoutError('');
+  };
+
+  const submitForceLogout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forceLogoutTarget || !adminPwdInput) {
+      setForceLogoutError('Please enter your administrator password.');
+      return;
+    }
+    setIsForcingLogout(true);
+    setForceLogoutError('');
     try {
-      await api.post('/api/admin/monitor/force-logout', sessionId ? { userId, sessionId } : { userId });
-      showToast(`Forced logout completed for ${name}`, 'success');
+      if (forceLogoutTarget.mode === 'all') {
+        await api.post('/api/admin/monitor/force-logout-all', { adminPassword: adminPwdInput });
+        showToast('All other active sessions terminated.', 'success');
+      } else {
+        await api.post('/api/admin/monitor/force-logout', {
+          userId: forceLogoutTarget.userId,
+          sessionId: forceLogoutTarget.sessionId,
+          adminPassword: adminPwdInput,
+        });
+        showToast(`Forced logout completed for ${forceLogoutTarget.name}`, 'success');
+      }
+      setForceLogoutTarget(null);
+      setAdminPwdInput('');
       fetchAll();
-    } catch {
-      showToast('Failed to force logout', 'error');
+    } catch (err: any) {
+      setForceLogoutError(err?.response?.data?.error || 'Failed to force logout');
+    } finally {
+      setIsForcingLogout(false);
     }
   };
 
@@ -275,6 +319,15 @@ export const AdminLiveMonitorPage: React.FC = () => {
                   <option value="FACULTY">Faculty</option>
                   <option value="ADMIN">Admin</option>
                 </select>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-rose-600 border border-rose-200 hover:bg-rose-50"
+                  onClick={openForceLogoutAllModal}
+                  leftIcon={<LogOut className="w-3.5 h-3.5" />}
+                >
+                  Log Out Everyone
+                </Button>
               </div>
             </div>
 
@@ -310,7 +363,7 @@ export const AdminLiveMonitorPage: React.FC = () => {
                             size="sm"
                             variant="ghost"
                             className="text-rose-600"
-                            onClick={() => handleForceLogout(u.userId, u.name)}
+                            onClick={() => openForceLogoutModal(u.userId, u.name, `${u.deviceType} • ${u.browser} / ${u.os}`)}
                             leftIcon={<LogOut className="w-3.5 h-3.5" />}
                           >
                             Force Logout
@@ -528,6 +581,51 @@ export const AdminLiveMonitorPage: React.FC = () => {
           </Button>
         </Card>
       )}
+
+      <Modal
+        isOpen={!!forceLogoutTarget}
+        onClose={() => setForceLogoutTarget(null)}
+        title={forceLogoutTarget?.mode === 'all' ? 'Confirm Force Logout Everyone' : 'Confirm Force Logout'}
+        description="Enter your administrator password to terminate active session(s)."
+      >
+        {forceLogoutTarget && (
+          <form onSubmit={submitForceLogout} className="space-y-4">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1">
+              <div className="font-bold">
+                {forceLogoutTarget.mode === 'all'
+                  ? 'Warning: Every currently signed-in student, faculty, and other admin session will be signed out immediately.'
+                  : `User: ${forceLogoutTarget.name}`}
+              </div>
+              {forceLogoutTarget.deviceSummary && (
+                <div className="text-rose-700">Device(s): {forceLogoutTarget.deviceSummary}</div>
+              )}
+            </div>
+
+            <Input
+              label="Your Administrator Password"
+              type="password"
+              required
+              autoFocus
+              value={adminPwdInput}
+              onChange={(e) => setAdminPwdInput(e.target.value)}
+              placeholder="Enter admin password to confirm"
+            />
+
+            {forceLogoutError && (
+              <p className="text-xs font-semibold text-rose-600">{forceLogoutError}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button type="button" size="sm" variant="secondary" onClick={() => setForceLogoutTarget(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" variant="danger" isLoading={isForcingLogout}>
+                Confirm Force Logout
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 };

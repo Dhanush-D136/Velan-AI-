@@ -32,9 +32,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-let refreshPromise: Promise<string | null> | null = null;
+export interface RefreshOutcome {
+  token: string | null;
+  user?: any;
+  sessionInvalid?: boolean;
+  transientError?: boolean;
+}
 
-async function silentRefreshToken(): Promise<string | null> {
+let refreshPromise: Promise<RefreshOutcome> | null = null;
+
+export async function silentRefreshToken(): Promise<RefreshOutcome> {
   if (!refreshPromise) {
     refreshPromise = axios
       .post(`${baseURL}/auth/refresh`, {}, { withCredentials: true })
@@ -46,9 +53,15 @@ async function silentRefreshToken(): Promise<string | null> {
             localStorage.setItem('velan_user', JSON.stringify(res.data.user));
           }
         }
-        return newToken;
+        return { token: newToken, user: res.data?.user };
       })
-      .catch(() => null)
+      .catch((err) => {
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) {
+          return { token: null, sessionInvalid: true };
+        }
+        return { token: null, transientError: true };
+      })
       .finally(() => {
         refreshPromise = null;
       });
@@ -91,12 +104,14 @@ api.interceptors.response.use(
       !String(originalRequest.url || '').includes('/auth/login')
     ) {
       originalRequest._retry = true;
-      const newToken = await silentRefreshToken();
-      if (newToken) {
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+      const outcome = await silentRefreshToken();
+      if (outcome.token) {
+        originalRequest.headers.Authorization = `Bearer ${outcome.token}`;
         return api(originalRequest);
-      } else if (typeof window !== 'undefined') {
+      } else if (outcome.sessionInvalid && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('velan:session_invalid'));
+      } else if (outcome.transientError && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('velan:reconnecting', { detail: true }));
       }
     }
 

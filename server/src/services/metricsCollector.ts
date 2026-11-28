@@ -120,6 +120,19 @@ class MetricsCollector {
 
   httpMiddleware() {
     return (req: Request, res: Response, next: NextFunction) => {
+      const path = req.path || '';
+      const isExcluded =
+        path.startsWith('/socket.io') ||
+        path === '/health' ||
+        path === '/api/health' ||
+        path.startsWith('/api/admin/monitor') ||
+        path.startsWith('/api/admin/health') ||
+        /\.(js|css|png|jpg|jpeg|svg|ico|woff2?|map)$/i.test(path);
+
+      if (isExcluded) {
+        return next();
+      }
+
       const start = process.hrtime.bigint();
       this.inFlightRequests++;
       let finished = false;
@@ -129,7 +142,7 @@ class MetricsCollector {
         finished = true;
         this.inFlightRequests = Math.max(0, this.inFlightRequests - 1);
         const ms = Number(process.hrtime.bigint() - start) / 1e6;
-        this.recordHttpRequest(`${req.method} ${req.route?.path || req.path}`, res.statusCode, ms);
+        this.recordHttpRequest(`${req.method} ${req.route?.path || path}`, res.statusCode, ms);
       };
 
       res.on('finish', onDone);
@@ -138,10 +151,24 @@ class MetricsCollector {
     };
   }
 
+  private httpSamples: { ts: number; ms: number; status: number }[] = [];
+  private endpointDurations = new Map<string, number[]>();
+
+  private pruneWindow(now = Date.now()) {
+    const cutoff = now - 5 * 60 * 1000;
+    while (this.httpSamples.length > 0 && this.httpSamples[0].ts < cutoff) {
+      this.httpSamples.shift();
+    }
+  }
+
   recordHttpRequest(endpoint: string, statusCode: number, durationMs: number) {
+    const now = Date.now();
     this.httpTotal++;
     if (statusCode >= 400 && statusCode < 500) this.http4xx++;
     if (statusCode >= 500) this.http5xx++;
+
+    this.httpSamples.push({ ts: now, ms: durationMs, status: statusCode });
+    this.pruneWindow(now);
 
     this.httpLatencies.push(durationMs);
     if (this.httpLatencies.length > 2000) this.httpLatencies.shift();
@@ -152,6 +179,11 @@ class MetricsCollector {
     if (durationMs > prev.maxMs) prev.maxMs = durationMs;
     if (statusCode >= 500) prev.errors++;
     this.endpointStats.set(endpoint, prev);
+
+    const durs = this.endpointDurations.get(endpoint) || [];
+    durs.push(durationMs);
+    if (durs.length > 200) durs.shift();
+    this.endpointDurations.set(endpoint, durs);
   }
 
   recordSocketConnect() {
@@ -190,28 +222,32 @@ class MetricsCollector {
     error5xxRate: number;
     memoryPercent: number;
     cpuPercent: number;
+    sampleCount?: number;
     nowMs?: number;
     bypassDuration?: boolean;
   }): { status: HealthStatus; reason: string } {
     const now = metrics.nowMs ?? Date.now();
     const th = this.thresholds;
+    const hasEnoughTraffic = metrics.sampleCount === undefined || metrics.sampleCount >= 30;
 
     const strugglingReasons: string[] = [];
     if (metrics.lagP99Ms > th.strugglingLagP99Ms) strugglingReasons.push(`event-loop lag ${Math.round(metrics.lagP99Ms)}ms`);
-    if (metrics.httpP95Ms > th.strugglingHttpP95Ms) strugglingReasons.push(`response time p95 ${(metrics.httpP95Ms / 1000).toFixed(2)}s`);
-    if (metrics.error5xxRate > th.struggling5xxRate) strugglingReasons.push(`5xx error rate ${metrics.error5xxRate.toFixed(1)}%`);
+    if (hasEnoughTraffic && metrics.httpP95Ms > th.strugglingHttpP95Ms) strugglingReasons.push(`response time p95 ${(metrics.httpP95Ms / 1000).toFixed(2)}s`);
+    if (hasEnoughTraffic && metrics.error5xxRate > th.struggling5xxRate) strugglingReasons.push(`5xx error rate ${metrics.error5xxRate.toFixed(1)}%`);
     if (metrics.memoryPercent > th.strugglingMemoryPercent) strugglingReasons.push(`memory usage ${metrics.memoryPercent.toFixed(1)}%`);
     if (metrics.cpuPercent > th.strugglingCpuPercent) strugglingReasons.push(`CPU usage ${metrics.cpuPercent.toFixed(1)}%`);
 
     const degradedReasons: string[] = [];
     if (metrics.lagP99Ms > th.degradedLagP99Ms) degradedReasons.push(`event-loop lag ${Math.round(metrics.lagP99Ms)}ms`);
-    if (metrics.httpP95Ms > th.degradedHttpP95Ms) degradedReasons.push(`response time p95 ${Math.round(metrics.httpP95Ms)}ms`);
-    if (metrics.error5xxRate > th.degraded5xxRate) degradedReasons.push(`5xx error rate ${metrics.error5xxRate.toFixed(1)}%`);
+    if (hasEnoughTraffic && metrics.httpP95Ms > th.degradedHttpP95Ms) degradedReasons.push(`response time p95 ${Math.round(metrics.httpP95Ms)}ms`);
+    if (hasEnoughTraffic && metrics.error5xxRate > th.degraded5xxRate) degradedReasons.push(`5xx error rate ${metrics.error5xxRate.toFixed(1)}%`);
     if (metrics.memoryPercent > th.degradedMemoryPercent) degradedReasons.push(`memory usage ${metrics.memoryPercent.toFixed(1)}%`);
     if (metrics.cpuPercent > th.degradedCpuPercent) degradedReasons.push(`CPU usage ${metrics.cpuPercent.toFixed(1)}%`);
 
     let nextStatus: HealthStatus = 'HEALTHY';
-    let nextReason = 'All systems operating normally.';
+    let nextReason = hasEnoughTraffic
+      ? 'All systems operating normally.'
+      : 'Not enough traffic to judge, server looks fine.';
 
     if (strugglingReasons.length > 0) {
       if (!this.strugglingSince) this.strugglingSince = now;
@@ -408,27 +444,34 @@ class MetricsCollector {
     const lagP99Ms = this.timeline[this.timeline.length - 1]?.lagP99Ms ?? Math.round((this.histogram.percentile(99) / 1e6) * 100) / 100;
     const uptimeSec = Math.round(process.uptime());
 
+    this.pruneWindow();
+    const windowLatencies = this.httpSamples.map((s) => s.ms);
+    const window5xx = this.httpSamples.filter((s) => s.status >= 500).length;
+    const windowError5xxRate =
+      this.httpSamples.length > 0 ? Math.round((window5xx / this.httpSamples.length) * 1000) / 10 : 0;
+
     const httpAvgMs =
-      this.httpLatencies.length > 0
-        ? Math.round((this.httpLatencies.reduce((a, b) => a + b, 0) / this.httpLatencies.length) * 100) / 100
+      windowLatencies.length > 0
+        ? Math.round((windowLatencies.reduce((a, b) => a + b, 0) / windowLatencies.length) * 100) / 100
         : 0;
-    const httpP50Ms = percentile(this.httpLatencies, 50);
-    const httpP95Ms = percentile(this.httpLatencies, 95);
-    const httpP99Ms = percentile(this.httpLatencies, 99);
+    const httpP50Ms = percentile(windowLatencies, 50);
+    const httpP95Ms = percentile(windowLatencies, 95);
+    const httpP99Ms = percentile(windowLatencies, 99);
     const rps = Math.round((this.httpTotal / Math.max(1, uptimeSec)) * 100) / 100;
     const error4xxRate = this.httpTotal > 0 ? Math.round((this.http4xx / this.httpTotal) * 1000) / 10 : 0;
-    const error5xxRate = this.httpTotal > 0 ? Math.round((this.http5xx / this.httpTotal) * 1000) / 10 : 0;
+    const error5xxRate = this.httpSamples.length >= 30 ? windowError5xxRate : 0;
 
     const slowestEndpoints = Array.from(this.endpointStats.entries())
       .map(([endpoint, s]) => ({
         endpoint,
         count: s.count,
         avgMs: Math.round((s.totalMs / s.count) * 100) / 100,
+        p95Ms: percentile(this.endpointDurations.get(endpoint) || [s.maxMs], 95),
         maxMs: Math.round(s.maxMs * 100) / 100,
         errors: s.errors,
       }))
-      .sort((a, b) => b.avgMs - a.avgMs)
-      .slice(0, 10);
+      .sort((a, b) => b.p95Ms - a.p95Ms)
+      .slice(0, 5);
 
     const dbAvgMs =
       this.dbLatencies.length > 0
@@ -448,7 +491,10 @@ class MetricsCollector {
       reason: this.currentReason,
       concurrentUsers: presence.totalOnline,
       peakConcurrentToday: presence.peakConcurrentToday,
-      capacityInsight: `Handled ${presence.peakConcurrentToday || presence.totalOnline} concurrent users with p95 response ${httpP95Ms} ms`,
+      capacityInsight:
+        this.httpSamples.length < 30
+          ? `Peak ${presence.peakConcurrentToday || presence.totalOnline} concurrent user(s) — low traffic (${this.httpSamples.length} requests in 5m)`
+          : `Peak ${presence.peakConcurrentToday || presence.totalOnline} concurrent user(s) • 5m p95 response ${httpP95Ms} ms`,
       process: {
         uptimeSec,
         cpuPercent: this.lastCpuPercent,

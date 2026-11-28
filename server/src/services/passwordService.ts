@@ -1,27 +1,8 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
-import { revokeSessionToken } from '../middleware/auth';
+import { revokeSessionToken, invalidateUserAuthCache } from '../middleware/auth';
 import { presenceService } from './presenceService';
-
-const COMMON_PASSWORDS = new Set([
-  '1234',
-  '12345',
-  '123456',
-  '1234567',
-  '12345678',
-  '123456789',
-  'password',
-  'password1',
-  'password123',
-  'qwerty',
-  'qwerty123',
-  'admin123',
-  'student123',
-  'faculty123',
-  'welcome1',
-  'letmein1',
-]);
 
 export function generateTempPassword(length = 10): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -30,7 +11,6 @@ export function generateTempPassword(length = 10): string {
   for (let i = 0; i < length; i++) {
     out += chars[bytes[i] % chars.length];
   }
-  // Guarantee at least 1 letter and 1 digit
   if (!/[A-Za-z]/.test(out)) out = 'A' + out.slice(1);
   if (!/[0-9]/.test(out)) out = out.slice(0, -1) + '7';
   return out;
@@ -40,70 +20,23 @@ export async function validateNewPassword(
   newPassword: string,
   user: {
     id: string;
-    name?: string | null;
-    username?: string | null;
-    phone?: string | null;
+    mustChangePassword?: boolean;
     passwordHash?: string;
-    passwordHistory?: string | null;
-    studentProfile?: { registerNo?: string | null; rollNo?: string | null; phone?: string | null } | null;
-    facultyProfile?: { employeeId?: string | null } | null;
-  },
-  minLength = 8
+  }
 ): Promise<{ valid: boolean; error?: string }> {
   const pwd = newPassword || '';
-  if (pwd.length < minLength) {
-    return { valid: false, error: `Password must be at least ${minLength} characters long.` };
-  }
-  if (!/[A-Za-z]/.test(pwd) || !/[0-9]/.test(pwd)) {
-    return { valid: false, error: 'Password must contain at least one letter and one number.' };
+  if (pwd.trim().length === 0) {
+    return { valid: false, error: 'Password cannot be empty.' };
   }
 
-  const lower = pwd.toLowerCase().trim();
-  if (COMMON_PASSWORDS.has(lower)) {
-    return { valid: false, error: 'This password is too common. Please choose a stronger password.' };
-  }
-
-  const forbiddenTokens = [
-    user.username,
-    user.name,
-    user.phone,
-    user.studentProfile?.registerNo,
-    user.studentProfile?.rollNo,
-    user.studentProfile?.phone,
-    user.facultyProfile?.employeeId,
-  ]
-    .filter((t): t is string => !!t && t.trim().length >= 3)
-    .map((t) => t.trim().toLowerCase());
-
-  for (const tok of forbiddenTokens) {
-    if (lower === tok || (tok.length >= 4 && lower.includes(tok))) {
+  // Only on forced first-login / temp-password change: must differ from the temporary password
+  if (user.mustChangePassword && user.passwordHash) {
+    const sameAsTemp = await bcrypt.compare(pwd, user.passwordHash);
+    if (sameAsTemp) {
       return {
         valid: false,
-        error: 'Password cannot match or contain your name, login ID, register/roll number, or phone number.',
+        error: 'New password must be different from your temporary password.',
       };
-    }
-  }
-
-  // Check current hash and last 3 hashes in passwordHistory
-  const prevHashes: string[] = [];
-  if (user.passwordHash) prevHashes.push(user.passwordHash);
-  if (user.passwordHistory) {
-    try {
-      const parsed = JSON.parse(user.passwordHistory);
-      if (Array.isArray(parsed)) {
-        for (const h of parsed) {
-          if (typeof h === 'string' && !prevHashes.includes(h)) prevHashes.push(h);
-        }
-      }
-    } catch {
-      // ignore malformed history
-    }
-  }
-
-  for (const hash of prevHashes.slice(0, 3)) {
-    const reused = await bcrypt.compare(pwd, hash);
-    if (reused) {
-      return { valid: false, error: 'You cannot reuse your current or recent 3 passwords.' };
     }
   }
 
@@ -201,6 +134,7 @@ export async function setPassword(
     revokeSessionToken(s.id);
     presenceService.removeSession(s.id);
   }
+  invalidateUserAuthCache(userId);
 
   if (options.io && activeSessions.length > 0 && !options.keepSessionId) {
     options.io.to(`user_${userId}`).emit('auth:forced_logout', {

@@ -169,25 +169,19 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
       .set('Authorization', `Bearer ${restrictedToken}`);
     expect(meRes.status).toBe(200);
 
-    // Weak / personal password rejected
-    const weakRes = await request(app)
+    // Setting same as temporary password is rejected
+    const sameTempRes = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${restrictedToken}`)
-      .send({ currentPassword: mentor1TempPwd, newPassword: '1234' });
-    expect(weakRes.status).toBe(400);
+      .send({ newPassword: mentor1TempPwd });
+    expect(sameTempRes.status).toBe(400);
 
-    const personalRes = await request(app)
-      .post('/api/auth/change-password')
-      .set('Authorization', `Bearer ${restrictedToken}`)
-      .send({ currentPassword: mentor1TempPwd, newPassword: `${empMentor1}@2026` });
-    expect(personalRes.status).toBe(400);
-
-    // Valid strong password succeeds and returns full-access token
-    const goodPwd = 'VelanSecure#2026';
+    // Any chosen password succeeds and returns full-access token
+    const goodPwd = '1234';
     const chgRes = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${restrictedToken}`)
-      .send({ currentPassword: mentor1TempPwd, newPassword: goodPwd });
+      .send({ newPassword: goodPwd });
     expect(chgRes.status).toBe(200);
     expect(chgRes.body.scope).toBe('full');
     expect(chgRes.body.user.mustChangePassword).toBe(false);
@@ -198,13 +192,6 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
       .get('/api/chat/rooms')
       .set('Authorization', `Bearer ${mentor1Token}`);
     expect(okRes.status).toBe(200);
-
-    // Reusing previous password is blocked
-    const reusePwd = await request(app)
-      .post('/api/auth/change-password')
-      .set('Authorization', `Bearer ${mentor1Token}`)
-      .send({ currentPassword: goodPwd, newPassword: goodPwd });
-    expect(reusePwd.status).toBe(400);
   }, 15000);
 
   it('3. Class Form: Advisor + 2 Mentors validation, block deleting mentor, and mentor gets same access as advisor', async () => {

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { UserSummary } from '@velan/shared';
 import { getOrCreateDeviceId, syncNativeDeviceId } from '@/lib/device';
-import { api } from '@/lib/api';
+import { api, silentRefreshToken } from '@/lib/api';
 
 const readStoredUser = (): UserSummary | null => {
   try {
@@ -69,21 +69,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isHydrating: true, initialising: true });
 
     try {
-      // 1. Attempt silent refresh using httpOnly 30-day rotating cookie first
-      const refreshRes = await api.post('/api/auth/refresh', {}).catch((err) => {
-        if (!err?.response || err.response.status >= 500 || err.response.status === 429) {
-          throw err; // Network/5xx -> keep cached session
-        }
-        return null;
-      });
+      // 1. Attempt silent refresh using httpOnly 90-day rotating cookie first (deduplicated)
+      const outcome = await silentRefreshToken();
 
-      if (refreshRes?.data?.token && refreshRes?.data?.user) {
-        localStorage.setItem('velan_token', refreshRes.data.token);
-        localStorage.setItem('velan_user', JSON.stringify(refreshRes.data.user));
+      if (outcome.token && outcome.user) {
         set({
-          user: refreshRes.data.user,
-          token: refreshRes.data.token,
+          user: outcome.user,
+          token: outcome.token,
           isAuthenticated: true,
+          isHydrating: false,
+          initialising: false,
+        });
+        return;
+      }
+
+      if (outcome.transientError) {
+        const cached = readStoredUser();
+        const tok = localStorage.getItem('velan_token');
+        set({
+          user: cached,
+          token: tok,
+          isAuthenticated: !!cached && !!tok,
           isHydrating: false,
           initialising: false,
         });

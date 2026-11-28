@@ -541,7 +541,7 @@ export const createFaculty = async (req: Request, res: Response) => {
         status: 'ACTIVE',
         mustChangePassword: true,
         passwordSetBy: 'admin',
-        tempPasswordExpiresAt: new Date(Date.now() + 7 * 86400000),
+        tempPasswordExpiresAt: null,
       },
     });
 
@@ -678,7 +678,7 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
     const created: any[] = [];
     const credentials: { name: string; identifier: string; tempPassword: string }[] = [];
     const errors: { row: number; employeeId: string; error: string }[] = [];
-    const expiresAt = new Date(Date.now() + 7 * 86400000);
+    const expiresAt: Date | null = null;
 
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
@@ -1128,7 +1128,7 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
     const usersToCreate: any[] = [];
     const profilesToCreate: any[] = [];
     const credentials: { name: string; identifier: string; tempPassword: string }[] = [];
-    const expiresAt = new Date(Date.now() + 7 * 86400000);
+    const expiresAt: Date | null = null;
 
     for (const item of validRows) {
       let email = `${item.registerNo.toLowerCase()}@student.local`;
