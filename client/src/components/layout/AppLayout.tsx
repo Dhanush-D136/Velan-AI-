@@ -29,6 +29,8 @@ export const AppLayout: React.FC = () => {
   const [commandQuery, setCommandQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const openMobileMenu = useCallback(() => setIsMobileMenuOpen(true), []);
+  const closeMobileMenu = useCallback(() => setIsMobileMenuOpen(false), []);
   const [isServerWaking, setIsServerWaking] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -262,7 +264,7 @@ export const AppLayout: React.FC = () => {
               setIsNotificationOpen(true);
               fetchNotifications();
             }}
-            onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+            onOpenMobileMenu={openMobileMenu}
             unreadNotificationsCount={unreadCount}
           />
 
@@ -282,8 +284,8 @@ export const AppLayout: React.FC = () => {
       {/* Unified Mobile Navigation (Bottom Bar + Drawer for all roles) */}
       <MobileNavigation
         isOpen={isMobileMenuOpen}
-        onOpen={() => setIsMobileMenuOpen(true)}
-        onClose={() => setIsMobileMenuOpen(false)}
+        onOpen={openMobileMenu}
+        onClose={closeMobileMenu}
       />
 
       {/* Command Palette (Ctrl+K) */}
