@@ -12,7 +12,13 @@ import {
   bulkResetStudentPasswords,
   bulkMoveStudentsToClass,
 } from '../services/studentBulkService';
-import { generateTempPassword, setPassword } from '../services/passwordService';
+import { DEFAULT_PASSWORD } from '../config/passwordDefaults';
+import {
+  setDefaultPassword,
+  getDefaultPasswordStats,
+  previewDefaultPasswordMigration,
+  applyDefaultPasswordMigration,
+} from '../services/passwordService';
 import { notifyUsers } from './notificationController';
 import {
   departmentCreateSchema,
@@ -535,9 +541,7 @@ export const createFaculty = async (req: Request, res: Response) => {
     const existingEmail = await prisma.user.findUnique({ where: { email: resolvedEmail } });
     if (existingEmail) return res.status(409).json({ error: `Email ${resolvedEmail} is already in use.` });
 
-    // Generate secure 10-char temp password if none provided
-    const initialPwd = password && password.trim() ? password.trim() : generateTempPassword(10);
-    const defaultPasswordHash = await bcrypt.hash(initialPwd, 10);
+    const defaultPasswordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
     const user = await prisma.user.create({
       data: {
@@ -565,8 +569,7 @@ export const createFaculty = async (req: Request, res: Response) => {
 
     emitDataUpdate(req, 'faculty');
     return res.status(201).json({
-      message: 'Faculty registered successfully with a temporary password.',
-      tempPassword: initialPwd,
+      message: 'Faculty registered successfully with default password (1234).',
       faculty: profile,
       data: profile,
     });
@@ -684,9 +687,8 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
     );
 
     const created: any[] = [];
-    const credentials: { name: string; identifier: string; tempPassword: string }[] = [];
     const errors: { row: number; employeeId: string; error: string }[] = [];
-    const expiresAt: Date | null = null;
+    const defaultHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
@@ -719,20 +721,18 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
       }
 
       try {
-        const tempPassword = generateTempPassword(10);
-        const passwordHash = await bcrypt.hash(tempPassword, 10);
         const result = await prisma.$transaction(async (tx) => {
           const user = await tx.user.create({
             data: {
               name,
               email: resolvedEmail,
               phone,
-              passwordHash,
+              passwordHash: defaultHash,
               role: 'FACULTY',
               status: 'ACTIVE',
               mustChangePassword: true,
               passwordSetBy: 'admin',
-              tempPasswordExpiresAt: expiresAt,
+              tempPasswordExpiresAt: null,
             },
           });
           return tx.facultyProfile.create({
@@ -747,7 +747,6 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
         existingEmpIds.add(employeeId);
         existingEmails.add(resolvedEmail);
         created.push(result);
-        credentials.push({ name, identifier: employeeId, tempPassword });
       } catch (err: any) {
         errors.push({ row: i + 1, employeeId, error: 'Database error creating faculty' });
       }
@@ -758,7 +757,6 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
       message: `Import completed: ${created.length} faculty created, ${errors.length} skipped.`,
       successCount: created.length,
       errorCount: errors.length,
-      credentials,
       errors,
     });
   } catch (error: any) {
@@ -772,18 +770,13 @@ export const resetFacultyPassword = async (req: Request, res: Response) => {
     const profile = await prisma.facultyProfile.findUnique({ where: { id } });
     if (!profile) return res.status(404).json({ error: 'Faculty not found' });
 
-    const customPwd = req.body?.password ? String(req.body.password).trim() : '';
-    const tempPassword = customPwd || generateTempPassword(10);
-    await setPassword(profile.userId, tempPassword, {
+    await setDefaultPassword(profile.userId, {
       by: 'admin',
-      mustChange: true,
       actorUserId: req.user?.id,
-      io: req.app.get('io'),
     });
 
     return res.json({
-      message: 'Temporary password generated. Faculty must change it at next login.',
-      tempPassword,
+      message: 'Password reset to the default (1234). The faculty member must set a new one at next login.',
     });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to reset faculty password' });
@@ -796,7 +789,7 @@ export const resetFacultyPassword = async (req: Request, res: Response) => {
 
 export const getStudentsList = async (req: Request, res: Response) => {
   try {
-    const { classId, search, sort = 'reg_asc', page, limit, deleted, idsOnly } = req.query;
+    const { classId, search, sort = 'reg_asc', page, limit, deleted, idsOnly, passwordStatus } = req.query;
     const showDeleted = deleted === 'true';
 
     const where: any = {
@@ -804,6 +797,11 @@ export const getStudentsList = async (req: Request, res: Response) => {
     };
     if (classId && String(classId) !== 'ALL') {
       where.classId = String(classId);
+    }
+    if (passwordStatus === 'DEFAULT') {
+      where.user = { ...(where.user || {}), mustChangePassword: true };
+    } else if (passwordStatus === 'SET') {
+      where.user = { ...(where.user || {}), mustChangePassword: false };
     }
     if (search && String(search).trim()) {
       const q = String(search).trim();
@@ -883,9 +881,7 @@ export const createStudent = async (req: Request, res: Response) => {
     });
     if (existingRoll) return res.status(409).json({ error: `Roll Number ${rollNo} already exists in this class.` });
 
-    const customPwd = req.body?.password ? String(req.body.password).trim() : '';
-    const initialPwd = customPwd || generateTempPassword(10);
-    const defaultPasswordHash = await bcrypt.hash(initialPwd, 10);
+    const defaultPasswordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
     const profile = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -898,7 +894,7 @@ export const createStudent = async (req: Request, res: Response) => {
           status: 'ACTIVE',
           mustChangePassword: true,
           passwordSetBy: 'admin',
-          tempPasswordExpiresAt: new Date(Date.now() + 7 * 86400000),
+          tempPasswordExpiresAt: null,
         },
       });
 
@@ -916,8 +912,7 @@ export const createStudent = async (req: Request, res: Response) => {
 
     emitDataUpdate(req, 'students');
     return res.status(201).json({
-      message: 'Student registered successfully with a temporary password.',
-      tempPassword: initialPwd,
+      message: 'Student registered successfully with default password (1234).',
       student: profile,
       data: profile,
     });
@@ -1063,13 +1058,43 @@ export const bulkResetPasswordsHandler = async (req: Request, res: Response) => 
     if (!Array.isArray(studentIds) || studentIds.length === 0) {
       return res.status(400).json({ error: 'studentIds array is required' });
     }
-    const credentials = await bulkResetStudentPasswords(studentIds.map(String), req.user!.id);
+    const result = await bulkResetStudentPasswords(studentIds.map(String), req.user!.id);
     return res.json({
-      message: `Generated temporary passwords for ${credentials.length} student(s).`,
-      credentials,
+      message: `Password reset to the default (1234) for ${result.resetCount} student(s).`,
+      resetCount: result.resetCount,
     });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to reset student passwords' });
+  }
+};
+
+export const getDefaultPasswordSummary = async (_req: Request, res: Response) => {
+  try {
+    const stats = await getDefaultPasswordStats();
+    return res.json(stats);
+  } catch {
+    return res.status(500).json({ error: 'Failed to load default password summary' });
+  }
+};
+
+export const previewDefaultMigration = async (_req: Request, res: Response) => {
+  try {
+    const preview = await previewDefaultPasswordMigration();
+    return res.json(preview);
+  } catch {
+    return res.status(500).json({ error: 'Failed to preview migration' });
+  }
+};
+
+export const applyDefaultMigration = async (req: Request, res: Response) => {
+  try {
+    const result = await applyDefaultPasswordMigration(req.user!.id);
+    return res.json({
+      message: `Updated ${result.updatedCount} account(s) to default password (1234).`,
+      ...result,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Failed to apply default password migration' });
   }
 };
 
@@ -1146,18 +1171,13 @@ export const resetStudentPassword = async (req: Request, res: Response) => {
     const profile = await prisma.studentProfile.findUnique({ where: { id } });
     if (!profile) return res.status(404).json({ error: 'Student not found' });
 
-    const customPwd = req.body?.password ? String(req.body.password).trim() : '';
-    const tempPassword = customPwd || generateTempPassword(10);
-    await setPassword(profile.userId, tempPassword, {
+    await setDefaultPassword(profile.userId, {
       by: 'admin',
-      mustChange: true,
       actorUserId: req.user?.id,
-      io: req.app.get('io'),
     });
 
     return res.json({
-      message: 'Temporary password generated. Student must change it at next login.',
-      tempPassword,
+      message: 'Password reset to the default (1234). The student must set a new one at next login.',
     });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to reset student password' });
@@ -1331,8 +1351,7 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
 
     const usersToCreate: any[] = [];
     const profilesToCreate: any[] = [];
-    const credentials: { name: string; identifier: string; tempPassword: string }[] = [];
-    const expiresAt: Date | null = null;
+    const defaultPasswordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
     for (const item of validRows) {
       let email = `${item.registerNo.toLowerCase()}@student.local`;
@@ -1341,20 +1360,18 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
       }
       existingEmails.add(email);
 
-      const tempPassword = generateTempPassword(10);
-      const passwordHash = await bcrypt.hash(tempPassword, 10);
       const userId = crypto.randomUUID();
       usersToCreate.push({
         id: userId,
         name: item.name,
         email,
         phone: item.phone || null,
-        passwordHash,
+        passwordHash: defaultPasswordHash,
         role: 'STUDENT',
         status: 'ACTIVE',
         mustChangePassword: true,
         passwordSetBy: 'admin',
-        tempPasswordExpiresAt: expiresAt,
+        tempPasswordExpiresAt: null,
       });
 
       profilesToCreate.push({
@@ -1365,8 +1382,6 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
         classId,
         phone: item.phone || null,
       });
-
-      credentials.push({ name: item.name, identifier: item.registerNo, tempPassword });
     }
 
     if (usersToCreate.length > 0) {
@@ -1385,7 +1400,6 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
       totalProcessed: rawStudents.length,
       successCount: profilesToCreate.length,
       errorCount: errorList.length,
-      credentials,
       errors: errorList,
     });
   } catch (error: any) {
@@ -1455,12 +1469,9 @@ export const decidePasswordReset = async (req: Request, res: Response) => {
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
     if (action === 'APPROVE') {
-      const tempPassword = generateTempPassword(10);
-      await setPassword(request.userId, tempPassword, {
+      await setDefaultPassword(request.userId, {
         by: 'admin',
-        mustChange: true,
         actorUserId: req.user?.id,
-        io: req.app.get('io'),
       });
 
       await prisma.passwordResetRequest.update({
@@ -1474,13 +1485,12 @@ export const decidePasswordReset = async (req: Request, res: Response) => {
 
       await notifyUsers(req.app.get('io'), [request.userId], {
         title: 'Password Reset Approved',
-        message: 'Your password reset request was approved. Use the temporary password provided by Admin.',
+        message: 'Password reset to the default. Sign in and set a new password.',
         type: 'SECURITY',
       });
 
       return res.json({
-        message: 'One-time temporary password generated. User must change it at next login.',
-        tempPassword,
+        message: 'Password reset to the default (1234). The user must set a new one at next login.',
       });
     } else {
       await prisma.passwordResetRequest.update({

@@ -85,16 +85,16 @@ describe('Phase 5: Rush-Hour Check-In Queue & Batched Saver', () => {
     student2Id = st2Res.body.student.id;
     student2UserId = st2Res.body.student.userId;
 
-    const fLogin = await request(app).post('/api/auth/login').send({ identifier: empId, password: fRes.body.tempPassword, deviceId: `f5_${runId}` });
-    const fPwd = await request(app).post('/api/auth/change-password').set('Authorization', `Bearer ${fLogin.body.token}`).send({ currentPassword: fRes.body.tempPassword, newPassword: 'VelanTest#2026' });
+    const fLogin = await request(app).post('/api/auth/login').send({ identifier: empId, password: '1234', deviceId: `f5_${runId}` });
+    const fPwd = await request(app).post('/api/auth/change-password').set('Authorization', `Bearer ${fLogin.body.token}`).send({ currentPassword: '1234', newPassword: 'VelanTest#2026' });
     facultyToken = fPwd.body.token;
 
-    const s1Login = await request(app).post('/api/auth/login').send({ identifier: reg1, password: st1Res.body.tempPassword, deviceId: `s1_${runId}` });
-    const s1Pwd = await request(app).post('/api/auth/change-password').set('Authorization', `Bearer ${s1Login.body.token}`).send({ currentPassword: st1Res.body.tempPassword, newPassword: 'VelanTest#2026' });
+    const s1Login = await request(app).post('/api/auth/login').send({ identifier: reg1, password: '1234', deviceId: `s1_${runId}` });
+    const s1Pwd = await request(app).post('/api/auth/change-password').set('Authorization', `Bearer ${s1Login.body.token}`).send({ currentPassword: '1234', newPassword: 'VelanTest#2026' });
     student1Token = s1Pwd.body.token;
 
-    const s2Login = await request(app).post('/api/auth/login').send({ identifier: reg2, password: st2Res.body.tempPassword, deviceId: `s2_${runId}` });
-    const s2Pwd = await request(app).post('/api/auth/change-password').set('Authorization', `Bearer ${s2Login.body.token}`).send({ currentPassword: st2Res.body.tempPassword, newPassword: 'VelanTest#2026' });
+    const s2Login = await request(app).post('/api/auth/login').send({ identifier: reg2, password: '1234', deviceId: `s2_${runId}` });
+    const s2Pwd = await request(app).post('/api/auth/change-password').set('Authorization', `Bearer ${s2Login.body.token}`).send({ currentPassword: '1234', newPassword: 'VelanTest#2026' });
     student2Token = s2Pwd.body.token;
   }, 25000);
 

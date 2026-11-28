@@ -216,13 +216,6 @@ export const login = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Your account is inactive or has been removed. Please contact administrator.' });
     }
 
-    if (user.mustChangePassword && user.tempPasswordExpiresAt && new Date() > new Date(user.tempPasswordExpiresAt)) {
-      return res.status(403).json({
-        code: 'TEMP_PASSWORD_EXPIRED',
-        error: 'Your temporary password has expired. Please request a password reset from the administrator.',
-      });
-    }
-
     // 3. Hardware Device Lock verification (Max 2 devices per student: 1 PHONE + 1 COMPUTER)
     if (user.role === 'STUDENT') {
       const ua = String(req.headers['user-agent'] || '');

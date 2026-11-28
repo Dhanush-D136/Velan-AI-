@@ -86,14 +86,14 @@ describe('Phase 2 Features End-to-End Flow', () => {
 
     const fLogin = await request(app).post('/api/auth/login').send({
       identifier: empId,
-      password: fRes.body.tempPassword,
+      password: '1234',
       deviceId: `fac_p2_${runId}`,
     });
     expect(fLogin.status).toBe(200);
     const fPwd = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${fLogin.body.token}`)
-      .send({ currentPassword: fRes.body.tempPassword, newPassword: 'VelanTest#2026' });
+      .send({ currentPassword: '1234', newPassword: 'VelanTest#2026' });
     facultyToken = fPwd.body.token;
 
     const st1Res = await request(app)
@@ -103,7 +103,7 @@ describe('Phase 2 Features End-to-End Flow', () => {
     expect(st1Res.status).toBe(201);
     student1Id = st1Res.body.student.id;
     student1UserId = st1Res.body.student.userId;
-    const st1TempPwd = st1Res.body.tempPassword;
+    const st1TempPwd = '1234';
 
     const st2Res = await request(app)
       .post('/api/academics/students')
@@ -116,12 +116,12 @@ describe('Phase 2 Features End-to-End Flow', () => {
     const st2Login = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg2, password: st2Res.body.tempPassword, deviceId: `st2_pc_${runId}` });
+      .send({ identifier: reg2, password: '1234', deviceId: `st2_pc_${runId}` });
     expect(st2Login.status).toBe(200);
     const st2Pwd = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${st2Login.body.token}`)
-      .send({ currentPassword: st2Res.body.tempPassword, newPassword: 'VelanTest#2026' });
+      .send({ currentPassword: '1234', newPassword: 'VelanTest#2026' });
     student2Token = st2Pwd.body.token;
     (globalThis as any).__p2_st1Pwd = st1TempPwd;
 

@@ -57,7 +57,7 @@ describe('Phase 10 Hotfix: Zero Force-Logout, 20x Refresh Persistence, Open Pass
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: `P10 Faculty ${runId}`, employeeId: empId, departmentId: deptId });
     facultyUserId = fRes.body.faculty.userId;
-    facultyTempPwd = fRes.body.tempPassword;
+    facultyTempPwd = '1234';
 
     const sRes = await request(app)
       .post('/api/academics/students')
@@ -65,7 +65,7 @@ describe('Phase 10 Hotfix: Zero Force-Logout, 20x Refresh Persistence, Open Pass
       .send({ name: `P10 Student ${runId}`, rollNo: `P10R${runId}`, registerNo: regNo, classId });
     studentId = sRes.body.student.id;
     studentUserId = sRes.body.student.userId;
-    studentTempPwd = sRes.body.tempPassword;
+    studentTempPwd = '1234';
   }, 30000);
 
   afterAll(async () => {
@@ -142,14 +142,14 @@ describe('Phase 10 Hotfix: Zero Force-Logout, 20x Refresh Persistence, Open Pass
     const chg4 = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${restricted}`)
-      .send({ newPassword: '1234', confirmPassword: '1234' });
+      .send({ newPassword: '9999', confirmPassword: '9999' });
     expect(chg4.status).toBe(200);
     expect(chg4.body.scope).toBe('full');
 
     const chg1 = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${chg4.body.token}`)
-      .send({ currentPassword: '1234', newPassword: 'a', confirmPassword: 'a' });
+      .send({ currentPassword: '9999', newPassword: 'a', confirmPassword: 'a' });
     expect(chg1.status).toBe(200);
 
     const chg6 = await request(app)

@@ -1,26 +1,13 @@
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
+import { DEFAULT_PASSWORD } from '../config/passwordDefaults';
 import { invalidateUserAuthCache } from '../middleware/auth';
-
-export function generateTempPassword(length = 10): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  const bytes = crypto.randomBytes(length);
-  let out = '';
-  for (let i = 0; i < length; i++) {
-    out += chars[bytes[i] % chars.length];
-  }
-  if (!/[A-Za-z]/.test(out)) out = 'A' + out.slice(1);
-  if (!/[0-9]/.test(out)) out = out.slice(0, -1) + '7';
-  return out;
-}
 
 export async function validateNewPassword(
   newPassword: string,
   user: {
     id: string;
     mustChangePassword?: boolean;
-    passwordHash?: string;
   }
 ): Promise<{ valid: boolean; error?: string }> {
   const pwd = newPassword || '';
@@ -28,18 +15,114 @@ export async function validateNewPassword(
     return { valid: false, error: 'Password cannot be empty.' };
   }
 
-  // Only on forced first-login / temp-password change: must differ from the temporary password
-  if (user.mustChangePassword && user.passwordHash) {
-    const sameAsTemp = await bcrypt.compare(pwd, user.passwordHash);
-    if (sameAsTemp) {
-      return {
-        valid: false,
-        error: 'New password must be different from your temporary password.',
-      };
-    }
+  // On forced change: must not be the default password 1234
+  if (user.mustChangePassword && pwd.trim() === DEFAULT_PASSWORD) {
+    return {
+      valid: false,
+      error: 'Please choose a new password. It cannot be 1234.',
+    };
   }
 
   return { valid: true };
+}
+
+export async function setDefaultPassword(
+  userId: string,
+  options: { by?: 'admin' | 'system'; actorUserId?: string } = {}
+) {
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true },
+  });
+  if (!existing) throw new Error('User not found');
+  if (existing.role === 'ADMIN') throw new Error('Admin account cannot be reset to the default password');
+
+  const defaultHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  const by = options.by || 'admin';
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: defaultHash,
+        mustChangePassword: true,
+        passwordSetBy: by,
+        tempPasswordExpiresAt: null,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: options.actorUserId || userId,
+        action: 'PASSWORD_RESET_DEFAULT',
+        details: JSON.stringify({ targetUserId: userId, by }),
+      },
+    });
+  });
+
+  invalidateUserAuthCache(userId);
+}
+
+export async function getDefaultPasswordStats() {
+  const count = await prisma.user.count({
+    where: {
+      role: { in: ['STUDENT', 'FACULTY'] },
+      status: 'ACTIVE',
+      deletedAt: null,
+      mustChangePassword: true,
+    },
+  });
+  return { count };
+}
+
+export async function previewDefaultPasswordMigration() {
+  const count = await prisma.user.count({
+    where: {
+      role: { in: ['STUDENT', 'FACULTY'] },
+      deletedAt: null,
+      mustChangePassword: true,
+      passwordSetBy: { not: 'self' },
+    },
+  });
+  return { count };
+}
+
+export async function applyDefaultPasswordMigration(adminUserId: string) {
+  const targets = await prisma.user.findMany({
+    where: {
+      role: { in: ['STUDENT', 'FACULTY'] },
+      deletedAt: null,
+      mustChangePassword: true,
+      passwordSetBy: { not: 'self' },
+    },
+    select: { id: true },
+  });
+  if (targets.length === 0) return { updatedCount: 0 };
+
+  const defaultHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  const ids = targets.map((t) => t.id);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        passwordHash: defaultHash,
+        mustChangePassword: true,
+        passwordSetBy: 'admin',
+        tempPasswordExpiresAt: null,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'DEFAULT_PASSWORD_MIGRATION',
+        details: JSON.stringify({ count: ids.length }),
+      },
+    });
+  });
+
+  for (const id of ids) invalidateUserAuthCache(id);
+  return { updatedCount: ids.length };
 }
 
 export async function setPassword(

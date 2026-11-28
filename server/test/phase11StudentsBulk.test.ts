@@ -70,10 +70,9 @@ describe('Phase 11: Students Directory — Numeric Register Sorting, Bulk Select
     expect(impRes.body.successCount).toBe(61);
 
     // Log in as one student to test 403 enforcement
-    const firstCred = impRes.body.credentials[0];
     const sLogin = await request(app).post('/api/auth/login').send({
-      identifier: firstCred.identifier,
-      password: firstCred.tempPassword,
+      identifier: `${prefix}001`,
+      password: '1234',
       expectedRole: 'STUDENT',
       deviceId: `p11_st_${runId}`,
     });
@@ -202,7 +201,7 @@ describe('Phase 11: Students Directory — Numeric Register Sorting, Bulk Select
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ studentIds: threeIds });
     expect(resetRes.status).toBe(200);
-    expect(resetRes.body.credentials.length).toBe(3);
+    expect(resetRes.body.resetCount).toBe(3);
 
     const moveRes = await request(app)
       .post('/api/academics/students/bulk-move-class')

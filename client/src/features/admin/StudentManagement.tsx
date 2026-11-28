@@ -10,12 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
-import {
-  TempPasswordModal,
-  TempCredentialInfo,
-  PasswordStatusBadge,
-  downloadCredentialsCsv,
-} from '@/components/ui/TempPasswordModal';
+import { PasswordStatusBadge } from '@/components/ui/TempPasswordModal';
 import {
   BulkDeleteModal,
   BulkMoveClassModal,
@@ -109,6 +104,7 @@ export const StudentManagement: React.FC = () => {
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [selectedClassFilter, setSelectedClassFilter] = useState('ALL');
+  const [passwordStatusFilter, setPasswordStatusFilter] = useState<'ALL' | 'DEFAULT' | 'SET'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortMode, setSortMode] = useState<'reg_asc' | 'reg_desc' | 'name_asc' | 'class' | 'newest'>('reg_asc');
@@ -133,7 +129,6 @@ export const StudentManagement: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedStudentForView, setSelectedStudentForView] = useState<StudentItem | null>(null);
-  const [tempCred, setTempCred] = useState<TempCredentialInfo | null>(null);
 
   // Manual Add Form State
   const [isSavingStudent, setIsSavingStudent] = useState(false);
@@ -185,6 +180,7 @@ export const StudentManagement: React.FC = () => {
         deleted: directoryTab === 'RECYCLE_BIN' ? 'true' : 'false',
       };
       if (selectedClassFilter !== 'ALL') params.classId = selectedClassFilter;
+      if (passwordStatusFilter !== 'ALL') params.passwordStatus = passwordStatusFilter;
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await api.get('/api/academics/students', { params });
       setStudents(res.data.students || res.data.data || []);
@@ -195,7 +191,7 @@ export const StudentManagement: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedClassFilter, debouncedSearch, sortMode, page, directoryTab]);
+  }, [selectedClassFilter, passwordStatusFilter, debouncedSearch, sortMode, page, directoryTab]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -244,16 +240,9 @@ export const StudentManagement: React.FC = () => {
         classId: addClassId,
       });
       showToast(
-        res.data.message || 'Student added successfully with a temporary password',
+        res.data.message || 'Student added with default password (1234).',
         'success'
       );
-      if (res.data.tempPassword) {
-        setTempCred({
-          name: addName.trim(),
-          identifier: addRegisterNo.trim(),
-          tempPassword: res.data.tempPassword,
-        });
-      }
       setAddName('');
       setAddRollNo('');
       setAddRegisterNo('');
@@ -267,18 +256,11 @@ export const StudentManagement: React.FC = () => {
   };
 
   const handleResetPassword = async (student: StudentItem) => {
-    if (!confirm(`Generate a new one-time temporary password for ${student.user.name} (${student.registerNo})? All active sessions will be signed out.`)) return;
+    if (!confirm(`Reset password for ${student.user.name} (${student.registerNo}) to the default (1234)?`)) return;
 
     try {
       const res = await api.post(`/api/academics/students/${student.id}/reset-password`);
-      showToast(res.data.message || 'Temporary password generated successfully', 'success');
-      if (res.data.tempPassword) {
-        setTempCred({
-          name: student.user.name,
-          identifier: student.registerNo,
-          tempPassword: res.data.tempPassword,
-        });
-      }
+      showToast(res.data.message || 'Password reset to the default (1234). The student must set a new one at next login.', 'success');
       fetchStudents();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to reset password', 'error');
@@ -360,6 +342,7 @@ export const StudentManagement: React.FC = () => {
         deleted: directoryTab === 'RECYCLE_BIN' ? 'true' : 'false',
       };
       if (selectedClassFilter !== 'ALL') params.classId = selectedClassFilter;
+      if (passwordStatusFilter !== 'ALL') params.passwordStatus = passwordStatusFilter;
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await api.get('/api/academics/students', { params });
       const ids: string[] = res.data?.ids || [];
@@ -412,13 +395,10 @@ export const StudentManagement: React.FC = () => {
   const handleBulkResetPasswords = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
+    if (!confirm(`Reset password to the default (1234) for ${ids.length} selected student(s)?`)) return;
     try {
       const res = await api.post('/api/academics/students/bulk-reset-passwords', { studentIds: ids });
-      const creds = res.data?.credentials || [];
-      if (creds.length > 0) {
-        downloadCredentialsCsv(creds, 'Bulk_Reset_Student_Credentials.csv');
-      }
-      showToast(`Generated temporary passwords for ${creds.length} student(s). CSV downloaded.`, 'success');
+      showToast(res.data?.message || `Password reset to the default (1234) for ${ids.length} student(s).`, 'success');
       fetchStudents();
     } catch (err: any) {
       showToast(err?.response?.data?.error || 'Bulk password reset failed', 'error');
@@ -515,11 +495,7 @@ export const StudentManagement: React.FC = () => {
       formData.append('classId', importClassId);
 
       const res = await api.post('/api/academics/students/import-excel', formData);
-      showToast(res.data.message || 'Students imported successfully!', 'success');
-      if (Array.isArray(res.data.credentials) && res.data.credentials.length > 0) {
-        downloadCredentialsCsv(res.data.credentials, 'Student_Temp_Credentials.csv');
-        showToast('Temporary credentials CSV downloaded — share securely with students.', 'info');
-      }
+      showToast(res.data.message || 'Students imported with default password (1234)!', 'success');
       setIsImportModalOpen(false);
       setSelectedFile(null);
       setPreviewData(null);
@@ -838,6 +814,20 @@ export const StudentManagement: React.FC = () => {
                 {c.name}
               </option>
             ))}
+          </select>
+
+          <select
+            aria-label="Filter Password Status"
+            value={passwordStatusFilter}
+            onChange={(e) => {
+              setPasswordStatusFilter(e.target.value as any);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-border bg-white text-xs font-semibold text-content outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="ALL">Password: All</option>
+            <option value="DEFAULT">Default (must change)</option>
+            <option value="SET">Set by user</option>
           </select>
 
           <select
@@ -1382,8 +1372,6 @@ export const StudentManagement: React.FC = () => {
           </div>
         </Modal>
       )}
-
-      <TempPasswordModal credential={tempCred} onClose={() => setTempCred(null)} />
 
       {/* Sticky Bulk Action Bar */}
       {selectedIds.size > 0 && (

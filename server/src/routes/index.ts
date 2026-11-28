@@ -109,6 +109,9 @@ apiRouter.post('/academics/students/bulk-restore', authenticateToken, requireRol
 apiRouter.post('/academics/students/bulk-reset-passwords', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkResetPasswordsHandler);
 apiRouter.post('/academics/students/bulk-move-class', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkMoveClassHandler);
 apiRouter.post('/academics/students/bulk-export', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkExportStudentsExcel);
+apiRouter.get('/academics/default-password/summary', authenticateToken, requireRole('ADMIN'), acadCtrl.getDefaultPasswordSummary);
+apiRouter.get('/academics/default-password/migration-preview', authenticateToken, requireRole('ADMIN'), acadCtrl.previewDefaultMigration);
+apiRouter.post('/academics/default-password/migrate', authenticateToken, requireRole('ADMIN'), acadCtrl.applyDefaultMigration);
 apiRouter.post('/academics/students/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetStudentPassword);
 apiRouter.get('/academics/students/template', authenticateToken, acadCtrl.getStudentExcelTemplate);
 apiRouter.post('/academics/students/import-excel', authenticateToken, requireRole('ADMIN'), upload.single('file'), acadCtrl.importStudentsFromExcel);

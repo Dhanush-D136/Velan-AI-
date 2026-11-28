@@ -67,7 +67,7 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(fAdv.status).toBe(201);
     advisorId = fAdv.body.faculty.id;
     advisorUserId = fAdv.body.faculty.userId;
-    advisorTempPwd = fAdv.body.tempPassword;
+    advisorTempPwd = '1234';
 
     const fM1 = await request(app)
       .post('/api/academics/faculty')
@@ -76,7 +76,7 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(fM1.status).toBe(201);
     mentor1Id = fM1.body.faculty.id;
     mentor1UserId = fM1.body.faculty.userId;
-    mentor1TempPwd = fM1.body.tempPassword;
+    mentor1TempPwd = '1234';
 
     const fM2 = await request(app)
       .post('/api/academics/faculty')
@@ -85,7 +85,7 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(fM2.status).toBe(201);
     mentor2Id = fM2.body.faculty.id;
     mentor2UserId = fM2.body.faculty.userId;
-    mentor2TempPwd = fM2.body.tempPassword;
+    mentor2TempPwd = '1234';
   }, 30000);
 
   afterAll(async () => {
@@ -178,8 +178,8 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
       .send({ newPassword: mentor1TempPwd });
     expect(sameTempRes.status).toBe(400);
 
-    // Any chosen password succeeds and returns full-access token
-    const goodPwd = '1234';
+    // Any chosen password (other than 1234) succeeds and returns full-access token
+    const goodPwd = '9999';
     const chgRes = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${restrictedToken}`)
@@ -242,8 +242,8 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(stRes.status).toBe(201);
     studentId = stRes.body.student.id;
     studentUserId = stRes.body.student.userId;
-    studentTempPwd = stRes.body.tempPassword;
-    expect(studentTempPwd.length).toBe(10);
+    studentTempPwd = '1234';
+    expect(stRes.body.tempPassword).toBeUndefined();
 
     // Deleting an assigned mentor is blocked with 409
     const delBlocked = await request(app)
@@ -297,14 +297,13 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(m2AfterRemove.status).toBe(403);
   }, 25000);
 
-  it('4. Admin Reset keeps active sessions alive, Neutral Forgot Password, & Expired Temp Password rejected', async () => {
+  it('4. Admin Reset keeps active sessions alive & Neutral Forgot Password', async () => {
     // Admin resets Mentor 1 password -> active session stays valid (no forced logout)
     const resetRes = await request(app)
       .post(`/api/academics/faculty/${mentor1Id}/reset-password`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(resetRes.status).toBe(200);
-    expect(resetRes.body.tempPassword).toBeTruthy();
-    expect(resetRes.body.tempPassword).not.toBe('1234');
+    expect(resetRes.body.tempPassword).toBeUndefined();
 
     const oldTokenCheck = await request(app)
       .get('/api/me')
@@ -321,19 +320,5 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(fpValid.status).toBe(200);
     expect(fpInvalid.status).toBe(200);
     expect(fpValid.body.message).toBe(fpInvalid.body.message);
-
-    // Expired temporary password is rejected on login
-    await prisma.user.update({
-      where: { id: studentUserId },
-      data: { tempPasswordExpiresAt: new Date(Date.now() - 60000) },
-    });
-    const expLogin = await request(app).post('/api/auth/login').send({
-      identifier: regNo,
-      password: studentTempPwd,
-      deviceId: `p9_st_${runId}`,
-    });
-    expect(expLogin.status).toBe(403);
-    expect(expLogin.body.code).toBe('TEMP_PASSWORD_EXPIRED');
-    expect(expLogin.body.error).toContain('expired');
   }, 15000);
 });

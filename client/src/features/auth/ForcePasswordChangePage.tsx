@@ -20,6 +20,7 @@ export const ForcePasswordChangePage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const isNonEmpty = newPassword.trim().length > 0;
+  const notDefault = newPassword.trim() !== '1234';
   const matchesConfirm = isNonEmpty && newPassword === confirmPassword;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,6 +28,10 @@ export const ForcePasswordChangePage: React.FC = () => {
     setError('');
     if (!isNonEmpty) {
       setError('Password cannot be empty.');
+      return;
+    }
+    if (!notDefault) {
+      setError('Please choose a new password. It cannot be 1234.');
       return;
     }
     if (!matchesConfirm) {
@@ -115,6 +120,7 @@ export const ForcePasswordChangePage: React.FC = () => {
           <div className="p-3 rounded-2xl bg-surface-soft border border-border space-y-1.5 text-xs">
             {[
               { ok: isNonEmpty, label: 'Password is not empty (any length/characters allowed)' },
+              { ok: notDefault, label: 'Must not be 1234' },
               { ok: matchesConfirm, label: 'Passwords match' },
             ].map((r) => (
               <div key={r.label} className={`flex items-center gap-2 ${r.ok ? 'text-emerald-700 font-semibold' : 'text-content-muted'}`}>

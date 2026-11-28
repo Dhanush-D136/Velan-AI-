@@ -114,7 +114,7 @@ describe('Full Production Platform End-to-End Flow', () => {
       .send({ name: `Prof ${runId}`, employeeId: empId, departmentId: deptId, designation: 'Professor' });
     expect(fRes.status).toBe(201);
     facultyId = fRes.body.faculty.id;
-    (globalThis as any).__ff_fPwd = fRes.body.tempPassword;
+    (globalThis as any).__ff_fPwd = '1234';
 
     const st1 = await request(app)
       .post('/api/academics/students')
@@ -122,7 +122,7 @@ describe('Full Production Platform End-to-End Flow', () => {
       .send({ name: 'Student Inside', registerNo: regIn, rollNo: '01', classId: classAId });
     expect(st1.status).toBe(201);
     studentInId = st1.body.student.id;
-    (globalThis as any).__ff_s1Pwd = st1.body.tempPassword;
+    (globalThis as any).__ff_s1Pwd = '1234';
 
     const st2 = await request(app)
       .post('/api/academics/students')
@@ -130,7 +130,7 @@ describe('Full Production Platform End-to-End Flow', () => {
       .send({ name: 'Student Outside', registerNo: regOut, rollNo: '02', classId: classAId });
     expect(st2.status).toBe(201);
     studentOutId = st2.body.student.id;
-    (globalThis as any).__ff_s2Pwd = st2.body.tempPassword;
+    (globalThis as any).__ff_s2Pwd = '1234';
   }, 25000);
 
   it('2. Admin builds timetable and clash is blocked with 409', async () => {

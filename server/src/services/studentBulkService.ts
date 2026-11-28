@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
-import { generateTempPassword } from './passwordService';
+import { DEFAULT_PASSWORD } from '../config/passwordDefaults';
 import { invalidateUserAuthCache } from '../middleware/auth';
 import { sortStudentsByRegisterNo } from '../utils/studentSort';
 
@@ -220,42 +220,42 @@ export async function purgeExpiredDeletedStudents(): Promise<number> {
 }
 
 /**
- * Bulk reset passwords for selected students -> returns one-time credentials.
+ * Bulk reset passwords for selected students back to DEFAULT_PASSWORD (1234).
  */
 export async function bulkResetStudentPasswords(studentIds: string[], adminUserId: string) {
   const targets = await prisma.studentProfile.findMany({
     where: { id: { in: studentIds }, deletedAt: null },
-    select: { id: true, userId: true, registerNo: true, user: { select: { name: true } } },
+    select: { id: true, userId: true },
   });
-  const sorted = sortStudentsByRegisterNo(targets);
-  const credentials: { name: string; identifier: string; tempPassword: string }[] = [];
+  if (targets.length === 0) return { resetCount: 0 };
 
-  for (const s of sorted) {
-    const tempPassword = generateTempPassword(10);
-    const hash = await bcrypt.hash(tempPassword, 10);
-    await prisma.user.update({
-      where: { id: s.userId },
+  const defaultHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  const userIds = targets.map((t) => t.userId);
+
+  await prisma.$transaction(async (tx) => {
+    for (const uidBatch of chunkArray(userIds, BATCH_SIZE)) {
+      await tx.user.updateMany({
+        where: { id: { in: uidBatch } },
+        data: {
+          passwordHash: defaultHash,
+          mustChangePassword: true,
+          passwordSetBy: 'admin',
+          tempPasswordExpiresAt: null,
+        },
+      });
+    }
+
+    await tx.auditLog.create({
       data: {
-        passwordHash: hash,
-        mustChangePassword: true,
-        passwordSetBy: 'admin',
-        tempPasswordExpiresAt: null,
-        passwordChangedAt: new Date(),
+        userId: adminUserId,
+        action: 'BULK_PASSWORD_RESET_DEFAULT',
+        details: JSON.stringify({ count: targets.length }),
       },
     });
-    invalidateUserAuthCache(s.userId);
-    credentials.push({ name: s.user.name, identifier: s.registerNo, tempPassword });
-  }
-
-  await prisma.auditLog.create({
-    data: {
-      userId: adminUserId,
-      action: 'BULK_PASSWORD_RESET',
-      details: JSON.stringify({ count: sorted.length }),
-    },
   });
 
-  return credentials;
+  for (const uid of userIds) invalidateUserAuthCache(uid);
+  return { resetCount: targets.length };
 }
 
 /**

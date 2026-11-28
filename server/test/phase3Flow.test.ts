@@ -64,8 +64,8 @@ describe('Phase 3 Integration Flow: C1, C2, C3, Skip & Academics Permissions', (
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: `Other Prof ${runId}`, employeeId: emp2, departmentId: deptId });
     otherFacultyUserId = f2Res.body.faculty.userId;
-    (globalThis as any).__p3_f1Pwd = f1Res.body.tempPassword;
-    (globalThis as any).__p3_f2Pwd = f2Res.body.tempPassword;
+    (globalThis as any).__p3_f1Pwd = '1234';
+    (globalThis as any).__p3_f2Pwd = '1234';
 
     const cARes = await request(app)
       .post('/api/academics/classes')
@@ -98,7 +98,7 @@ describe('Phase 3 Integration Flow: C1, C2, C3, Skip & Academics Permissions', (
       .send({ name: `Student One ${runId}`, rollNo: `RO1_${runId}`, registerNo: reg1, classId: classAId });
     student1Id = st1Res.body.student.id;
     student1UserId = st1Res.body.student.userId;
-    (globalThis as any).__p3_st1Pwd = st1Res.body.tempPassword;
+    (globalThis as any).__p3_st1Pwd = '1234';
 
     const st2Res = await request(app)
       .post('/api/academics/students')
@@ -132,11 +132,11 @@ describe('Phase 3 Integration Flow: C1, C2, C3, Skip & Academics Permissions', (
     const st2Login = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg2, password: st2Res.body.tempPassword, deviceId: `st2_pc_${runId}` });
+      .send({ identifier: reg2, password: '1234', deviceId: `st2_pc_${runId}` });
     const st2Chg = await request(app)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${st2Login.body.token}`)
-      .send({ currentPassword: st2Res.body.tempPassword, newPassword: 'VelanTest#2026' });
+      .send({ currentPassword: '1234', newPassword: 'VelanTest#2026' });
     student2Token = st2Chg.body.token;
   }, 25000);
 

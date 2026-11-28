@@ -49,7 +49,7 @@ describe('Phase 4: Admin Live Monitor, Presence, Logout & Server Health', () => 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: `P4 Student1 ${runId}`, rollNo: `P4RO1_${runId}`, registerNo: reg1, classId });
     student1UserId = s1.body.student.userId;
-    (globalThis as any).__p4_st1Pwd = s1.body.tempPassword;
+    (globalThis as any).__p4_st1Pwd = '1234';
 
     // Student 2 never logs in
     const s2 = await request(app)

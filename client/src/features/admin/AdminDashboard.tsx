@@ -35,6 +35,8 @@ export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [institutionName, setInstitutionName] = useState('');
+  const [defaultPwdCount, setDefaultPwdCount] = useState(0);
+  const [isMigratingDefault, setIsMigratingDefault] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [data, setData] = useState<any>({
     stats: {
@@ -56,11 +58,13 @@ export const AdminDashboard: React.FC = () => {
 
   const fetchOverview = useCallback(async () => {
     try {
-      const [settingsRes, statsRes] = await Promise.all([
+      const [settingsRes, statsRes, defRes] = await Promise.all([
         api.get('/api/settings'),
         api.get('/api/admin/dashboard-stats'),
+        api.get('/api/academics/default-password/summary').catch(() => ({ data: { count: 0 } })),
       ]);
       setInstitutionName(settingsRes.data.settings?.INSTITUTION_NAME || '');
+      setDefaultPwdCount(defRes.data?.count || 0);
       if (statsRes.data) {
         setData(statsRes.data);
       }
@@ -165,6 +169,43 @@ export const AdminDashboard: React.FC = () => {
           iconBg="bg-cyan-50"
         />
       </div>
+
+      {defaultPwdCount > 0 && (
+        <Card className="p-4 bg-amber-50/80 border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5 text-xs text-amber-900">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold">{defaultPwdCount} account(s) still on the default password (1234).</span>{' '}
+              Users must sign in and set their own password.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              isLoading={isMigratingDefault}
+              onClick={async () => {
+                const prev = await api.get('/api/academics/default-password/migration-preview');
+                const n = prev.data?.count || 0;
+                if (!confirm(`${n} student/faculty account(s) still have a system/default password. Set them to 1234? (User-set passwords are never touched.)`)) return;
+                setIsMigratingDefault(true);
+                try {
+                  await api.post('/api/academics/default-password/migrate');
+                  fetchOverview();
+                } finally {
+                  setIsMigratingDefault(false);
+                }
+              }}
+            >
+              Sync Legacy to 1234
+            </Button>
+            <Button type="button" size="sm" onClick={() => navigate('/admin/students')}>
+              View Students
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Center Section: Department Attendance & Live Sessions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -95,8 +95,8 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     expect(res.status).toBe(201);
     expect(res.body.faculty).toBeDefined();
     expect(res.body.faculty.employeeId).toBe(empId);
-    expect(res.body.tempPassword).toBeTruthy();
-    facultyTempPwd = res.body.tempPassword;
+    expect(res.body.tempPassword).toBeUndefined();
+    facultyTempPwd = '1234';
     facultyId = res.body.faculty.id;
   });
 
@@ -114,8 +114,8 @@ describe('End-to-End Academic Creation & Authentication Flow', () => {
     expect(res.status).toBe(201);
     expect(res.body.student).toBeDefined();
     expect(res.body.student.registerNo).toBe(regNo);
-    expect(res.body.tempPassword).toBeTruthy();
-    studentTempPwd = res.body.tempPassword;
+    expect(res.body.tempPassword).toBeUndefined();
+    studentTempPwd = '1234';
     studentId = res.body.student.id;
   });
 
