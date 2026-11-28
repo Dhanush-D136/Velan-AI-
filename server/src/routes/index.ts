@@ -231,8 +231,6 @@ apiRouter.get('/admin/monitor/overview', authenticateToken, requireRole('ADMIN')
 apiRouter.get('/admin/monitor/history', authenticateToken, requireRole('ADMIN'), monCtrl.getAuthHistory);
 apiRouter.get('/admin/monitor/export/history', authenticateToken, requireRole('ADMIN'), monCtrl.exportAuthHistoryExcel);
 apiRouter.get('/admin/monitor/export/never-logged-in', authenticateToken, requireRole('ADMIN'), monCtrl.exportNeverLoggedInExcel);
-apiRouter.post('/admin/monitor/force-logout', authenticateToken, requireRole('ADMIN'), monCtrl.forceLogoutUser);
-apiRouter.post('/admin/monitor/force-logout-all', authenticateToken, requireRole('ADMIN'), monCtrl.forceLogoutAll);
 apiRouter.put('/admin/monitor/settings', authenticateToken, requireRole('ADMIN'), monCtrl.updateMonitorSettings);
 
 // ==========================================

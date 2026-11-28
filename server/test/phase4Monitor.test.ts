@@ -140,24 +140,12 @@ describe('Phase 4: Admin Live Monitor, Presence, Logout & Server Health', () => 
     const matches = snap.onlineUsers.filter((u) => u.userId === student1UserId);
     expect(matches.length).toBe(1); // Never double counted
 
-    // Force logout via admin API
-    const login2 = await request(app)
-      .post('/api/auth/login')
-      .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-      .send({ identifier: reg1, password: (globalThis as any).__p4_st1Pwd, deviceId: `p4_pc_${runId}` });
-    expect(login2.status).toBe(200);
-    const tok2 = login2.body.token;
-
+    // Old force-logout endpoint is removed (404)
     const forceRes = await request(app)
       .post('/api/admin/monitor/force-logout')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ userId: student1UserId, adminPassword: process.env.ADMIN_PASSWORD || 'elite minds' });
-    expect(forceRes.status).toBe(200);
-
-    const afterForce = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${tok2}`);
-    expect(afterForce.status).toBe(401);
+      .send({ userId: student1UserId });
+    expect(forceRes.status).toBe(404);
 
     presenceService.removeUserSessions(student1UserId);
   });

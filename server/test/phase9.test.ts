@@ -128,22 +128,24 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(meRes.status).toBe(200);
     expect(meRes.body.user.lastRoute).toBe('/admin/academics');
 
-    // Refresh rotates cookie & issues new access token
+    // Refresh extends sliding 90-day session & issues new access token
     const refreshRes = await request(app)
       .post('/api/auth/refresh')
       .set('Cookie', [refreshCookie1!]);
     expect(refreshRes.status).toBe(200);
     expect(refreshRes.body.token).toBeTruthy();
     expect(refreshRes.body.user.lastRoute).toBe('/admin/academics');
-    const newCookies = refreshRes.headers['set-cookie'] as unknown as string[];
-    const refreshCookie2 = newCookies?.find((c) => c.startsWith('velan_refresh_token='));
-    expect(refreshCookie2).toBeDefined();
 
-    // Old refresh cookie cannot be reused
-    const reuseRes = await request(app)
+    // User's own Logout ends only that session; subsequent /refresh returns 401
+    const logoutRes = await request(app)
+      .post('/api/logout')
+      .set('Authorization', `Bearer ${refreshRes.body.token}`);
+    expect(logoutRes.status).toBe(200);
+
+    const afterLogout = await request(app)
       .post('/api/auth/refresh')
       .set('Cookie', [refreshCookie1!]);
-    expect(reuseRes.status).toBe(401);
+    expect(afterLogout.status).toBe(401);
   });
 
   it('2. Forced Password Change: restricted token blocked with 403 PASSWORD_CHANGE_REQUIRED, rules & reuse enforced', async () => {
@@ -295,8 +297,8 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     expect(m2AfterRemove.status).toBe(403);
   }, 25000);
 
-  it('4. Admin Reset revokes active sessions, Neutral Forgot Password, & Expired Temp Password rejected', async () => {
-    // Admin resets Mentor 1 password -> revokes mentor1Token immediately
+  it('4. Admin Reset keeps active sessions alive, Neutral Forgot Password, & Expired Temp Password rejected', async () => {
+    // Admin resets Mentor 1 password -> active session stays valid (no forced logout)
     const resetRes = await request(app)
       .post(`/api/academics/faculty/${mentor1Id}/reset-password`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -307,7 +309,7 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     const oldTokenCheck = await request(app)
       .get('/api/me')
       .set('Authorization', `Bearer ${mentor1Token}`);
-    expect(oldTokenCheck.status).toBe(401);
+    expect(oldTokenCheck.status).toBe(200);
 
     // Neutral forgot-password returns same 200 message for valid and invalid identifiers
     const fpValid = await request(app)

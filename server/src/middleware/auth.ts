@@ -22,17 +22,19 @@ declare global {
   }
 }
 
-const revokedSessionIds = new Set<string>();
 const authCache = new Map<string, { user: any; expiresAt: number }>();
-
-export function revokeSessionToken(sessionId: string) {
-  if (sessionId) revokedSessionIds.add(sessionId);
-}
 
 export function invalidateUserAuthCache(userId: string) {
   if (!userId) return;
   for (const [key, val] of authCache.entries()) {
     if (val.user?.id === userId) authCache.delete(key);
+  }
+}
+
+export function invalidateSessionCache(sessionId: string) {
+  if (!sessionId) return;
+  for (const key of authCache.keys()) {
+    if (key.endsWith(`:${sessionId}`)) authCache.delete(key);
   }
 }
 
@@ -70,10 +72,6 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as AuthenticatedUser;
 
-    if (decoded.sid && revokedSessionIds.has(decoded.sid)) {
-      return res.status(401).json({ error: 'Session has been logged out or expired' });
-    }
-
     const cacheKey = `${decoded.id}:${decoded.sid || 'nosid'}`;
     const cached = authCache.get(cacheKey);
     let user = cached && cached.expiresAt > Date.now() ? cached.user : null;
@@ -82,12 +80,12 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       if (decoded.sid) {
         const sess = await prisma.userSession.findUnique({
           where: { id: decoded.sid },
-          select: { endedAt: true },
+          select: { endReason: true },
         });
-        if (!sess || sess.endedAt) {
-          revokedSessionIds.add(decoded.sid);
+        // Only reject if the user explicitly clicked Logout on this session
+        if (sess && sess.endReason === 'logout') {
           authCache.delete(cacheKey);
-          return res.status(401).json({ error: 'Session has been logged out or expired' });
+          return res.status(401).json({ error: 'Session has been logged out' });
         }
       }
 

@@ -1,39 +1,9 @@
 import { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { prisma } from '../lib/prisma';
 import { presenceService } from '../services/presenceService';
 import { metricsCollector } from '../services/metricsCollector';
-import { enqueueAuthEvent, flushAuthEvents } from '../services/authEventQueue';
-import { revokeSessionToken } from '../middleware/auth';
-
-const forceLogoutAttempts = new Map<string, { count: number; resetAt: number }>();
-
-async function verifyAdminPasswordForAction(adminUserId: string, adminPassword: unknown): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const now = Date.now();
-  const entry = forceLogoutAttempts.get(adminUserId);
-  if (entry && entry.resetAt > now && entry.count >= 5) {
-    return { ok: false, status: 429, error: 'Too many incorrect password attempts. Try again in 15 minutes.' };
-  }
-  if (!adminPassword || typeof adminPassword !== 'string') {
-    return { ok: false, status: 400, error: 'Administrator password is required to confirm this action.' };
-  }
-  const admin = await prisma.user.findUnique({
-    where: { id: adminUserId },
-    select: { passwordHash: true, role: true, status: true },
-  });
-  if (!admin || admin.role !== 'ADMIN' || admin.status !== 'ACTIVE') {
-    return { ok: false, status: 403, error: 'Forbidden' };
-  }
-  const valid = await bcrypt.compare(adminPassword, admin.passwordHash);
-  if (!valid) {
-    const nextCount = entry && entry.resetAt > now ? entry.count + 1 : 1;
-    forceLogoutAttempts.set(adminUserId, { count: nextCount, resetAt: now + 15 * 60 * 1000 });
-    return { ok: false, status: 403, error: 'Incorrect administrator password.' };
-  }
-  forceLogoutAttempts.delete(adminUserId);
-  return { ok: true };
-}
+import { flushAuthEvents } from '../services/authEventQueue';
 
 export const getMonitorOverview = async (req: Request, res: Response) => {
   try {
@@ -119,7 +89,7 @@ export const getMonitorOverview = async (req: Request, res: Response) => {
         if (e.userId && (e.role === 'STUDENT' || e.role === 'FACULTY' || e.role === 'ADMIN')) {
           todayUniqueByRole[e.role].add(e.userId);
         }
-      } else if (e.event === 'logout' || e.event === 'idle_timeout' || e.event === 'forced_logout') {
+      } else if (e.event === 'logout') {
         logoutsToday++;
       } else if (e.event === 'login_failed') {
         failedLoginsToday++;
@@ -397,155 +367,6 @@ export const exportNeverLoggedInExcel = async (_req: Request, res: Response) => 
     return res.end();
   } catch {
     return res.status(500).json({ error: 'Failed to export never-logged-in list' });
-  }
-};
-
-export const forceLogoutUser = async (req: Request, res: Response) => {
-  try {
-    const { userId, sessionId, adminPassword } = req.body || {};
-    if (!userId && !sessionId) {
-      return res.status(400).json({ error: 'userId or sessionId is required' });
-    }
-
-    const authCheck = await verifyAdminPasswordForAction(req.user!.id, adminPassword);
-    if (!authCheck.ok) {
-      return res.status(authCheck.status || 403).json({ error: authCheck.error });
-    }
-
-    const where = sessionId ? { id: String(sessionId), endedAt: null } : { userId: String(userId), endedAt: null };
-    const active = await prisma.userSession.findMany({ where });
-    const sessionIds = active.map((s) => s.id);
-
-    await prisma.userSession.updateMany({
-      where,
-      data: { endedAt: new Date(), endReason: 'forced_logout' },
-    });
-
-    if (sessionIds.length > 0) {
-      await prisma.refreshToken.updateMany({
-        where: { sessionId: { in: sessionIds }, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-    } else if (userId) {
-      await prisma.refreshToken.updateMany({
-        where: { userId: String(userId), revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-    }
-
-    for (const s of active) {
-      revokeSessionToken(s.id);
-      presenceService.removeSession(s.id);
-      enqueueAuthEvent({
-        userId: s.userId,
-        role: s.role,
-        event: 'forced_logout',
-        deviceId: s.deviceId,
-        classId: s.classId,
-        details: `Forced logout by Admin ${req.user!.name}`,
-      });
-    }
-
-    if (userId) {
-      presenceService.removeUserSessions(String(userId));
-    }
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user!.id,
-        action: 'FORCED_LOGOUT',
-        details: JSON.stringify({
-          adminId: req.user!.id,
-          targetUserId: userId || active[0]?.userId,
-          targetSessionId: sessionId || null,
-          devices: active.map((s) => `${s.deviceType || 'device'}:${s.deviceId}`),
-          sessionsClosed: active.length,
-        }),
-      },
-    });
-
-    const io = req.app.get('io');
-    const targetUid = userId || active[0]?.userId;
-    if (io && targetUid) {
-      io.to(`user_${targetUid}`).emit('auth:forced_logout', {
-        reason: 'You were signed out by the administrator.',
-      });
-      io.in(`user_${targetUid}`).disconnectSockets(true);
-    }
-
-    return res.json({ message: 'Session(s) terminated successfully', closedCount: active.length });
-  } catch {
-    return res.status(500).json({ error: 'Failed to force logout' });
-  }
-};
-
-export const forceLogoutAll = async (req: Request, res: Response) => {
-  try {
-    const { adminPassword } = req.body || {};
-    const authCheck = await verifyAdminPasswordForAction(req.user!.id, adminPassword);
-    if (!authCheck.ok) {
-      return res.status(authCheck.status || 403).json({ error: authCheck.error });
-    }
-
-    const currentSid = req.user!.sid;
-    const where: any = { endedAt: null };
-    if (currentSid) where.id = { not: currentSid };
-
-    const active = await prisma.userSession.findMany({ where });
-    const sessionIds = active.map((s) => s.id);
-
-    await prisma.userSession.updateMany({
-      where,
-      data: { endedAt: new Date(), endReason: 'forced_logout' },
-    });
-
-    if (sessionIds.length > 0) {
-      await prisma.refreshToken.updateMany({
-        where: { sessionId: { in: sessionIds }, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-    }
-
-    const io = req.app.get('io');
-    const affectedUsers = new Set<string>();
-    for (const s of active) {
-      revokeSessionToken(s.id);
-      presenceService.removeSession(s.id);
-      affectedUsers.add(s.userId);
-      enqueueAuthEvent({
-        userId: s.userId,
-        role: s.role,
-        event: 'forced_logout',
-        deviceId: s.deviceId,
-        classId: s.classId,
-        details: `Force-logout all sessions by Admin ${req.user!.name}`,
-      });
-    }
-
-    if (io) {
-      for (const uid of affectedUsers) {
-        io.to(`user_${uid}`).emit('auth:forced_logout', {
-          reason: 'You were signed out by the administrator.',
-        });
-        io.in(`user_${uid}`).disconnectSockets(true);
-      }
-    }
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user!.id,
-        action: 'FORCED_LOGOUT_ALL',
-        details: JSON.stringify({
-          adminId: req.user!.id,
-          affectedUsers: affectedUsers.size,
-          sessionsClosed: active.length,
-        }),
-      },
-    });
-
-    return res.json({ message: 'All other active sessions terminated', closedCount: active.length });
-  } catch {
-    return res.status(500).json({ error: 'Failed to force logout all sessions' });
   }
 };
 

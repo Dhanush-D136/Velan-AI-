@@ -144,8 +144,44 @@ if (fs.existsSync(clientIndexHtml)) {
   });
 }
 
+// Idempotent one-time session repair migration
+export async function repairSessionsMigration(): Promise<void> {
+  try {
+    // 1. Reactivate any session NOT ended by explicit user Logout
+    await prisma.userSession.updateMany({
+      where: {
+        endedAt: { not: null },
+        OR: [{ endReason: null }, { endReason: { not: 'logout' } }],
+      },
+      data: { endedAt: null, endReason: null },
+    });
+
+    // 2. Reactivate refresh tokens whose session was not ended by user Logout
+    const loggedOutSessions = await prisma.userSession.findMany({
+      where: { endReason: 'logout' },
+      select: { id: true },
+    });
+    const loggedOutIds = loggedOutSessions.map((s) => s.id);
+    await prisma.refreshToken.updateMany({
+      where: {
+        revokedAt: { not: null },
+        ...(loggedOutIds.length > 0 ? { sessionId: { notIn: loggedOutIds } } : {}),
+      },
+      data: { revokedAt: null },
+    });
+
+    // 3. Remove obsolete forced_logout / idle_timeout auth_events
+    await prisma.authEvent.deleteMany({
+      where: { event: { in: ['forced_logout', 'idle_timeout'] } },
+    });
+  } catch (err) {
+    console.error('repairSessionsMigration warning:', err);
+  }
+}
+
 // Start Server (only if not running under tests)
 if (process.env.NODE_ENV !== 'test') {
+  void repairSessionsMigration();
   void flagDefaultPasswordAccounts();
   // Server-side auto-close job for expired GPS attendance sessions (every 30s)
   setInterval(async () => {

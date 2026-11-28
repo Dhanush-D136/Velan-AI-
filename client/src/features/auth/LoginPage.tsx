@@ -42,12 +42,7 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    const msg = sessionStorage.getItem('velan_forced_logout_msg') || '';
-    if (msg) sessionStorage.removeItem('velan_forced_logout_msg');
-    return msg;
-  });
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Mobile keyboard & short-viewport detection
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -121,6 +116,7 @@ export const LoginPage: React.FC = () => {
       const res = await api.post('/auth/login', {
         identifier: identifier.trim(),
         password,
+        expectedRole: selectedRole,
         deviceId,
         deviceLabel: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser',
         platform: navigator.platform || 'Web',

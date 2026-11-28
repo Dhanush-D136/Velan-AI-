@@ -76,19 +76,6 @@ export const AppLayout: React.FC = () => {
     { userId: user?.id }
   );
 
-  // Forced logout listener (do NOT post /api/logout again; admin already ended the session)
-  useRealtimeSync(
-    ['auth:forced_logout'],
-    (payload: any) => {
-      const msg = payload?.reason || 'You were signed out by the administrator.';
-      sessionStorage.setItem('velan_forced_logout_msg', msg);
-      showToast(msg, 'error');
-      window.dispatchEvent(new CustomEvent('velan:session_invalid'));
-      navigate('/login');
-    },
-    { userId: user?.id }
-  );
-
   // 30-second Page Visibility API heartbeat + Optional Idle auto-logout (DEFAULT OFF)
   const [idleWarningOpen, setIdleWarningOpen] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);

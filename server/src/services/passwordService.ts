@@ -1,8 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
-import { revokeSessionToken, invalidateUserAuthCache } from '../middleware/auth';
-import { presenceService } from './presenceService';
+import { invalidateUserAuthCache } from '../middleware/auth';
 
 export function generateTempPassword(length = 10): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -73,17 +72,7 @@ export async function setPassword(
   history = [newHash, ...history.filter((h) => h !== newHash)].slice(0, 3);
 
   const now = new Date();
-  const expiresAt = options.mustChange
-    ? options.expiresAt ?? new Date(Date.now() + 7 * 86400000)
-    : null;
-
-  const activeSessions = await prisma.userSession.findMany({
-    where: {
-      userId,
-      endedAt: null,
-      ...(options.keepSessionId ? { NOT: { id: options.keepSessionId } } : {}),
-    },
-  });
+  const expiresAt = options.mustChange ? (options.expiresAt ?? null) : null;
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
@@ -98,24 +87,6 @@ export async function setPassword(
       },
     });
 
-    await tx.userSession.updateMany({
-      where: {
-        userId,
-        endedAt: null,
-        ...(options.keepSessionId ? { NOT: { id: options.keepSessionId } } : {}),
-      },
-      data: { endedAt: now, endReason: 'password_reset' },
-    });
-
-    await tx.refreshToken.updateMany({
-      where: {
-        userId,
-        revokedAt: null,
-        ...(options.keepSessionId ? { NOT: { sessionId: options.keepSessionId } } : {}),
-      },
-      data: { revokedAt: now },
-    });
-
     await tx.auditLog.create({
       data: {
         userId: options.actorUserId || userId,
@@ -124,23 +95,12 @@ export async function setPassword(
           targetUserId: userId,
           by: options.by,
           mustChange: options.mustChange,
-          revokedSessions: activeSessions.length,
         }),
       },
     });
   });
 
-  for (const s of activeSessions) {
-    revokeSessionToken(s.id);
-    presenceService.removeSession(s.id);
-  }
   invalidateUserAuthCache(userId);
-
-  if (options.io && activeSessions.length > 0 && !options.keepSessionId) {
-    options.io.to(`user_${userId}`).emit('auth:forced_logout', {
-      reason: 'Your password was reset. Please sign in with your new temporary password.',
-    });
-  }
 }
 
 export async function flagDefaultPasswordAccounts(): Promise<number> {

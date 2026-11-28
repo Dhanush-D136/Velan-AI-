@@ -15,7 +15,7 @@ import {
 import { notifyUsers } from './notificationController';
 import { enqueueAuthEvent, parseClientMeta } from '../services/authEventQueue';
 import { presenceService } from '../services/presenceService';
-import { revokeSessionToken, getJwtSecret } from '../middleware/auth';
+import { invalidateSessionCache, getJwtSecret } from '../middleware/auth';
 import { validateNewPassword, setPassword } from '../services/passwordService';
 
 function hashRefreshToken(raw: string): string {
@@ -172,6 +172,13 @@ export const login = async (req: Request, res: Response) => {
     if (!user) {
       enqueueAuthEvent({ event: 'login_failed', deviceId, ...meta, details: `Unknown identifier: ${cleanId}` });
       return res.status(401).json({ error: 'Invalid login credentials. User not found.' });
+    }
+
+    const expectedRole = req.body?.expectedRole ? String(req.body.expectedRole).toUpperCase() : null;
+    if (expectedRole && user.role === 'ADMIN' && expectedRole !== 'ADMIN') {
+      return res.status(403).json({
+        error: 'This is an admin account. Please use the Admin tab.',
+      });
     }
 
     // 2. Validate password
@@ -355,8 +362,8 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
       },
     });
 
-    if (!existing || existing.revokedAt || new Date() > existing.expiresAt) {
-      return res.status(401).json({ error: 'Refresh token expired or revoked' });
+    if (!existing || new Date() > existing.expiresAt) {
+      return res.status(401).json({ error: 'Refresh token expired' });
     }
 
     if (existing.user.status !== 'ACTIVE') {
@@ -364,14 +371,15 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     }
 
     const sess = await prisma.userSession.findUnique({ where: { id: existing.sessionId } });
-    if (!sess || sess.endedAt) {
+    if (!sess || sess.endReason === 'logout') {
       return res.status(401).json({ error: 'Session ended' });
     }
 
-    // Rotate refresh token
+    // Sliding 90-day refresh: extend expiresAt without revoking active refresh tokens
+    const REFRESH_TTL_MS = 90 * 86400000;
     await prisma.refreshToken.update({
       where: { id: existing.id },
-      data: { revokedAt: new Date() },
+      data: { expiresAt: new Date(Date.now() + REFRESH_TTL_MS), revokedAt: null },
     });
     await prisma.userSession.update({
       where: { id: sess.id },
@@ -396,7 +404,25 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     const scope: 'full' | 'password_change_only' = existing.user.mustChangePassword
       ? 'password_change_only'
       : 'full';
-    const { accessToken } = await issueSessionTokens(res, existing.user, sess.id, scope);
+    const tokenPayload = {
+      id: existing.user.id,
+      role: existing.user.role,
+      name: existing.user.name,
+      username: existing.user.username,
+      email: existing.user.email,
+      sid: sess.id,
+      scope,
+    };
+    const accessToken = jwt.sign(tokenPayload, getJwtSecret(), { expiresIn: '20m' });
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieOpts = {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+      path: '/',
+    };
+    res.cookie('velan_refresh_token', rawRefresh, { ...cookieOpts, maxAge: REFRESH_TTL_MS });
+    res.cookie('velan_access_token', accessToken, { ...cookieOpts, maxAge: 20 * 60 * 1000 });
 
     return res.json({
       token: accessToken,
@@ -918,17 +944,15 @@ export const logout = async (req: Request, res: Response) => {
       }
     }
 
-    const reason = req.body?.reason === 'idle_timeout' ? 'idle_timeout' : 'logout';
     if (sid) {
-      revokeSessionToken(sid);
+      invalidateSessionCache(sid);
       presenceService.removeSession(sid);
       await prisma.userSession.updateMany({
         where: { id: sid, endedAt: null },
-        data: { endedAt: new Date(), endReason: reason },
+        data: { endedAt: new Date(), endReason: 'logout' },
       });
-      await prisma.refreshToken.updateMany({
-        where: { sessionId: sid, revokedAt: null },
-        data: { revokedAt: new Date() },
+      await prisma.refreshToken.deleteMany({
+        where: { sessionId: sid },
       });
     }
     if (userId) {
@@ -936,7 +960,7 @@ export const logout = async (req: Request, res: Response) => {
       enqueueAuthEvent({
         userId,
         role: role || 'UNKNOWN',
-        event: reason === 'idle_timeout' ? 'idle_timeout' : 'logout',
+        event: 'logout',
         deviceId: (req.headers['x-device-id'] as string) || null,
         ...meta,
       });

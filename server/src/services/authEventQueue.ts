@@ -9,8 +9,6 @@ export interface AuthEventInput {
     | 'logout'
     | 'login_failed'
     | 'session_expired'
-    | 'idle_timeout'
-    | 'forced_logout'
     | 'device_limit_blocked';
   deviceId?: string | null;
   deviceType?: 'phone' | 'computer' | 'tablet';
