@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { UserRole } from '@velan/shared';
@@ -8,29 +8,35 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { api } from '@/lib/api';
+import { LOGIN_KURAL_CONFIG } from './kuralLoginConfig';
 import {
-  Sparkles,
   Lock,
   User,
   Eye,
   EyeOff,
-  Smartphone,
-  ShieldCheck,
   AlertCircle,
   CheckCircle2,
-  KeyRound,
   GraduationCap,
   Users,
   Shield,
+  ArrowRight,
+  Loader2,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
+
+const ROLE_OPTIONS = [
+  { role: UserRole.STUDENT, label: 'Student', icon: GraduationCap },
+  { role: UserRole.FACULTY, label: 'Faculty', icon: Users },
+  { role: UserRole.ADMIN, label: 'Admin', icon: Shield },
+] as const;
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { setUser, getDeviceId } = useAuthStore();
   const toast = useToast();
+  const prefersReducedMotion = useReducedMotion();
 
-  // Student is selected by default as requested in Section 5
+  // Student is selected by default
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.STUDENT);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -43,7 +49,32 @@ export const LoginPage: React.FC = () => {
     return msg;
   });
 
-  // Forced Password Change Modal (for first login with default 1234)
+  // Mobile keyboard & short-viewport detection
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [isShortScreen, setIsShortScreen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const baseHeight = window.innerHeight;
+    const checkViewport = () => {
+      const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      setIsShortScreen(window.innerHeight < 520);
+      if (window.innerWidth < 1024 && baseHeight > 520) {
+        setIsKeyboardOpen(vvHeight < baseHeight * 0.76);
+      } else {
+        setIsKeyboardOpen(false);
+      }
+    };
+    checkViewport();
+    window.addEventListener('resize', checkViewport);
+    window.visualViewport?.addEventListener('resize', checkViewport);
+    return () => {
+      window.removeEventListener('resize', checkViewport);
+      window.visualViewport?.removeEventListener('resize', checkViewport);
+    };
+  }, []);
+
+  // Forced Password Change Modal (kept for compatibility)
   const [showForcedPasswordChange, setShowForcedPasswordChange] = useState(false);
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -64,10 +95,15 @@ export const LoginPage: React.FC = () => {
   const [deviceRequestSent, setDeviceRequestSent] = useState(false);
   const [deviceResetId, setDeviceResetId] = useState('');
   const [deviceLimitBanner, setDeviceLimitBanner] = useState('');
+  const [isDeviceLimitError, setIsDeviceLimitError] = useState(false);
+
+  const line1Words = useMemo(() => LOGIN_KURAL_CONFIG.line1.split(' '), []);
+  const line2Words = useMemo(() => LOGIN_KURAL_CONFIG.line2.split(' '), []);
 
   const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
     setErrorMessage('');
+    setIsDeviceLimitError(false);
     setIdentifier('');
     setPassword('');
   };
@@ -78,6 +114,7 @@ export const LoginPage: React.FC = () => {
 
     setIsLoading(true);
     setErrorMessage('');
+    setIsDeviceLimitError(false);
 
     try {
       const deviceId = getDeviceId();
@@ -119,6 +156,7 @@ export const LoginPage: React.FC = () => {
         setDeviceResetId(identifier.trim());
         setDeviceLimitBanner(serverError);
         setErrorMessage(serverError);
+        setIsDeviceLimitError(true);
         setShowDeviceLockBlocked(true);
       } else {
         setErrorMessage(serverError);
@@ -137,13 +175,8 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
-    if (newPwd === '1234') {
-      setPwdChangeError('Password cannot stay 1234. Please choose a new password.');
-      return;
-    }
-
     if (newPwd !== confirmPwd) {
-      setPwdChangeError('New passwords do not match.');
+      setPwdChangeError('New password and confirmation do not match.');
       return;
     }
 
@@ -221,124 +254,354 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 animated-gradient-bg relative overflow-hidden">
-      {/* Centered Clean Rounded Card */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-        className="w-full max-w-md bg-white/95 backdrop-blur-2xl rounded-3xl p-8 sm:p-10 shadow-2xl border border-white/60 relative z-10"
+    <div
+      className="min-h-[100dvh] lg:h-[100dvh] w-full flex flex-col lg:flex-row bg-[#FBFAFF] overflow-x-hidden lg:overflow-hidden"
+      style={{ fontFamily: "'Figtree', 'Inter', sans-serif" }}
+    >
+      {/* LEFT / TOP: KURAL 391 HERO PANEL */}
+      <section
+        aria-label="Thirukkural 391 Inspiration"
+        className={`relative w-full lg:w-[50%] xl:w-[56%] shrink-0 kural-sunrise-bg text-white flex flex-col justify-between overflow-hidden transition-[padding,min-height] duration-300 ${
+          isKeyboardOpen
+            ? 'px-5 pt-4 pb-6'
+            : isShortScreen
+              ? 'px-5 py-4'
+              : 'px-5 pt-5 pb-10 sm:px-8 sm:pt-7 sm:pb-12 lg:p-10 xl:p-14 lg:h-full'
+        }`}
       >
-        {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-3">
-            <BrandLogo size="lg" animated />
+        {/* Subtle contrast scrim + palm-leaf manuscript texture */}
+        <div className="absolute inset-0 bg-[#1E1B4B]/20 pointer-events-none" aria-hidden="true" />
+        <div className="absolute inset-0 kural-palm-texture pointer-events-none" aria-hidden="true" />
+
+        {/* Original Inline SVG: Faint AI "V" Constellation Nodes */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 400 320"
+          className={`absolute right-4 top-6 w-64 sm:w-80 lg:w-[420px] opacity-20 pointer-events-none select-none ${
+            prefersReducedMotion ? '' : 'animate-pulse'
+          }`}
+          style={{ animationDuration: '9s' }}
+          fill="none"
+        >
+          <g stroke="#FBBF24" strokeWidth="1" strokeOpacity="0.45">
+            <line x1="90" y1="50" x2="145" y2="140" />
+            <line x1="145" y1="140" x2="200" y2="245" />
+            <line x1="200" y1="245" x2="260" y2="140" />
+            <line x1="260" y1="140" x2="315" y2="50" />
+            <line x1="90" y1="50" x2="210" y2="85" strokeDasharray="3 4" />
+            <line x1="210" y1="85" x2="315" y2="50" strokeDasharray="3 4" />
+            <line x1="145" y1="140" x2="260" y2="140" strokeDasharray="2 4" />
+          </g>
+          {[
+            [90, 50, 4],
+            [145, 140, 3.5],
+            [200, 245, 5],
+            [260, 140, 3.5],
+            [315, 50, 4],
+            [210, 85, 2.5],
+          ].map(([cx, cy, r], i) => (
+            <circle key={i} cx={cx} cy={cy} r={r} fill={i === 2 ? '#FBBF24' : '#FFFFFF'} fillOpacity="0.8" />
+          ))}
+        </svg>
+
+        {/* Top-left Brand Header */}
+        <div className="relative z-10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1 rounded-2xl bg-white/95 shadow-md">
+              <BrandLogo size={isKeyboardOpen || isShortScreen ? 'sm' : 'md'} />
+            </div>
+            <div>
+              <span
+                className="font-bold tracking-tight text-white text-base sm:text-lg block leading-none"
+                style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
+              >
+                Velan AI
+              </span>
+              <span className="text-[11px] text-white/75 hidden sm:inline">Smart Campus &amp; GPS Attendance</span>
+            </div>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
-            Velan <span className="bg-clip-text text-transparent bg-brand-gradient">AI</span>
-          </h1>
-          <p className="text-xs text-content-secondary mt-1 font-medium">
-            Next-Gen GPS Attendance & Management Platform
-          </p>
+
+          {isKeyboardOpen && (
+            <span
+              lang="ta"
+              className="px-3 py-1 rounded-full bg-white/15 border border-white/25 text-[11px] font-semibold text-white backdrop-blur-sm"
+              style={{ fontFamily: "'Noto Sans Tamil', sans-serif" }}
+            >
+              {LOGIN_KURAL_CONFIG.pillMobile}
+            </span>
+          )}
         </div>
 
-        {/* Role Selector Tabs (Student selected by default) */}
-        <div className="flex p-1.5 rounded-2xl bg-slate-100 border border-slate-200/80 mb-6 gap-1">
-          <button
-            type="button"
-            onClick={() => handleRoleChange(UserRole.STUDENT)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 select-none ${
-              selectedRole === UserRole.STUDENT
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-content-secondary hover:text-content'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Student</span>
-          </button>
+        {/* Center-left Kural Block */}
+        {!isKeyboardOpen && (
+          <div className="relative z-10 my-auto py-3 sm:py-5 lg:py-0 max-w-2xl">
+            {/* Large faint gold opening quote mark */}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 80 64"
+              className="hidden sm:block absolute -left-4 -top-6 w-20 h-16 text-[#FBBF24]/15 pointer-events-none select-none"
+              fill="currentColor"
+            >
+              <path d="M18 8C8 14 2 24 2 38c0 11 7 18 16 18 8 0 14-6 14-14 0-8-6-13-13-13-2 0-4 .5-5 1.2C15 21 20 15 27 11L18 8zm38 0C46 14 40 24 40 38c0 11 7 18 16 18 8 0 14-6 14-14 0-8-6-13-13-13-2 0-4 .5-5 1.2C53 21 58 15 65 11L56 8z" />
+            </svg>
 
-          <button
-            type="button"
-            onClick={() => handleRoleChange(UserRole.FACULTY)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 select-none ${
-              selectedRole === UserRole.FACULTY
-                ? 'bg-white text-teal-600 shadow-sm'
-                : 'text-content-secondary hover:text-content'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Faculty</span>
-          </button>
+            {/* Kural Pill */}
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/25 text-[11px] sm:text-xs font-semibold text-[#FDE68A] backdrop-blur-sm mb-3 sm:mb-4">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FBBF24]" aria-hidden="true" />
+              <span lang="ta" style={{ fontFamily: "'Noto Sans Tamil', sans-serif" }}>
+                <span className="lg:hidden">{LOGIN_KURAL_CONFIG.pillMobile}</span>
+                <span className="hidden lg:inline">{LOGIN_KURAL_CONFIG.pillDesktop}</span>
+              </span>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => handleRoleChange(UserRole.ADMIN)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 select-none ${
-              selectedRole === UserRole.ADMIN
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-content-secondary hover:text-content'
-            }`}
-          >
-            <Shield className="w-4 h-4" />
-            <span>Admin</span>
-          </button>
+            {/* Two-Line Couplet */}
+            <h2
+              lang="ta"
+              className="font-semibold text-white tracking-normal hyphens-none"
+              style={{
+                fontFamily: "'Noto Serif Tamil', 'Noto Sans Tamil', serif",
+                fontWeight: 600,
+                fontSize: 'clamp(1.42rem, 3.1vw, 3.15rem)',
+                lineHeight: 1.65,
+                textShadow: '0 2px 24px rgba(11, 11, 15, 0.28)',
+              }}
+            >
+              <span className="block">
+                {line1Words.map((word, idx) => (
+                  <motion.span
+                    key={`l1-${idx}`}
+                    initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0.2 }
+                        : { duration: 0.38, delay: idx * 0.09, ease: 'easeOut' }
+                    }
+                    className="inline-block mr-[0.28em]"
+                  >
+                    {word}
+                  </motion.span>
+                ))}
+              </span>
+              <span className="block">
+                {line2Words.map((word, idx) => (
+                  <motion.span
+                    key={`l2-${idx}`}
+                    initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0.2 }
+                        : { duration: 0.38, delay: (line1Words.length + idx) * 0.09, ease: 'easeOut' }
+                    }
+                    className="inline-block mr-[0.28em]"
+                  >
+                    {word}
+                  </motion.span>
+                ))}
+              </span>
+            </h2>
+
+            {/* Thin Gold Kolam / Temple-Border Ornamental Divider (Original Inline SVG) */}
+            <motion.div
+              aria-hidden="true"
+              initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, scaleX: 0.3 }}
+              animate={{ opacity: 1, scaleX: 1 }}
+              transition={{ duration: 0.5, delay: prefersReducedMotion ? 0 : 0.55 }}
+              className="origin-left my-3 sm:my-4"
+            >
+              <svg viewBox="0 0 260 14" className="w-44 sm:w-56 h-3.5 text-[#FBBF24]" fill="none">
+                <line x1="0" y1="7" x2="108" y2="7" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.65" />
+                <polygon points="116,7 123,2 130,7 123,12" stroke="currentColor" strokeWidth="1.3" fill="currentColor" fillOpacity="0.25" />
+                <circle cx="138" cy="7" r="2" fill="currentColor" />
+                <line x1="146" y1="7" x2="260" y2="7" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.35" />
+              </svg>
+            </motion.div>
+
+            {/* Meanings (hidden on very short landscape screens < 520px) */}
+            {!isShortScreen && (
+              <motion.div
+                initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.45, delay: prefersReducedMotion ? 0 : 0.7 }}
+                className="space-y-2"
+              >
+                <p
+                  lang="ta"
+                  className="text-[13px] sm:text-base lg:text-[18px] text-white/95 leading-[1.68] line-clamp-2 sm:line-clamp-none"
+                  style={{ fontFamily: "'Noto Sans Tamil', sans-serif" }}
+                >
+                  {LOGIN_KURAL_CONFIG.tamilMeaning}
+                </p>
+                <p className="hidden sm:block text-sm lg:text-[16px] text-white/80 leading-relaxed max-w-xl">
+                  {LOGIN_KURAL_CONFIG.englishMeaning}
+                </p>
+              </motion.div>
+            )}
+
+            {/* Attribution aligned to couplet's left edge, below meaning, with golden stylus icon */}
+            <div className="mt-2.5 sm:mt-4 flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#FBBF24]">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                className="w-4 h-4 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15.5 2.5l2 2L6 16l-3.5 1 1-3.5L15.5 2.5z" />
+                <path d="M13 5l2 2" />
+              </svg>
+              <span lang="ta" style={{ fontFamily: "'Noto Sans Tamil', 'Figtree', sans-serif" }}>
+                {LOGIN_KURAL_CONFIG.attribution}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom-left Quiet Tagline (Desktop) */}
+        <div className="relative z-10 hidden lg:flex items-center justify-between text-xs text-white/70 pt-3 border-t border-white/15">
+          <span>{LOGIN_KURAL_CONFIG.tagline}</span>
+          <span className="font-medium text-white/60">{LOGIN_KURAL_CONFIG.productLine}</span>
         </div>
 
-        {/* Animated Form Fields */}
-        <AnimatePresence mode="wait">
-          <motion.form
-            key={selectedRole}
-            initial={{ opacity: 0, x: 8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ duration: 0.2 }}
-            onSubmit={handleLogin}
-            className="space-y-4"
+        {/* Mobile Smooth Wave Divider flowing into White Sign-In Area */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 1440 72"
+          preserveAspectRatio="none"
+          className="lg:hidden absolute bottom-0 left-0 w-full h-7 sm:h-9 text-[#FBFAFF] pointer-events-none"
+          fill="currentColor"
+        >
+          <path d="M0,36 C320,76 1120,-4 1440,36 L1440,72 L0,72 Z" />
+        </svg>
+      </section>
+
+      {/* RIGHT / BOTTOM: CLEAN SIGN-IN AREA (No Floating Card) */}
+      <main
+        aria-label="Sign in"
+        className="flex-1 bg-[#FBFAFF] flex flex-col justify-between px-5 py-5 sm:px-10 sm:py-8 lg:px-12 xl:px-16 overflow-y-auto"
+      >
+        <div className="my-auto w-full max-w-[420px] mx-auto space-y-5 sm:space-y-6">
+          {/* Heading */}
+          <div>
+            <h1
+              className="text-2xl sm:text-3xl font-extrabold text-[#0B0B0F] tracking-tight"
+              style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
+            >
+              Welcome back
+            </h1>
+            <div
+              className="h-1 w-14 rounded-full bg-gradient-to-r from-[#7C3AED] via-[#DB2777] to-[#F59E0B] mt-2"
+              aria-hidden="true"
+            />
+            <p className="text-xs sm:text-sm text-slate-600 mt-2.5">
+              Sign in to continue to Velan AI.
+            </p>
+          </div>
+
+          {/* Segmented Role Selector with Sliding Highlight */}
+          <div
+            role="tablist"
+            aria-label="Select portal role"
+            className="grid grid-cols-3 p-1 rounded-2xl bg-[#F5F3FF] border border-violet-200/70 gap-1"
           >
+            {ROLE_OPTIONS.map(({ role, label, icon: Icon }) => {
+              const active = selectedRole === role;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => handleRoleChange(role)}
+                  className={`relative min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl text-xs sm:text-sm font-bold transition-colors select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] ${
+                    active ? 'text-[#5B21B6]' : 'text-slate-600 hover:text-[#0B0B0F]'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="loginRoleHighlight"
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
+                      className="absolute inset-0 bg-white rounded-xl shadow-sm border border-violet-200/60"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <Icon className="w-4 h-4 relative z-10" aria-hidden="true" />
+                  <span className="relative z-10">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Login Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
             <Input
+              id="login-identifier"
               label={getIdentifierLabel()}
               type="text"
               name="username"
               autoComplete="username"
               required
-              autoFocus
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder={getIdentifierPlaceholder()}
+              className="min-h-[48px] text-sm focus:ring-2 focus:ring-[#7C3AED]"
               leftIcon={<User className="w-4 h-4 text-slate-400" />}
             />
 
-            <div className="relative">
-              <Input
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                leftIcon={<Lock className="w-4 h-4 text-slate-400" />}
-                rightIcon={
+            <Input
+              id="login-password"
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              name="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              className="min-h-[48px] text-sm focus:ring-2 focus:ring-[#7C3AED]"
+              leftIcon={<Lock className="w-4 h-4 text-slate-400" />}
+              rightIcon={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((p) => !p)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="p-2 text-slate-400 hover:text-[#5B21B6] transition-colors rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED]"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              }
+            />
+
+            {/* Inline Error / Device Limit Banner */}
+            {errorMessage && (
+              <motion.div
+                role="alert"
+                aria-live="assertive"
+                initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2"
+              >
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" aria-hidden="true" />
+                  <span className="font-medium leading-relaxed">{errorMessage}</span>
+                </div>
+                {isDeviceLimitError && (
                   <button
                     type="button"
-                    onClick={() => setShowPassword((p) => !p)}
-                    className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                    onClick={() => setShowDeviceLockBlocked(true)}
+                    className="inline-flex items-center gap-1 font-bold text-[#7C3AED] hover:underline"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    Request device reset <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                }
-              />
-            </div>
-
-            {errorMessage && (
-              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-accent-rose text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
+                )}
+              </motion.div>
             )}
 
-            <div className="flex items-center justify-end text-xs">
+            <div className="flex items-center justify-end">
               <button
                 type="button"
                 onClick={() => {
@@ -346,37 +609,44 @@ export const LoginPage: React.FC = () => {
                   setForgotSubmitted(false);
                   setShowForgotPassword(true);
                 }}
-                className="font-semibold text-brand-600 hover:text-brand-700 hover:underline"
+                className="text-xs font-semibold text-[#5B21B6] hover:text-[#DB2777] hover:underline min-h-[36px] px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] rounded"
               >
                 Forgot password?
               </button>
             </div>
 
-            <Button
+            <button
               type="submit"
-              size="lg"
-              variant={
-                selectedRole === UserRole.ADMIN
-                  ? 'admin'
-                  : selectedRole === UserRole.FACULTY
-                  ? 'faculty'
-                  : 'student'
-              }
-              isLoading={isLoading}
-              className="w-full font-bold shadow-glass text-sm h-12"
+              disabled={isLoading}
+              className="w-full min-h-[50px] rounded-2xl bg-gradient-to-r from-[#7C3AED] to-[#DB2777] text-white font-bold text-sm shadow-lg shadow-violet-500/25 hover:-translate-y-0.5 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#7C3AED]"
             >
-              Sign In as {selectedRole}
-            </Button>
-          </motion.form>
-        </AnimatePresence>
-      </motion.div>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  <span>Signing in...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign in</span>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
 
-      {/* FORCED PASSWORD CHANGE MODAL (For 1st Login with 1234) */}
+        {/* Footer */}
+        <footer className="pt-6 text-center text-[11px] text-slate-500">
+          © 2026 Velan AI. All rights reserved.
+        </footer>
+      </main>
+
+      {/* FORCED PASSWORD CHANGE MODAL */}
       <Modal
         isOpen={showForcedPasswordChange}
         onClose={() => {}}
         title="Set Your New Password"
-        description="First-time login requires changing your default password (1234) to secure your account."
+        description="First-time login requires setting your own password to continue."
         showCloseButton={false}
       >
         <form onSubmit={handleExecutePasswordChange} className="space-y-4">
@@ -393,7 +663,7 @@ export const LoginPage: React.FC = () => {
             required
             value={newPwd}
             onChange={(e) => setNewPwd(e.target.value)}
-            placeholder="Enter any new password (cannot be 1234)"
+            placeholder="Enter any new password"
           />
           <Input
             label="Confirm New Password"

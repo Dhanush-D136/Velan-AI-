@@ -15,6 +15,63 @@
   }
 }
 
+/* Kural 391 Login Sunrise Palette (CSS Variables) */
+:root {
+  --velan-login-indigo: #1E1B4B;
+  --velan-login-royal: #5B21B6;
+  --velan-login-violet: #7C3AED;
+  --velan-login-magenta: #DB2777;
+  --velan-login-coral: #FB7185;
+  --velan-login-saffron: #F59E0B;
+  --velan-login-gold: #FBBF24;
+  --velan-login-ink: #0B0B0F;
+  --velan-login-white: #FFFFFF;
+  --velan-login-lavender: #F5F3FF;
+  --velan-login-surface: #FBFAFF;
+}
+
+@keyframes sunrise-drift {
+  0% {
+    background-position: 0% 25%;
+  }
+  50% {
+    background-position: 100% 75%;
+  }
+  100% {
+    background-position: 0% 25%;
+  }
+}
+
+.kural-sunrise-bg {
+  background: linear-gradient(
+    145deg,
+    var(--velan-login-indigo) 0%,
+    var(--velan-login-royal) 32%,
+    var(--velan-login-violet) 54%,
+    var(--velan-login-magenta) 78%,
+    var(--velan-login-saffron) 100%
+  );
+  background-size: 220% 220%;
+  animation: sunrise-drift 32s ease-in-out infinite;
+}
+
+.kural-palm-texture {
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.03) 0px,
+    rgba(255, 255, 255, 0.03) 1px,
+    transparent 1px,
+    transparent 28px
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kural-sunrise-bg {
+    animation: none !important;
+    background-position: 0% 50% !important;
+  }
+}
+
 /* Continuous Animated Gradient Background for Login Page */
 @keyframes gradient-blend {
   0% {
