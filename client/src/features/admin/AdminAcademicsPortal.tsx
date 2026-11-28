@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -129,7 +129,7 @@ export const AdminAcademicsPortal: React.FC = () => {
   };
 
   if (isLoading) {
-    return <DatabaseLoader message="Loading Admin Academics & Calendar..." subtext="Syncing CGPA records, grading scales, and semester holidays" />;
+    return <InlineLoader label="Loading Admin Academics & Calendar..." subtext="Syncing CGPA records, grading scales, and semester holidays" />;
   }
 
   return (

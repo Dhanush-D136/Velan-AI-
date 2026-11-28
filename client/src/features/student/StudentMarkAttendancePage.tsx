@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { RushWaitingScreen, RushQueueConfigUI } from '@/components/attendance/RushWaitingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/components/ui/Toast';
@@ -147,7 +147,7 @@ export const StudentMarkAttendancePage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="max-w-xl mx-auto">
-        <DatabaseLoader message="Checking active GPS session..." subtext="Syncing with your class faculty" />
+        <InlineLoader label="Checking active GPS session..." subtext="Syncing with your class faculty" />
       </div>
     );
   }
@@ -219,7 +219,7 @@ export const StudentMarkAttendancePage: React.FC = () => {
               {isScanning && (
                 <>
                   <div className="absolute inset-0 rounded-full bg-brand-500 animate-radar-pulse opacity-75" />
-                  <div className="absolute -inset-4 rounded-full border-2 border-brand-500/50 animate-ping opacity-40" />
+                  <div className="absolute -inset-4 rounded-full border-2 border-brand-500/50  opacity-40" />
                 </>
               )}
 

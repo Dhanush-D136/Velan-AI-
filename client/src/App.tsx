@@ -7,6 +7,8 @@ import { BrandLogo } from './components/ui/BrandLogo';
 import { LoginPage } from './features/auth/LoginPage';
 import { ForcePasswordChangePage } from './features/auth/ForcePasswordChangePage';
 import { AppLayout } from './components/layout/AppLayout';
+import { LoadingScreen, InlineLoader, TopBar } from './components/ui/LoadingScreen';
+import { useLoadingStage } from './hooks/useLoadingStage';
 
 // Chunk-load retry helper for lazy-loaded routes
 function lazyWithRetry<T extends React.ComponentType<any>>(
@@ -80,16 +82,13 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
-const PageSkeleton: React.FC = () => (
-  <div className="space-y-4 p-4 animate-pulse">
-    <div className="h-8 w-56 bg-slate-200 rounded-xl" />
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div className="h-24 bg-slate-100 rounded-2xl" />
-      <div className="h-24 bg-slate-100 rounded-2xl" />
-      <div className="h-24 bg-slate-100 rounded-2xl" />
+const RouteFallback: React.FC = () => (
+  <>
+    <TopBar active />
+    <div className="p-4 sm:p-8 max-w-6xl mx-auto">
+      <InlineLoader label="Loading page..." />
     </div>
-    <div className="h-56 bg-slate-100 rounded-2xl" />
-  </div>
+  </>
 );
 
 // Generic placeholder for sub-pages
@@ -127,6 +126,12 @@ function RouteTracker() {
 
 export default function App() {
   const { user, isAuthenticated, initialising, hydrateSession } = useAuthStore();
+  const loadingState = useLoadingStage({
+    isLoading: initialising,
+    role: user?.role,
+    enableHealthPing: true,
+    onRetry: hydrateSession,
+  });
 
   useEffect(() => {
     hydrateSession();
@@ -147,23 +152,18 @@ export default function App() {
   };
 
   if (initialising) {
+    if (!loadingState.visible) {
+      return <div className="min-h-screen bg-surface" />;
+    }
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white px-4">
-        <div className="relative flex flex-col items-center">
-          <div className="animate-pulse">
-            <BrandLogo size="xl" />
-          </div>
-          <div className="mt-6 flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-brand-600 animate-ping" />
-            <h2 className="text-lg font-heading font-extrabold text-content tracking-tight">
-              Velan AI
-            </h2>
-          </div>
-          <p className="text-xs text-content-secondary mt-1.5 font-medium">
-            Restoring your session &amp; syncing live data...
-          </p>
-        </div>
-      </div>
+      <LoadingScreen
+        stage={loadingState.stage}
+        statusTitle={loadingState.statusTitle}
+        helperText={loadingState.helperText}
+        isOffline={loadingState.isOffline}
+        isFadingOut={loadingState.isFadingOut}
+        onRetry={loadingState.retry}
+      />
     );
   }
 
@@ -171,7 +171,7 @@ export default function App() {
     <AppErrorBoundary>
     <BrowserRouter>
       <RouteTracker />
-      <Suspense fallback={<PageSkeleton />}>
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route
           path="/login"

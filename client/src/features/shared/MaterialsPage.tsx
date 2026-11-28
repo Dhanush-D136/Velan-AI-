@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -211,7 +211,7 @@ export const MaterialsPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return <DatabaseLoader message="Loading Material Library..." subtext="Fetching notes, slides, and question papers" />;
+    return <InlineLoader label="Loading Material Library..." subtext="Fetching notes, slides, and question papers" />;
   }
 
   return (

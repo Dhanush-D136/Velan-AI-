@@ -280,7 +280,7 @@ export const RushWaitingScreen: React.FC<RushWaitingScreenProps> = ({
       )}
 
       <div className="w-full max-w-md mx-auto flex flex-col items-center text-center space-y-5">
-        <div className={reducedMotion ? '' : 'animate-pulse'}>
+        <div className={reducedMotion ? '' : ''}>
           <BrandLogo size="md" />
         </div>
 

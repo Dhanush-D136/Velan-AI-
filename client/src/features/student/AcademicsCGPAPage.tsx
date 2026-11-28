@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
@@ -255,7 +255,7 @@ export const AcademicsCGPAPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return <DatabaseLoader message="Loading Academics & CGPA..." subtext="Fetching your semesters, grades, and regulation scale" />;
+    return <InlineLoader label="Loading Academics & CGPA..." subtext="Fetching your semesters, grades, and regulation scale" />;
   }
 
   const semesters = data?.semesters || [];

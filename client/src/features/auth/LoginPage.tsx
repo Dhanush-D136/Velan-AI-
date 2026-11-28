@@ -313,7 +313,7 @@ export const LoginPage: React.FC = () => {
           aria-hidden="true"
           viewBox="0 0 400 320"
           className={`absolute right-4 top-6 w-64 sm:w-80 lg:w-[420px] opacity-20 pointer-events-none select-none ${
-            prefersReducedMotion ? '' : 'animate-pulse'
+            prefersReducedMotion ? '' : ''
           }`}
           style={{ animationDuration: '9s' }}
           fill="none"

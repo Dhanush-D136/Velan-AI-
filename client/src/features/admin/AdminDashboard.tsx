@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -88,8 +88,8 @@ export const AdminDashboard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <DatabaseLoader
-        message="Please wait, loading Admin Command Center..."
+      <InlineLoader
+        label="Please wait, loading Admin Command Center..."
         subtext="Syncing live attendance, classes, and alerts from Supabase"
       />
     );
@@ -105,7 +105,7 @@ export const AdminDashboard: React.FC = () => {
               Velan AI Command Center
             </span>
             <span className="flex items-center gap-1 text-xs text-accent-cyan font-semibold">
-              <span className="w-2 h-2 rounded-full bg-accent-cyan animate-pulse" /> Live System Active
+              <span className="w-2 h-2 rounded-full bg-accent-cyan " /> Live System Active
             </span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-heading font-extrabold tracking-tight">
@@ -257,7 +257,7 @@ export const AdminDashboard: React.FC = () => {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-heading font-bold text-content flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-accent-emerald animate-ping" />
+              <span className="w-2.5 h-2.5 rounded-full bg-accent-emerald " />
               Live Geofences
             </h3>
             <span

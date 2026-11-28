@@ -28,6 +28,48 @@
   --velan-login-white: #FFFFFF;
   --velan-login-lavender: #F5F3FF;
   --velan-login-surface: #FBFAFF;
+  --velan-brand-violet: #7C3AED;
+  --velan-brand-magenta: #DB2777;
+  --velan-brand-tint: rgba(124, 58, 237, 0.14);
+}
+
+@keyframes velan-line-sweep {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(150%);
+  }
+}
+
+@keyframes velan-line-fill-reduced {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(0%);
+  }
+}
+
+@keyframes velan-spinner-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.velan-loading-bar {
+  width: 40%;
+  background: linear-gradient(90deg, var(--velan-brand-violet) 0%, var(--velan-brand-magenta) 100%);
+  animation: velan-line-sweep 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  will-change: transform;
+}
+
+.velan-spinner {
+  animation: velan-spinner-rotate 0.9s linear infinite;
+  will-change: transform;
 }
 
 @keyframes sunrise-drift {
@@ -140,6 +182,10 @@
     animation: none !important;
     transform: none !important;
     width: 100% !important;
+  }
+  .velan-loading-bar {
+    width: 100% !important;
+    animation: velan-line-fill-reduced 3s linear infinite !important;
   }
 }
 

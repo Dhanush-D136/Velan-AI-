@@ -106,7 +106,7 @@ export const LiveAttendanceMonitor: React.FC = () => {
               Live Attendance Monitor
             </h1>
             <Badge variant="success" size="sm">
-              <span className="w-2 h-2 rounded-full bg-accent-emerald animate-ping mr-1" />
+              <span className="w-2 h-2 rounded-full bg-accent-emerald  mr-1" />
               Live Socket.IO Stream
             </Badge>
           </div>
@@ -166,7 +166,7 @@ export const LiveAttendanceMonitor: React.FC = () => {
 
                 <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10">
                   <div className="flex items-center gap-2 text-accent-cyan">
-                    <Clock className="w-5 h-5 animate-pulse" />
+                    <Clock className="w-5 h-5 " />
                     <span className="text-xl font-mono font-bold">{formatRemaining(session.expiresAt)}</span>
                   </div>
                   <span className="text-xs text-slate-300 mt-1">{session.className}</span>

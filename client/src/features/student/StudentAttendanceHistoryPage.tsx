@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -58,7 +58,7 @@ export const StudentAttendanceHistoryPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto">
-        <DatabaseLoader message="Loading your attendance history..." subtext="Syncing subject percentages from Supabase" />
+        <InlineLoader label="Loading your attendance history..." subtext="Syncing subject percentages from Supabase" />
       </div>
     );
   }

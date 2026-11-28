@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
 import { useToast } from '@/components/ui/Toast';
+import { TopBar } from '@/components/ui/LoadingScreen';
 import { clsx } from 'clsx';
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -236,6 +237,8 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white flex flex-col antialiased">
+      <TopBar active={isReconnecting || isServerWaking} />
+
       {/* Reconnecting banner on transient network/5xx errors */}
       {isReconnecting && (
         <div className="bg-amber-500 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 shadow-sm z-50">
@@ -246,7 +249,7 @@ export const AppLayout: React.FC = () => {
 
       {/* Calm free-tier waking up server banner */}
       {isServerWaking && (
-        <div className="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2 shadow-sm animate-pulse z-50">
+        <div className="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2 shadow-sm z-50">
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
           <span>Waking up server, please wait…</span>
         </div>
@@ -406,7 +409,7 @@ export const AppLayout: React.FC = () => {
                   <span
                     className={clsx(
                       'w-2 h-2 rounded-full mt-1.5 shrink-0',
-                      n.isRead ? 'bg-slate-300' : 'bg-brand-500 animate-pulse'
+                      n.isRead ? 'bg-slate-300' : 'bg-brand-500'
                     )}
                   />
                   <div className="flex-1 min-w-0">

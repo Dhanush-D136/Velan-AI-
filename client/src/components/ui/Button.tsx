@@ -1,12 +1,13 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from './LoadingScreen';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'soft' | 'ghost' | 'danger' | 'admin' | 'faculty' | 'student';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
+  loadingLabel?: string;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
 }
@@ -17,6 +18,7 @@ export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   size = 'md',
   isLoading = false,
+  loadingLabel,
   leftIcon,
   rightIcon,
   disabled,
@@ -57,11 +59,16 @@ export const Button: React.FC<ButtonProps> = ({
       {...props}
     >
       {isLoading ? (
-        <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+        <Spinner size={18} className="mr-1.5" />
       ) : (
         leftIcon && <span className="inline-flex shrink-0">{leftIcon}</span>
       )}
-      <span>{children}</span>
+      <span>
+        {isLoading
+          ? loadingLabel ||
+            (typeof children === 'string' && /^save/i.test(children.trim()) ? 'Saving...' : children)
+          : children}
+      </span>
       {!isLoading && rightIcon && <span className="inline-flex shrink-0">{rightIcon}</span>}
     </button>
   );

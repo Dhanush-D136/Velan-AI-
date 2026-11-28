@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -68,7 +68,7 @@ export const AdvisorAcademicsPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return <DatabaseLoader message="Loading Advisee Academics..." subtext="Fetching CGPA, credits, and arrears for your advised class" />;
+    return <InlineLoader label="Loading Advisee Academics..." subtext="Fetching CGPA, credits, and arrears for your advised class" />;
   }
 
   if (notAdvisor) {

@@ -64,7 +64,7 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between text-xs text-content-secondary px-2">
           <span>v1.0 • Enterprise</span>
           <span className="flex items-center gap-1 text-accent-emerald font-semibold">
-            <span className="w-2 h-2 rounded-full bg-accent-emerald animate-pulse" /> Live System
+            <span className="w-2 h-2 rounded-full bg-accent-emerald " /> Live System
           </span>
         </div>
       </div>

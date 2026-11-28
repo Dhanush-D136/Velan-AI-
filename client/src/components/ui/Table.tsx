@@ -52,10 +52,10 @@ export function Table<T>({
           <tbody className="divide-y divide-border text-sm">
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="animate-pulse">
+                <tr key={i}>
                   {columns.map((col) => (
                     <td key={col.key} className="px-6 py-4">
-                      <div className="h-4 bg-slate-200 rounded-md w-3/4"></div>
+                      <div className="h-4 bg-slate-200/70 rounded-md w-3/4"></div>
                     </td>
                   ))}
                 </tr>

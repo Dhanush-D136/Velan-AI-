@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -174,7 +174,7 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto">
-        <DatabaseLoader message="Loading saved attendance sessions..." subtext="Syncing class records from Supabase" />
+        <InlineLoader label="Loading saved attendance sessions..." subtext="Syncing class records from Supabase" />
       </div>
     );
   }
@@ -220,7 +220,7 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
             </div>
 
             {isDetailLoading || !sessionDetail ? (
-              <DatabaseLoader message="Loading class student roster..." />
+              <InlineLoader label="Loading class student roster..." />
             ) : (
               <>
                 <Card className="p-6 bg-gradient-to-r from-slate-900 to-indigo-950 text-white">

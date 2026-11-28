@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Switch } from '@/components/ui/Switch';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -66,7 +66,7 @@ export const SkipCalculatorPage: React.FC = () => {
   );
 
   if (isLoading) {
-    return <DatabaseLoader message="Calculating your skip margins..." subtext="Analyzing closed sessions, timetable, and holidays" />;
+    return <InlineLoader label="Calculating your skip margins..." subtext="Analyzing closed sessions, timetable, and holidays" />;
   }
 
   if (!data) {

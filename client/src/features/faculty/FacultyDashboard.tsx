@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -64,8 +64,8 @@ export const FacultyDashboard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <DatabaseLoader
-        message="Please wait, loading your Faculty Hub..."
+      <InlineLoader
+        label="Please wait, loading your Faculty Hub..."
         subtext="Syncing your timetable and assigned classes from Supabase"
       />
     );

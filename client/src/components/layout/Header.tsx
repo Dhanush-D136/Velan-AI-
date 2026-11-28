@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Bell className="w-5 h-5" />
           {unreadNotificationsCount > 0 && (
-            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent-rose animate-pulse ring-2 ring-white" />
+            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent-rose  ring-2 ring-white" />
           )}
         </button>
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
@@ -100,7 +100,7 @@ export const AdminLiveMonitorPage: React.FC = () => {
   }, [fetchAll, showToast]);
 
   if (isLoading) {
-    return <DatabaseLoader message="Loading Admin Live Monitor..." subtext="Connecting real-time presence and server health telemetry" />;
+    return <InlineLoader label="Loading Admin Live Monitor..." subtext="Connecting real-time presence and server health telemetry" />;
   }
 
   const presence = overview?.presence || {

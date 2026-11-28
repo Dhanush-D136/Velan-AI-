@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DatabaseLoader } from '@/components/ui/DatabaseLoader';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -77,8 +77,8 @@ export const StudentDashboard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <DatabaseLoader
-        message="Please wait, loading your Student Dashboard..."
+      <InlineLoader
+        label="Please wait, loading your Student Dashboard..."
         subtext="Checking active GPS sessions, timetable, and attendance from Supabase"
       />
     );
@@ -150,7 +150,7 @@ export const StudentDashboard: React.FC = () => {
       {activeSession && (
         <div className="p-5 rounded-3xl bg-brand-gradient text-white shadow-glass relative overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
           <div className="flex items-center gap-4">
-            <div className="p-3.5 rounded-2xl bg-white/20 backdrop-blur-md text-white shrink-0 animate-bounce">
+            <div className="p-3.5 rounded-2xl bg-white/20 backdrop-blur-md text-white shrink-0 ">
               <CalendarCheck2 className="w-6 h-6" />
             </div>
             <div>
