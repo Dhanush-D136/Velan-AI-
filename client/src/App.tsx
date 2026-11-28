@@ -8,34 +8,46 @@ import { LoginPage } from './features/auth/LoginPage';
 import { ForcePasswordChangePage } from './features/auth/ForcePasswordChangePage';
 import { AppLayout } from './components/layout/AppLayout';
 
+// Chunk-load retry helper for lazy-loaded routes
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+): React.LazyExoticComponent<T> {
+  return lazy(() =>
+    factory().catch(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+      return factory();
+    })
+  );
+}
+
 // Lazy-loaded Route Bundles (Role & Feature Code Splitting)
-const AdminDashboard = lazy(() => import('./features/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
-const LiveAttendanceMonitor = lazy(() => import('./features/admin/LiveAttendanceMonitor').then((m) => ({ default: m.LiveAttendanceMonitor })));
-const TimetableBuilder = lazy(() => import('./features/admin/TimetableBuilder').then((m) => ({ default: m.TimetableBuilder })));
-const FacultyManagement = lazy(() => import('./features/admin/FacultyManagement').then((m) => ({ default: m.FacultyManagement })));
-const StudentManagement = lazy(() => import('./features/admin/StudentManagement').then((m) => ({ default: m.StudentManagement })));
-const AcademicsManagement = lazy(() => import('./features/admin/AcademicsManagement').then((m) => ({ default: m.AcademicsManagement })));
-const AdminRequestsPage = lazy(() => import('./features/admin/AdminRequestsPage').then((m) => ({ default: m.AdminRequestsPage })));
-const ReportsPage = lazy(() => import('./features/admin/ReportsPage').then((m) => ({ default: m.ReportsPage })));
-const AdminLiveMonitorPage = lazy(() => import('./features/admin/AdminLiveMonitorPage').then((m) => ({ default: m.AdminLiveMonitorPage })));
-const AdminAcademicsPortal = lazy(() => import('./features/admin/AdminAcademicsPortal').then((m) => ({ default: m.AdminAcademicsPortal })));
+const AdminDashboard = lazyWithRetry(() => import('./features/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const LiveAttendanceMonitor = lazyWithRetry(() => import('./features/admin/LiveAttendanceMonitor').then((m) => ({ default: m.LiveAttendanceMonitor })));
+const TimetableBuilder = lazyWithRetry(() => import('./features/admin/TimetableBuilder').then((m) => ({ default: m.TimetableBuilder })));
+const FacultyManagement = lazyWithRetry(() => import('./features/admin/FacultyManagement').then((m) => ({ default: m.FacultyManagement })));
+const StudentManagement = lazyWithRetry(() => import('./features/admin/StudentManagement').then((m) => ({ default: m.StudentManagement })));
+const AcademicsManagement = lazyWithRetry(() => import('./features/admin/AcademicsManagement').then((m) => ({ default: m.AcademicsManagement })));
+const AdminRequestsPage = lazyWithRetry(() => import('./features/admin/AdminRequestsPage').then((m) => ({ default: m.AdminRequestsPage })));
+const ReportsPage = lazyWithRetry(() => import('./features/admin/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const AdminLiveMonitorPage = lazyWithRetry(() => import('./features/admin/AdminLiveMonitorPage').then((m) => ({ default: m.AdminLiveMonitorPage })));
+const AdminAcademicsPortal = lazyWithRetry(() => import('./features/admin/AdminAcademicsPortal').then((m) => ({ default: m.AdminAcademicsPortal })));
 
-const FacultyDashboard = lazy(() => import('./features/faculty/FacultyDashboard').then((m) => ({ default: m.FacultyDashboard })));
-const FacultyAttendancePage = lazy(() => import('./features/faculty/FacultyAttendancePage').then((m) => ({ default: m.FacultyAttendancePage })));
-const AdvisorAcademicsPage = lazy(() => import('./features/faculty/AdvisorAcademicsPage').then((m) => ({ default: m.AdvisorAcademicsPage })));
+const FacultyDashboard = lazyWithRetry(() => import('./features/faculty/FacultyDashboard').then((m) => ({ default: m.FacultyDashboard })));
+const FacultyAttendancePage = lazyWithRetry(() => import('./features/faculty/FacultyAttendancePage').then((m) => ({ default: m.FacultyAttendancePage })));
+const AdvisorAcademicsPage = lazyWithRetry(() => import('./features/faculty/AdvisorAcademicsPage').then((m) => ({ default: m.AdvisorAcademicsPage })));
 
-const StudentDashboard = lazy(() => import('./features/student/StudentDashboard').then((m) => ({ default: m.StudentDashboard })));
-const StudentMarkAttendancePage = lazy(() => import('./features/student/StudentMarkAttendancePage').then((m) => ({ default: m.StudentMarkAttendancePage })));
-const StudentAttendanceHistoryPage = lazy(() => import('./features/student/StudentAttendanceHistoryPage').then((m) => ({ default: m.StudentAttendanceHistoryPage })));
-const SkipCalculatorPage = lazy(() => import('./features/student/SkipCalculatorPage').then((m) => ({ default: m.SkipCalculatorPage })));
-const AcademicsCGPAPage = lazy(() => import('./features/student/AcademicsCGPAPage').then((m) => ({ default: m.AcademicsCGPAPage })));
+const StudentDashboard = lazyWithRetry(() => import('./features/student/StudentDashboard').then((m) => ({ default: m.StudentDashboard })));
+const StudentMarkAttendancePage = lazyWithRetry(() => import('./features/student/StudentMarkAttendancePage').then((m) => ({ default: m.StudentMarkAttendancePage })));
+const StudentAttendanceHistoryPage = lazyWithRetry(() => import('./features/student/StudentAttendanceHistoryPage').then((m) => ({ default: m.StudentAttendanceHistoryPage })));
+const SkipCalculatorPage = lazyWithRetry(() => import('./features/student/SkipCalculatorPage').then((m) => ({ default: m.SkipCalculatorPage })));
+const AcademicsCGPAPage = lazyWithRetry(() => import('./features/student/AcademicsCGPAPage').then((m) => ({ default: m.AcademicsCGPAPage })));
 
-const ClassChatPage = lazy(() => import('./features/chat/ClassChatPage').then((m) => ({ default: m.ClassChatPage })));
-const AIAssistantPage = lazy(() => import('./features/ai/AIAssistantPage').then((m) => ({ default: m.AIAssistantPage })));
-const SettingsPage = lazy(() => import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
-const AttendanceHistoryEditorPage = lazy(() => import('./features/shared/AttendanceHistoryEditorPage').then((m) => ({ default: m.AttendanceHistoryEditorPage })));
-const AssignmentsPage = lazy(() => import('./features/shared/AssignmentsPage').then((m) => ({ default: m.AssignmentsPage })));
-const MaterialsPage = lazy(() => import('./features/shared/MaterialsPage').then((m) => ({ default: m.MaterialsPage })));
+const ClassChatPage = lazyWithRetry(() => import('./features/chat/ClassChatPage').then((m) => ({ default: m.ClassChatPage })));
+const AIAssistantPage = lazyWithRetry(() => import('./features/ai/AIAssistantPage').then((m) => ({ default: m.AIAssistantPage })));
+const SettingsPage = lazyWithRetry(() => import('./features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AttendanceHistoryEditorPage = lazyWithRetry(() => import('./features/shared/AttendanceHistoryEditorPage').then((m) => ({ default: m.AttendanceHistoryEditorPage })));
+const AssignmentsPage = lazyWithRetry(() => import('./features/shared/AssignmentsPage').then((m) => ({ default: m.AssignmentsPage })));
+const MaterialsPage = lazyWithRetry(() => import('./features/shared/MaterialsPage').then((m) => ({ default: m.MaterialsPage })));
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {

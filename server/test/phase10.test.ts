@@ -76,15 +76,28 @@ describe('Phase 10 Hotfix: Zero Force-Logout, 20x Refresh Persistence, Open Pass
     if (deptId) await prisma.department.delete({ where: { id: deptId } }).catch(() => { });
   });
 
-  it('1. Admin username on Student tab shows friendly message; old force-logout routes return 404', async () => {
-    const wrongTab = await request(app).post('/api/auth/login').send({
+  it('1. Strict role tabs: valid credentials on wrong tab return ROLE_TAB_MISMATCH; wrong password returns 401; old force-logout routes return 404', async () => {
+    // Admin on Student tab -> ROLE_TAB_MISMATCH
+    const wrongTabAdmin = await request(app).post('/api/auth/login').send({
       identifier: 'Vel',
       password: process.env.ADMIN_PASSWORD || 'elite minds',
       expectedRole: 'STUDENT',
       deviceId: `p10_tab_${runId}`,
     });
-    expect(wrongTab.status).toBe(403);
-    expect(wrongTab.body.error).toBe('This is an admin account. Please use the Admin tab.');
+    expect(wrongTabAdmin.status).toBe(403);
+    expect(wrongTabAdmin.body.code).toBe('ROLE_TAB_MISMATCH');
+    expect(wrongTabAdmin.body.targetRole).toBe('ADMIN');
+    expect(wrongTabAdmin.body.error).toBe('This is an admin account. Please use the Admin tab.');
+
+    // Wrong password on wrong tab must NOT leak role (returns generic 401)
+    const wrongPwd = await request(app).post('/api/auth/login').send({
+      identifier: 'Vel',
+      password: 'WrongPassword123',
+      expectedRole: 'STUDENT',
+      deviceId: `p10_tab_${runId}`,
+    });
+    expect(wrongPwd.status).toBe(401);
+    expect(wrongPwd.body.code).toBeUndefined();
 
     const old1 = await request(app)
       .post('/api/admin/monitor/force-logout')

@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
-import { BottomBar } from './BottomBar';
+import { MobileNavigation } from './MobileNavigation';
 import { getRoleNavItems } from './navConfig';
 import { Modal } from '@/components/ui/Modal';
-import { BrandLogo } from '@/components/ui/BrandLogo';
-import { Command, Search, Sparkles, CalendarCheck2, Users, FileText, Loader2, X, LogOut, Bell, CheckCheck, Smartphone } from 'lucide-react';
+import { Command, Search, Sparkles, CalendarCheck2, Users, FileText, Loader2, Bell, CheckCheck, Smartphone } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -280,83 +279,12 @@ export const AppLayout: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Floating Bottom Bar */}
-      <BottomBar onOpenMobileMenu={() => setIsMobileMenuOpen(true)} />
-
-      {/* Mobile Full Navigation Drawer (all desktop options accessible on mobile) */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden flex">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-            <motion.aside
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-              className="relative z-10 w-80 max-w-[85vw] h-full bg-white shadow-2xl flex flex-col overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-5 py-5 border-b border-border">
-                <div className="flex items-center gap-3">
-                  <BrandLogo size="sm" />
-                  <div>
-                    <h2 className="font-heading font-extrabold text-lg text-content">Velan AI</h2>
-                    <p className="text-[10px] font-bold uppercase text-content-secondary">
-                      {user?.role} Portal
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-2 rounded-xl text-content-secondary hover:bg-surface-muted"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-                {mobileNavItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to.split('/').length <= 2}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={({ isActive }) =>
-                      clsx(
-                        'flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all',
-                        isActive
-                          ? 'bg-brand-gradient text-white shadow-md'
-                          : 'text-content-secondary hover:text-content hover:bg-surface-soft'
-                      )
-                    }
-                  >
-                    {item.icon}
-                    <span>{item.label}</span>
-                  </NavLink>
-                ))}
-              </div>
-
-              <div className="p-4 border-t border-border">
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    logout();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-rose-50 text-rose-700 font-semibold text-xs hover:bg-rose-100"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Sign Out ({user?.name})
-                </button>
-              </div>
-            </motion.aside>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Unified Mobile Navigation (Bottom Bar + Drawer for all roles) */}
+      <MobileNavigation
+        isOpen={isMobileMenuOpen}
+        onOpen={() => setIsMobileMenuOpen(true)}
+        onClose={() => setIsMobileMenuOpen(false)}
+      />
 
       {/* Command Palette (Ctrl+K) */}
       <Modal

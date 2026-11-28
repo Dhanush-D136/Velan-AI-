@@ -174,14 +174,7 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid login credentials. User not found.' });
     }
 
-    const expectedRole = req.body?.expectedRole ? String(req.body.expectedRole).toUpperCase() : null;
-    if (expectedRole && user.role === 'ADMIN' && expectedRole !== 'ADMIN') {
-      return res.status(403).json({
-        error: 'This is an admin account. Please use the Admin tab.',
-      });
-    }
-
-    // 2. Validate password
+    // 2. Validate password FIRST (never leak role for wrong passwords)
     const passwordValid = await bcrypt.compare(password, user.passwordHash);
     if (!passwordValid) {
       enqueueAuthEvent({
@@ -194,6 +187,21 @@ export const login = async (req: Request, res: Response) => {
         details: 'Incorrect password',
       });
       return res.status(401).json({ error: 'Incorrect password.' });
+    }
+
+    const expectedRole = req.body?.expectedRole ? String(req.body.expectedRole).toUpperCase() : null;
+    if (expectedRole && user.role !== expectedRole) {
+      const roleLabels: Record<string, { article: string; name: string; tab: string }> = {
+        ADMIN: { article: 'an', name: 'admin', tab: 'Admin' },
+        FACULTY: { article: 'a', name: 'faculty', tab: 'Faculty' },
+        STUDENT: { article: 'a', name: 'student', tab: 'Student' },
+      };
+      const info = roleLabels[user.role] || { article: 'a', name: user.role.toLowerCase(), tab: user.role };
+      return res.status(403).json({
+        code: 'ROLE_TAB_MISMATCH',
+        targetRole: user.role,
+        error: `This is ${info.article} ${info.name} account. Please use the ${info.tab} tab.`,
+      });
     }
 
     if (user.status !== 'ACTIVE') {

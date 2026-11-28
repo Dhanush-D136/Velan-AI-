@@ -30,6 +30,17 @@ const ROLE_OPTIONS = [
   { role: UserRole.ADMIN, label: 'Admin', icon: Shield },
 ] as const;
 
+// 46 deterministic twinkling stars (24 shown on mobile, all 46 on desktop)
+const STARS = Array.from({ length: 46 }, (_, i) => {
+  const s1 = ((i * 37 + 13) % 94) + 3;
+  const s2 = ((i * 53 + 29) % 88) + 5;
+  const size = 1.5 + ((i * 19) % 25) / 10; // 1.5 to 4.0 px
+  const duration = 2 + ((i * 23) % 35) / 10; // 2.0 to 5.5 s
+  const delay = -(((i * 31) % 50) / 10);
+  const isGold = i % 5 === 0; // ~20% gold
+  return { id: i, left: `${s1}%`, top: `${s2}%`, size, duration, delay, isGold };
+});
+
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { setUser, getDeviceId } = useAuthStore();
@@ -91,16 +102,20 @@ export const LoginPage: React.FC = () => {
   const [deviceResetId, setDeviceResetId] = useState('');
   const [deviceLimitBanner, setDeviceLimitBanner] = useState('');
   const [isDeviceLimitError, setIsDeviceLimitError] = useState(false);
+  const [mismatchTargetRole, setMismatchTargetRole] = useState<UserRole | null>(null);
 
   const line1Words = useMemo(() => LOGIN_KURAL_CONFIG.line1.split(' '), []);
   const line2Words = useMemo(() => LOGIN_KURAL_CONFIG.line2.split(' '), []);
 
-  const handleRoleChange = (role: UserRole) => {
+  const handleRoleChange = (role: UserRole, preserveInputs = false) => {
     setSelectedRole(role);
     setErrorMessage('');
     setIsDeviceLimitError(false);
-    setIdentifier('');
-    setPassword('');
+    setMismatchTargetRole(null);
+    if (!preserveInputs) {
+      setIdentifier('');
+      setPassword('');
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -110,6 +125,7 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
     setErrorMessage('');
     setIsDeviceLimitError(false);
+    setMismatchTargetRole(null);
 
     try {
       const deviceId = getDeviceId();
@@ -148,7 +164,10 @@ export const LoginPage: React.FC = () => {
         err.message ||
         'Authentication failed. Please verify your credentials.';
 
-      if (serverCode === 'DEVICE_LIMIT_REACHED' || serverCode === 'DEVICE_LOCKED') {
+      if (serverCode === 'ROLE_TAB_MISMATCH' && err.response?.data?.targetRole) {
+        setMismatchTargetRole(err.response.data.targetRole as UserRole);
+        setErrorMessage(serverError);
+      } else if (serverCode === 'DEVICE_LIMIT_REACHED' || serverCode === 'DEVICE_LOCKED') {
         setDeviceResetId(identifier.trim());
         setDeviceLimitBanner(serverError);
         setErrorMessage(serverError);
@@ -257,17 +276,37 @@ export const LoginPage: React.FC = () => {
       {/* LEFT / TOP: KURAL 391 HERO PANEL */}
       <section
         aria-label="Thirukkural 391 Inspiration"
-        className={`relative w-full lg:w-[50%] xl:w-[56%] shrink-0 kural-sunrise-bg text-white flex flex-col justify-between overflow-hidden transition-[padding,min-height] duration-300 ${
+        className={`relative w-full lg:w-[50%] xl:w-[56%] shrink-0 kural-hero-container kural-sunrise-bg text-white flex flex-col justify-between overflow-hidden transition-[padding,min-height] duration-300 ${
           isKeyboardOpen
             ? 'px-5 pt-4 pb-6'
             : isShortScreen
               ? 'px-5 py-4'
-              : 'px-5 pt-5 pb-10 sm:px-8 sm:pt-7 sm:pb-12 lg:p-10 xl:p-14 lg:h-full'
+              : 'px-5 pt-5 pb-10 sm:px-8 sm:pt-7 sm:pb-12 lg:p-10 lg:pr-20 xl:p-14 xl:pr-28 lg:h-full'
         }`}
       >
         {/* Subtle contrast scrim + palm-leaf manuscript texture */}
         <div className="absolute inset-0 bg-[#1E1B4B]/20 pointer-events-none" aria-hidden="true" />
         <div className="absolute inset-0 kural-palm-texture pointer-events-none" aria-hidden="true" />
+
+        {/* Twinkling Stars (46 desktop / 24 mobile, behind text) */}
+        <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
+          {STARS.map((star) => (
+            <span
+              key={star.id}
+              className={`kural-star absolute rounded-full ${star.id >= 24 ? 'hidden lg:block' : ''}`}
+              style={{
+                left: star.left,
+                top: star.top,
+                width: `${star.size}px`,
+                height: `${star.size}px`,
+                backgroundColor: star.isGold ? '#FBBF24' : '#FFFFFF',
+                boxShadow: star.isGold ? '0 0 6px rgba(251,191,36,0.7)' : '0 0 6px rgba(255,255,255,0.65)',
+                animationDuration: `${star.duration}s`,
+                animationDelay: `${star.delay}s`,
+              }}
+            />
+          ))}
+        </div>
 
         {/* Original Inline SVG: Faint AI "V" Constellation Nodes */}
         <svg
@@ -331,16 +370,6 @@ export const LoginPage: React.FC = () => {
         {/* Center-left Kural Block */}
         {!isKeyboardOpen && (
           <div className="relative z-10 my-auto py-3 sm:py-5 lg:py-0 max-w-2xl">
-            {/* Large faint gold opening quote mark */}
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 80 64"
-              className="hidden sm:block absolute -left-4 -top-6 w-20 h-16 text-[#FBBF24]/15 pointer-events-none select-none"
-              fill="currentColor"
-            >
-              <path d="M18 8C8 14 2 24 2 38c0 11 7 18 16 18 8 0 14-6 14-14 0-8-6-13-13-13-2 0-4 .5-5 1.2C15 21 20 15 27 11L18 8zm38 0C46 14 40 24 40 38c0 11 7 18 16 18 8 0 14-6 14-14 0-8-6-13-13-13-2 0-4 .5-5 1.2C53 21 58 15 65 11L56 8z" />
-            </svg>
-
             {/* Kural Pill */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/25 text-[11px] sm:text-xs font-semibold text-[#FDE68A] backdrop-blur-sm mb-3 sm:mb-4">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FBBF24]" aria-hidden="true" />
@@ -350,19 +379,12 @@ export const LoginPage: React.FC = () => {
               </span>
             </div>
 
-            {/* Two-Line Couplet */}
+            {/* Two-Line Couplet (never wraps to 3 lines) */}
             <h2
               lang="ta"
-              className="font-semibold text-white tracking-normal hyphens-none"
-              style={{
-                fontFamily: "'Noto Serif Tamil', 'Noto Sans Tamil', serif",
-                fontWeight: 600,
-                fontSize: 'clamp(1.42rem, 3.1vw, 3.15rem)',
-                lineHeight: 1.65,
-                textShadow: '0 2px 24px rgba(11, 11, 15, 0.28)',
-              }}
+              className="kural-couplet-text text-white tracking-normal hyphens-none"
             >
-              <span className="block">
+              <span className="block whitespace-nowrap">
                 {line1Words.map((word, idx) => (
                   <motion.span
                     key={`l1-${idx}`}
@@ -373,13 +395,13 @@ export const LoginPage: React.FC = () => {
                         ? { duration: 0.2 }
                         : { duration: 0.38, delay: idx * 0.09, ease: 'easeOut' }
                     }
-                    className="inline-block mr-[0.28em]"
+                    className="inline-block mr-[0.26em] last:mr-0"
                   >
                     {word}
                   </motion.span>
                 ))}
               </span>
-              <span className="block">
+              <span className="block whitespace-nowrap">
                 {line2Words.map((word, idx) => (
                   <motion.span
                     key={`l2-${idx}`}
@@ -390,7 +412,7 @@ export const LoginPage: React.FC = () => {
                         ? { duration: 0.2 }
                         : { duration: 0.38, delay: (line1Words.length + idx) * 0.09, ease: 'easeOut' }
                     }
-                    className="inline-block mr-[0.28em]"
+                    className="inline-block mr-[0.26em] last:mr-0"
                   >
                     {word}
                   </motion.span>
@@ -457,11 +479,26 @@ export const LoginPage: React.FC = () => {
           </div>
         )}
 
-        {/* Bottom-left Quiet Tagline (Desktop) */}
-        <div className="relative z-10 hidden lg:flex items-center justify-between text-xs text-white/70 pt-3 border-t border-white/15">
-          <span>{LOGIN_KURAL_CONFIG.tagline}</span>
-          <span className="font-medium text-white/60">{LOGIN_KURAL_CONFIG.productLine}</span>
-        </div>
+        {/* Desktop Smooth S-Curve Edge */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 100 1000"
+          preserveAspectRatio="none"
+          className="hidden lg:block absolute top-0 bottom-0 right-[-1px] h-full pointer-events-none z-10"
+          style={{ width: 'clamp(48px, 5.5vw, 100px)' }}
+        >
+          <path
+            d="M100 0H62C18 170 96 330 52 500S20 860 58 1000H100Z"
+            fill="var(--velan-login-surface, #FBFAFF)"
+          />
+          <path
+            d="M62 0C18 170 96 330 52 500S20 860 58 1000"
+            fill="none"
+            stroke="rgba(255,255,255,0.45)"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
 
         {/* Mobile Smooth Wave Divider flowing into White Sign-In Area */}
         <svg
@@ -481,19 +518,18 @@ export const LoginPage: React.FC = () => {
         className="flex-1 bg-[#FBFAFF] flex flex-col justify-between px-5 py-5 sm:px-10 sm:py-8 lg:px-12 xl:px-16 overflow-y-auto"
       >
         <div className="my-auto w-full max-w-[420px] mx-auto space-y-5 sm:space-y-6">
-          {/* Heading */}
+          {/* Heading with Moving Underline Bar */}
           <div>
-            <h1
-              className="text-2xl sm:text-3xl font-extrabold text-[#0B0B0F] tracking-tight"
-              style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
-            >
-              Welcome back
-            </h1>
-            <div
-              className="h-1 w-14 rounded-full bg-gradient-to-r from-[#7C3AED] via-[#DB2777] to-[#F59E0B] mt-2"
-              aria-hidden="true"
-            />
-            <p className="text-xs sm:text-sm text-slate-600 mt-2.5">
+            <div className="inline-block">
+              <h1 className="welcome-back-display">Welcome back</h1>
+              <div
+                className="mt-2 h-[5px] w-full rounded-full bg-violet-100 overflow-hidden relative"
+                aria-hidden="true"
+              >
+                <div className="welcome-bar-segment h-full w-[38%] rounded-full bg-gradient-to-r from-[#7C3AED] via-[#DB2777] to-[#F59E0B]" />
+              </div>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-600 mt-3">
               Sign in to continue to Velan AI.
             </p>
           </div>
@@ -585,6 +621,15 @@ export const LoginPage: React.FC = () => {
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" aria-hidden="true" />
                   <span className="font-medium leading-relaxed">{errorMessage}</span>
                 </div>
+                {mismatchTargetRole && (
+                  <button
+                    type="button"
+                    onClick={() => handleRoleChange(mismatchTargetRole, true)}
+                    className="inline-flex items-center gap-1 font-bold text-[#7C3AED] hover:underline"
+                  >
+                    Switch to the {mismatchTargetRole === UserRole.ADMIN ? 'Admin' : mismatchTargetRole === UserRole.FACULTY ? 'Faculty' : 'Student'} tab <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {isDeviceLimitError && (
                   <button
                     type="button"
