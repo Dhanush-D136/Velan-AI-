@@ -132,7 +132,19 @@ export const StudentManagement: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedStudentForView, setSelectedStudentForView] = useState<StudentItem | null>(null);
+  const [studentAuditLogs, setStudentAuditLogs] = useState<any[]>([]);
   const [studentToEdit, setStudentToEdit] = useState<StudentItem | null>(null);
+
+  useEffect(() => {
+    if (!selectedStudentForView?.id) {
+      setStudentAuditLogs([]);
+      return;
+    }
+    api
+      .get(`/api/academics/students/${selectedStudentForView.id}/audit`)
+      .then((res) => setStudentAuditLogs(res.data?.logs || []))
+      .catch(() => setStudentAuditLogs([]));
+  }, [selectedStudentForView?.id]);
   const [crOnlyFilter, setCrOnlyFilter] = useState(false);
 
   const handleToggleCR = async (s: StudentItem) => {
@@ -643,7 +655,9 @@ export const StudentManagement: React.FC = () => {
       header: 'Contact Info',
       render: (s) => (
         <div className="text-xs text-content-secondary space-y-0.5">
-          <span className="block font-mono">{s.personalEmail || s.user.email}</span>
+          <span className="block font-mono">
+            {s.personalEmail || (s.user.email && !s.user.email.endsWith('@student.local') ? s.user.email : '—')}
+          </span>
           <span className="block font-mono text-[11px]">{s.phone || s.guardianPhone || '—'}</span>
         </div>
       ),
@@ -1423,6 +1437,31 @@ export const StudentManagement: React.FC = () => {
                       >
                         Revoke
                       </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border">
+              <h4 className="text-xs font-bold text-content uppercase tracking-wider">
+                Recent Profile Self-Edits ({studentAuditLogs.length})
+              </h4>
+              {studentAuditLogs.length === 0 ? (
+                <p className="text-xs text-content-muted">No self-edits recorded yet.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {studentAuditLogs.map((log: any) => (
+                    <div key={log.id} className="p-2.5 rounded-xl bg-slate-50 border border-border text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-content">{log.field}</span>
+                        <span className="text-[11px] text-content-muted">
+                          {new Date(log.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="text-content-secondary mt-0.5">
+                        {log.oldValue || '—'} → <strong className="text-content">{log.newValue || '—'}</strong>
+                      </div>
                     </div>
                   ))}
                 </div>

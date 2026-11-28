@@ -289,4 +289,30 @@ describe('Phase 14: Class Representative (CR) Role, Permissions & Cleanup', () =
       });
     expect(matBlocked.status).toBe(403);
   }, 15000);
+
+  it('4. Login and refresh responses include isCR, crClassId, and crClassName', async () => {
+    const assignRes = await request(app)
+      .post(`/api/academics/students/${crStudentId}/toggle-cr`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(assignRes.status).toBe(200);
+    expect(assignRes.body.isCR).toBe(true);
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: regCR, password: 'crpass', deviceId: `p14_cr_${runId}` });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.user.isCR).toBe(true);
+    expect(loginRes.body.user.crClassId).toBe(classAId);
+    expect(loginRes.body.user.crClassName).toBeTruthy();
+
+    const cookies = loginRes.headers['set-cookie'];
+    if (cookies) {
+      const refreshRes = await request(app)
+        .post('/api/auth/refresh')
+        .set('Cookie', cookies);
+      expect(refreshRes.status).toBe(200);
+      expect(refreshRes.body.user.isCR).toBe(true);
+      expect(refreshRes.body.user.crClassId).toBe(classAId);
+    }
+  }, 15000);
 });

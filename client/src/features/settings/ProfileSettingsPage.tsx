@@ -21,21 +21,22 @@ import {
   CalendarCheck2,
   Edit3,
   AlertCircle,
+  Lock,
+  CheckCircle2,
 } from 'lucide-react';
 
 type TabKey = 'profile' | 'security' | 'preferences' | 'requests';
 
-const STUDENT_EDITABLE_FIELDS = [
+const STUDENT_LOCKED_FIELDS = [
   { key: 'name', label: 'Full Name' },
-  { key: 'phone', label: 'Phone Number' },
-  { key: 'email', label: 'Email Address' },
-  { key: 'guardianName', label: 'Guardian Name' },
-  { key: 'guardianPhone', label: 'Guardian Phone' },
-  { key: 'address', label: 'Residential Address' },
-  { key: 'bloodGroup', label: 'Blood Group' },
-  { key: 'hostelOrDayScholar', label: 'Hostel / Day Scholar' },
-  { key: 'dob', label: 'Date of Birth' },
+  { key: 'registerNo', label: 'Register Number' },
+  { key: 'rollNo', label: 'Roll Number' },
+  { key: 'classId', label: 'Class / Section' },
+  { key: 'departmentId', label: 'Department' },
+  { key: 'other', label: 'Other Academic / Identity Detail' },
 ];
+
+const BLOOD_GROUP_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Prefer not to say'];
 
 async function compressImageToDataUrl(file: File, maxDim = 512): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -79,6 +80,23 @@ export const ProfileSettingsPage: React.FC = () => {
   const [form, setForm] = useState<Record<string, any>>({});
   const [savingProfile, setSavingProfile] = useState(false);
 
+  // Student self-edit profile form
+  const [studentForm, setStudentForm] = useState<Record<string, any>>({
+    phone: '',
+    personalEmail: '',
+    guardianName: '',
+    guardianPhone: '',
+    address: '',
+    bloodGroup: '',
+    hostelOrDayScholar: '',
+    dob: '',
+    photoUrl: '',
+  });
+  const [studentBaseline, setStudentBaseline] = useState<Record<string, any>>({});
+  const [savingStudentProfile, setSavingStudentProfile] = useState(false);
+  const [studentFieldErrors, setStudentFieldErrors] = useState<Record<string, string>>({});
+  const [studentSavedAt, setStudentSavedAt] = useState<string | null>(null);
+
   // Security password form
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -103,7 +121,7 @@ export const ProfileSettingsPage: React.FC = () => {
 
   // Student change request modal
   const [reqModalOpen, setReqModalOpen] = useState(false);
-  const [reqField, setReqField] = useState('phone');
+  const [reqField, setReqField] = useState('name');
   const [reqNewValue, setReqNewValue] = useState('');
   const [reqReason, setReqReason] = useState('');
   const [reqProofUrl, setReqProofUrl] = useState('');
@@ -133,6 +151,25 @@ export const ProfileSettingsPage: React.FC = () => {
             emergencyContact: p.facultyProfile.emergencyContact || '',
             bio: p.facultyProfile.bio || '',
           });
+        }
+        if (p.studentProfile) {
+          const cleanEmail =
+            p.studentProfile.personalEmail ||
+            (p.email && !String(p.email).endsWith('@student.local') ? p.email : '');
+          const nextStudentForm = {
+            phone: p.studentProfile.phone || p.phone || '',
+            personalEmail: cleanEmail,
+            guardianName: p.studentProfile.guardianName || '',
+            guardianPhone: p.studentProfile.guardianPhone || '',
+            address: p.studentProfile.address || '',
+            bloodGroup: p.studentProfile.bloodGroup || '',
+            hostelOrDayScholar: p.studentProfile.hostelOrDayScholar || '',
+            dob: p.studentProfile.dob ? String(p.studentProfile.dob).split('T')[0] : '',
+            photoUrl: p.studentProfile.photoUrl || p.avatarUrl || '',
+          };
+          setStudentForm(nextStudentForm);
+          setStudentBaseline(nextStudentForm);
+          if (p.updatedAt) setStudentSavedAt(p.updatedAt);
         }
       }
       if (isStudent) {
@@ -210,6 +247,85 @@ export const ProfileSettingsPage: React.FC = () => {
       setPwdError(err.response?.data?.error || 'Failed to change password');
     } finally {
       setSavingPwd(false);
+    }
+  };
+
+  const isStudentDirty = isStudent && JSON.stringify(studentForm) !== JSON.stringify(studentBaseline);
+
+  useEffect(() => {
+    if (!isStudentDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isStudentDirty]);
+
+  const handleStudentPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      showToast('Photo must be JPG, PNG, or WebP.', 'error');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Photo exceeds 2 MB size limit.', 'error');
+      return;
+    }
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      setStudentForm((prev) => ({ ...prev, photoUrl: dataUrl }));
+    } catch {
+      showToast('Could not process image file.', 'error');
+    }
+  };
+
+  const handleSaveStudentProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (savingStudentProfile) return;
+    const errs: Record<string, string> = {};
+    const phoneDigits = String(studentForm.phone || '').replace(/[\s()-]/g, '').replace(/^\+?91/, '');
+    if (studentForm.phone && !/^[6-9]\d{9}$/.test(phoneDigits)) {
+      errs.phone = 'Enter a valid 10-digit Indian mobile number.';
+    }
+    if (studentForm.personalEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(studentForm.personalEmail).trim())) {
+      errs.personalEmail = 'Enter a valid email address.';
+    }
+    const gDigits = String(studentForm.guardianPhone || '').replace(/[\s()-]/g, '').replace(/^\+?91/, '');
+    if (studentForm.guardianPhone && !/^[6-9]\d{9}$/.test(gDigits)) {
+      errs.guardianPhone = 'Enter a valid 10-digit Indian mobile number.';
+    }
+    if (studentForm.guardianName && !/^[A-Za-z\s.'-]{2,80}$/.test(String(studentForm.guardianName).trim())) {
+      errs.guardianName = 'Guardian name must be 2–80 letters, spaces, ., \', or -.';
+    }
+    if (studentForm.address && (String(studentForm.address).trim().length < 5 || String(studentForm.address).trim().length > 300)) {
+      errs.address = 'Address must be 5–300 characters.';
+    }
+    setStudentFieldErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      showToast('Please fix the highlighted fields.', 'error');
+      return;
+    }
+
+    setSavingStudentProfile(true);
+    try {
+      const res = await api.patch('/api/me/profile', studentForm);
+      setStudentBaseline(studentForm);
+      setStudentSavedAt(res.data?.updatedAt || new Date().toISOString());
+      if (user) {
+        setUser({
+          ...user,
+          phone: studentForm.phone || user.phone,
+          avatarUrl: studentForm.photoUrl || user.avatarUrl,
+        });
+      }
+      showToast('Profile saved.', 'success');
+      loadAll();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to save profile', 'error');
+    } finally {
+      setSavingStudentProfile(false);
     }
   };
 
@@ -389,51 +505,213 @@ export const ProfileSettingsPage: React.FC = () => {
       )}
 
       {tab === 'profile' && isStudent && (
-        <div className="space-y-5">
+        <form onSubmit={handleSaveStudentProfile} className="space-y-5 pb-20 sm:pb-6">
           <Card className="p-5 sm:p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
-              <div>
-                <h2 className="text-base font-bold text-content">{profileData?.name}</h2>
-                <p className="text-xs font-mono text-content-secondary">
-                  Reg: {sp?.registerNo} · Roll: {sp?.rollNo} · {sp?.class?.name}
-                </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
+              <div className="flex items-center gap-3.5">
+                {studentForm.photoUrl ? (
+                  <img
+                    src={studentForm.photoUrl}
+                    alt={profileData?.name || 'Student'}
+                    className="w-16 h-16 rounded-2xl object-cover border border-border shrink-0"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl bg-brand-50 text-brand-700 font-bold flex items-center justify-center text-lg border border-brand-200 shrink-0">
+                    {(profileData?.name || 'S').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-base font-bold text-content">{profileData?.name}</h2>
+                  <p className="text-xs font-mono text-content-secondary">
+                    Reg: {sp?.registerNo} · Roll: {sp?.rollNo} · {sp?.class?.name}
+                  </p>
+                  {studentSavedAt && (
+                    <p className="text-[11px] text-content-muted mt-0.5 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Last updated {new Date(studentSavedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <label className="min-h-[44px] px-3.5 py-2 rounded-xl border border-border bg-white text-xs font-semibold text-content hover:bg-surface-soft cursor-pointer inline-flex items-center gap-1.5">
+                  <Upload className="w-4 h-4 text-brand-600" />
+                  Change Photo
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleStudentPhotoChange}
+                    className="hidden"
+                  />
+                </label>
                 <Button size="sm" variant="secondary" leftIcon={<CalendarCheck2 className="w-4 h-4" />} onClick={() => navigate('/student/attendance')}>
                   Attendance
                 </Button>
-                <Button size="sm" leftIcon={<Edit3 className="w-4 h-4" />} onClick={() => handleOpenChangeRequest('phone')}>
-                  Request profile change
-                </Button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {STUDENT_EDITABLE_FIELDS.map((f) => (
-                <div key={f.key} className="p-3.5 rounded-2xl border border-border bg-surface-soft flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <span className="text-[11px] font-bold uppercase text-content-secondary block">{f.label}</span>
-                    <span className="text-sm font-semibold text-content truncate block">
-                      {getStudentFieldCurrentValue(f.key) || '—'}
-                    </span>
+            {/* Locked Academic & Identity Fields */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-content-secondary flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5" /> Locked Academic &amp; Identity Fields
+                </h3>
+                <span className="text-[11px] text-content-muted">Only the admin can change this</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { key: 'name', label: 'Full Name', value: profileData?.name },
+                  { key: 'registerNo', label: 'Register Number', value: sp?.registerNo },
+                  { key: 'rollNo', label: 'Roll Number', value: sp?.rollNo },
+                  { key: 'classId', label: 'Class & Department', value: `${sp?.class?.name || ''} ${sp?.class?.academicYear?.department?.code ? `(${sp.class.academicYear.department.code})` : ''}`.trim() },
+                ].map((f) => (
+                  <div key={f.key} className="p-3.5 rounded-2xl border border-border bg-surface-soft flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-bold uppercase text-content-secondary flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-content-muted" /> {f.label}
+                      </span>
+                      <span className="text-sm font-semibold text-content truncate block mt-0.5">
+                        {f.value || '—'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenChangeRequest(f.key)}
+                      className="min-h-[44px] px-3 py-1.5 rounded-xl text-xs font-semibold text-brand-600 hover:bg-brand-50 shrink-0"
+                    >
+                      Request a change
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenChangeRequest(f.key)}
-                    className="min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-semibold text-brand-600 hover:bg-brand-50 shrink-0"
-                  >
-                    Request a change
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className="pt-1 text-xs text-content-secondary space-y-1">
+                <div>Class Advisor: <strong className="text-content">{sp?.class?.advisor?.user?.name || 'Unassigned'}</strong></div>
+                <div>Mentors: <strong className="text-content">{sp?.class?.mentors?.map((m: any) => m.faculty?.user?.name).filter(Boolean).join(', ') || 'None'}</strong></div>
+                {(user as any)?.isCR && (
+                  <div>My roles: <Badge variant="student" size="sm">Class Representative of {(user as any)?.crClassName || sp?.class?.name}</Badge></div>
+                )}
+              </div>
             </div>
 
-            <div className="pt-2 border-t border-border text-xs text-content-secondary space-y-1">
-              <div>Class Advisor: <strong className="text-content">{sp?.class?.advisor?.user?.name || 'Unassigned'}</strong></div>
-              <div>Mentors: <strong className="text-content">{sp?.class?.mentors?.map((m: any) => m.faculty?.user?.name).filter(Boolean).join(', ') || 'None'}</strong></div>
-              {(user as any)?.isCR && (
-                <div>My roles: <Badge variant="student" size="sm">Class Representative of {(user as any)?.crClassName || sp?.class?.name}</Badge></div>
-              )}
+            {/* Direct Self-Edit Personal & Contact Fields */}
+            <div className="pt-4 border-t border-border space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-content-secondary flex items-center gap-1.5">
+                  <Edit3 className="w-3.5 h-3.5 text-brand-600" /> Personal &amp; Contact Details (Editable)
+                </h3>
+                {isStudentDirty && (
+                  <Badge variant="warning" size="sm">Unsaved changes</Badge>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Input
+                    label="Phone Number"
+                    type="tel"
+                    inputMode="numeric"
+                    className="text-base min-h-[48px]"
+                    value={studentForm.phone}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, phone: e.target.value }))}
+                    placeholder="10-digit mobile number"
+                  />
+                  {studentFieldErrors.phone && (
+                    <p className="text-xs text-accent-rose mt-1">{studentFieldErrors.phone}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Input
+                    label="Personal Email (Optional)"
+                    type="email"
+                    className="text-base min-h-[48px]"
+                    value={studentForm.personalEmail}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, personalEmail: e.target.value }))}
+                    placeholder="you@example.com"
+                  />
+                  {studentFieldErrors.personalEmail && (
+                    <p className="text-xs text-accent-rose mt-1">{studentFieldErrors.personalEmail}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Input
+                    label="Guardian Name"
+                    className="text-base min-h-[48px]"
+                    value={studentForm.guardianName}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, guardianName: e.target.value }))}
+                    placeholder="Parent or guardian full name"
+                  />
+                  {studentFieldErrors.guardianName && (
+                    <p className="text-xs text-accent-rose mt-1">{studentFieldErrors.guardianName}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Input
+                    label="Guardian Phone"
+                    type="tel"
+                    inputMode="numeric"
+                    className="text-base min-h-[48px]"
+                    value={studentForm.guardianPhone}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, guardianPhone: e.target.value }))}
+                    placeholder="10-digit guardian mobile"
+                  />
+                  {studentFieldErrors.guardianPhone && (
+                    <p className="text-xs text-accent-rose mt-1">{studentFieldErrors.guardianPhone}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-content-secondary uppercase mb-1.5">Blood Group</label>
+                  <select
+                    value={studentForm.bloodGroup}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, bloodGroup: e.target.value }))}
+                    className="w-full min-h-[48px] px-3.5 rounded-2xl border border-border bg-white text-base"
+                  >
+                    <option value="">Select blood group</option>
+                    {BLOOD_GROUP_OPTIONS.map((bg) => (
+                      <option key={bg} value={bg}>{bg}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-content-secondary uppercase mb-1.5">Residency</label>
+                  <select
+                    value={studentForm.hostelOrDayScholar}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, hostelOrDayScholar: e.target.value }))}
+                    className="w-full min-h-[48px] px-3.5 rounded-2xl border border-border bg-white text-base"
+                  >
+                    <option value="">Select residency</option>
+                    <option value="DAY_SCHOLAR">Day Scholar</option>
+                    <option value="HOSTEL">Hostel</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Input
+                    label="Date of Birth"
+                    type="date"
+                    className="text-base min-h-[48px]"
+                    value={studentForm.dob}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, dob: e.target.value }))}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <Input
+                    label="Residential Address"
+                    className="text-base min-h-[48px]"
+                    value={studentForm.address}
+                    onChange={(e) => setStudentForm((p) => ({ ...p, address: e.target.value }))}
+                    placeholder="House / Street / City / Pincode"
+                  />
+                  {studentFieldErrors.address && (
+                    <p className="text-xs text-accent-rose mt-1">{studentFieldErrors.address}</p>
+                  )}
+                </div>
+              </div>
             </div>
           </Card>
 
@@ -455,7 +733,24 @@ export const ProfileSettingsPage: React.FC = () => {
               </div>
             )}
           </Card>
-        </div>
+
+          <div className="sticky bottom-2 z-10 pb-[env(safe-area-inset-bottom)]">
+            <Card className="p-3.5 flex items-center justify-between gap-3 shadow-lg border-brand-200 bg-white/95 backdrop-blur">
+              <span className="text-xs text-content-secondary">
+                {isStudentDirty ? 'You have unsaved profile changes.' : 'All profile changes saved.'}
+              </span>
+              <Button
+                type="submit"
+                className="min-h-[48px] px-5"
+                isLoading={savingStudentProfile}
+                loadingLabel="Saving..."
+                disabled={!isStudentDirty}
+              >
+                Save Profile
+              </Button>
+            </Card>
+          </div>
+        </form>
       )}
 
       {/* TAB 2: SECURITY */}
@@ -565,7 +860,7 @@ export const ProfileSettingsPage: React.FC = () => {
         <Card className="p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-content">My Profile Change Requests</h2>
-            <Button size="sm" onClick={() => handleOpenChangeRequest('phone')}>
+            <Button size="sm" onClick={() => handleOpenChangeRequest('name')}>
               New Request
             </Button>
           </div>
@@ -612,7 +907,7 @@ export const ProfileSettingsPage: React.FC = () => {
               onChange={(e) => setReqField(e.target.value)}
               className="w-full min-h-[48px] px-3.5 rounded-2xl border border-border bg-white text-base"
             >
-              {STUDENT_EDITABLE_FIELDS.map((f) => (
+              {STUDENT_LOCKED_FIELDS.map((f) => (
                 <option key={f.key} value={f.key}>{f.label}</option>
               ))}
             </select>

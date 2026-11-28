@@ -48,7 +48,7 @@ export const AppLayout: React.FC = () => {
   const [isServerWaking, setIsServerWaking] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout, deviceId } = useAuthStore();
+  const { user, logout, deviceId, refreshMe } = useAuthStore();
   const { showToast } = useToast();
   const mobileNavItems = getRoleNavItems(user?.role);
 
@@ -84,12 +84,38 @@ export const AppLayout: React.FC = () => {
   }, []);
 
   useRealtimeSync(
-    ['notification:new'],
-    () => {
+    ['notification:new', 'roles:changed'],
+    (eventName) => {
+      if (eventName === 'roles:changed') {
+        refreshMe();
+        return;
+      }
       fetchNotifications();
     },
     { userId: user?.id }
   );
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const onFocus = () => {
+      refreshMe();
+    };
+    window.addEventListener('focus', onFocus);
+    const intervalId = setInterval(() => {
+      refreshMe();
+    }, 5 * 60 * 1000);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      clearInterval(intervalId);
+    };
+  }, [user?.id, refreshMe]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (location.pathname === '/student/assignments' || location.pathname === '/student/materials') {
+      refreshMe();
+    }
+  }, [user?.id, location.pathname, refreshMe]);
 
   // 30-second Page Visibility API heartbeat + Optional Idle auto-logout (DEFAULT OFF)
   const [idleWarningOpen, setIdleWarningOpen] = useState(false);

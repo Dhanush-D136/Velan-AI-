@@ -218,4 +218,73 @@ describe('Phase 13: Faculty Handover Delete, Admin Edit, & Role Profile/Settings
     const updatedStudent = await prisma.studentProfile.findUnique({ where: { id: studentId } });
     expect(updatedStudent?.phone).toBe('9998887776');
   }, 20000);
+
+  it('4. Student self-edit via PATCH /api/me/profile updates allowed fields, blocks locked fields with 403, logs audit, and avoids @student.local', async () => {
+    // Locked fields must return 403
+    for (const lockedBody of [
+      { name: 'Hacked Name' },
+      { registerNo: '999999999' },
+      { rollNo: '99' },
+      { classId: '00000000-0000-0000-0000-000000000000' },
+      { isCR: true },
+      { role: 'ADMIN' },
+    ]) {
+      const blocked = await request(app)
+        .patch('/api/me/profile')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send(lockedBody);
+      expect(blocked.status).toBe(403);
+    }
+
+    // Invalid phone & guardianName fail with 400
+    const badPhone = await request(app)
+      .patch('/api/me/profile')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({ phone: '12345' });
+    expect(badPhone.status).toBe(400);
+
+    // Valid self-edit succeeds & strips HTML from address
+    const okPatch = await request(app)
+      .patch('/api/me/profile')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({
+        phone: '+91 98765 43210',
+        personalEmail: 'student.real@example.com',
+        guardianName: 'Mr. Kumar S.',
+        guardianPhone: '9876501234',
+        address: '<b>12 Anna Nagar</b>, Chennai 600040',
+        bloodGroup: 'O+',
+        hostelOrDayScholar: 'DAY_SCHOLAR',
+        dob: '2006-05-15',
+      });
+    expect(okPatch.status).toBe(200);
+
+    const after = await prisma.studentProfile.findUnique({ where: { id: studentId } });
+    expect(after?.phone).toBe('9876543210');
+    expect(after?.personalEmail).toBe('student.real@example.com');
+    expect(after?.address).toBe('12 Anna Nagar, Chennai 600040');
+    expect(after?.bloodGroup).toBe('O+');
+    expect(after?.hostelOrDayScholar).toBe('DAY_SCHOLAR');
+
+    // Audit log recorded & visible to admin
+    const auditRes = await request(app)
+      .get(`/api/academics/students/${studentId}/audit`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(auditRes.status).toBe(200);
+    expect(auditRes.body.logs.some((l: any) => l.field === 'personalEmail' && l.newValue === 'student.real@example.com')).toBe(true);
+
+    // Newly created student does not get @student.local email
+    const newStudentRes = await request(app)
+      .post('/api/academics/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'No Placeholder Email Student',
+        registerNo: `REG${Date.now()}`,
+        rollNo: `R${Date.now() % 10000}`,
+        classId,
+      });
+    expect(newStudentRes.status).toBe(201);
+    const createdUser = await prisma.user.findUnique({ where: { id: newStudentRes.body.student.userId } });
+    expect(createdUser?.email).toBeNull();
+  }, 20000);
 });

@@ -23,6 +23,12 @@ function hashRefreshToken(raw: string): string {
 }
 
 function formatUserSummary(user: any) {
+  const isCR = Boolean(
+    user.role === 'STUDENT' &&
+      user.studentProfile &&
+      !user.studentProfile.deletedAt &&
+      user.studentProfile.classRepresentatives?.some((r: any) => r.classId === user.studentProfile.classId)
+  );
   return {
     id: user.id,
     username: user.username,
@@ -31,6 +37,9 @@ function formatUserSummary(user: any) {
     role: user.role as any,
     status: user.status as any,
     mustChangePassword: user.mustChangePassword,
+    isCR,
+    crClassId: isCR ? user.studentProfile?.classId : null,
+    crClassName: isCR ? user.studentProfile?.class?.name : null,
     lastRoute: user.lastRoute || null,
     phone: user.phone,
     avatarUrl: user.avatarUrl,
@@ -159,6 +168,7 @@ export const login = async (req: Request, res: Response) => {
         facultyProfile: { include: { department: true } },
         studentProfile: {
           include: {
+            classRepresentatives: true,
             class: {
               include: {
                 academicYear: { include: { department: true } },
@@ -355,6 +365,7 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
             facultyProfile: { include: { department: true } },
             studentProfile: {
               include: {
+                classRepresentatives: true,
                 class: { include: { academicYear: { include: { department: true } } } },
               },
             },
@@ -467,7 +478,10 @@ export const changePassword = async (req: Request, res: Response) => {
       include: {
         facultyProfile: { include: { department: true } },
         studentProfile: {
-          include: { class: { include: { academicYear: { include: { department: true } } } } },
+          include: {
+            classRepresentatives: true,
+            class: { include: { academicYear: { include: { department: true } } } },
+          },
         },
       },
     });
@@ -510,7 +524,10 @@ export const changePassword = async (req: Request, res: Response) => {
       include: {
         facultyProfile: { include: { department: true } },
         studentProfile: {
-          include: { class: { include: { academicYear: { include: { department: true } } } } },
+          include: {
+            classRepresentatives: true,
+            class: { include: { academicYear: { include: { department: true } } } },
+          },
         },
       },
     });

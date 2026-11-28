@@ -427,6 +427,7 @@ export const updateClass = async (req: Request, res: Response) => {
           });
         }
         for (const u of stRows) invalidateUserAuthCache(u.userId);
+        io?.emit('roles:changed', { classId: id, studentIds: changedCRIds });
       }
     }
 
@@ -971,7 +972,7 @@ export const createStudent = async (req: Request, res: Response) => {
       const user = await tx.user.create({
         data: {
           name,
-          email: `${registerNo.toLowerCase()}@student.local`,
+          email: null,
           phone: phone || null,
           passwordHash: defaultPasswordHash,
           role: 'STUDENT',
@@ -1097,6 +1098,7 @@ export const toggleStudentCR = async (req: Request, res: Response) => {
       });
       emitDataUpdate(req, 'students');
       emitDataUpdate(req, 'classes');
+      io?.emit('roles:changed', { classId: student.classId, studentIds: [id] });
       return res.json({ isCR: false, message: `${student.user.name} removed as Class Representative.` });
     } else {
       const settings = await getCRSettings();
@@ -1127,6 +1129,7 @@ export const toggleStudentCR = async (req: Request, res: Response) => {
       });
       emitDataUpdate(req, 'students');
       emitDataUpdate(req, 'classes');
+      io?.emit('roles:changed', { classId: student.classId, studentIds: [id] });
       return res.json({ isCR: true, message: `${student.user.name} is now Class Representative of ${student.class.name}.` });
     }
   } catch (error: any) {
@@ -1497,28 +1500,16 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
       });
     }
 
-    const existingEmails = new Set(
-      (await prisma.user.findMany({ select: { email: true } }))
-        .map((u) => u.email?.toLowerCase())
-        .filter(Boolean) as string[]
-    );
-
     const usersToCreate: any[] = [];
     const profilesToCreate: any[] = [];
     const defaultPasswordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
     for (const item of validRows) {
-      let email = `${item.registerNo.toLowerCase()}@student.local`;
-      if (existingEmails.has(email)) {
-        email = `${item.registerNo.toLowerCase()}.${Date.now()}@student.local`;
-      }
-      existingEmails.add(email);
-
       const userId = crypto.randomUUID();
       usersToCreate.push({
         id: userId,
         name: item.name,
-        email,
+        email: null,
         phone: item.phone || null,
         passwordHash: defaultPasswordHash,
         role: 'STUDENT',

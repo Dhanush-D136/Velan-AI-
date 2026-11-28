@@ -35,6 +35,12 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Please try again later.' },
 });
 
+const profileSelfEditLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  message: { error: 'Too many profile updates. Please try again later.' },
+});
+
 export const apiRouter = Router();
 
 // ==========================================
@@ -105,6 +111,7 @@ apiRouter.post('/academics/faculty/import-excel', authenticateToken, requireRole
 // ==========================================
 apiRouter.get('/profile/me', authenticateToken, profCtrl.getMyFullProfile);
 apiRouter.put('/profile/me', authenticateToken, profCtrl.updateMyFacultyProfile);
+apiRouter.patch('/me/profile', authenticateToken, profileSelfEditLimiter, profCtrl.patchMyStudentProfile);
 apiRouter.put('/profile/preferences', authenticateToken, profCtrl.updateMyPreferences);
 apiRouter.post('/profile/change-requests', authenticateToken, profCtrl.createStudentChangeRequest);
 apiRouter.get('/profile/my-requests', authenticateToken, profCtrl.getMyChangeRequests);
@@ -115,6 +122,7 @@ apiRouter.get('/profile/my-requests', authenticateToken, profCtrl.getMyChangeReq
 apiRouter.get('/academics/students', authenticateToken, acadCtrl.getStudentsList);
 apiRouter.post('/academics/students', authenticateToken, requireRole('ADMIN'), acadCtrl.createStudent);
 apiRouter.get('/academics/students/:id/move-preview', authenticateToken, requireRole('ADMIN'), profCtrl.adminGetStudentMovePreview);
+apiRouter.get('/academics/students/:id/audit', authenticateToken, requireRole('ADMIN'), profCtrl.getStudentProfileAuditLogs);
 apiRouter.put('/academics/students/:id', authenticateToken, requireRole('ADMIN'), profCtrl.adminUpdateStudent);
 apiRouter.delete('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteStudent);
 apiRouter.post('/academics/students/bulk-delete', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkDeleteStudents);

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS, runTransaction } from '../lib/prisma';
 import { invalidateUserAuthCache } from '../middleware/auth';
 import { notifyUsers } from './notificationController';
 
@@ -600,5 +600,298 @@ export const getMyChangeRequests = async (req: Request, res: Response) => {
     return res.json({ requests });
   } catch {
     return res.status(500).json({ error: 'Failed to fetch change requests' });
+  }
+};
+
+const LOCKED_STUDENT_PROFILE_FIELDS = new Set([
+  'name',
+  'registerNo',
+  'rollNo',
+  'classId',
+  'departmentId',
+  'advisorId',
+  'mentors',
+  'isCR',
+  'role',
+]);
+
+const VALID_BLOOD_GROUPS = new Set([
+  'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Prefer not to say',
+]);
+
+function stripHtmlTags(input: string): string {
+  return input.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeIndianPhone(raw: string): string | null {
+  const compact = raw.replace(/[\s()-]/g, '');
+  const stripped = compact.startsWith('+91')
+    ? compact.slice(3)
+    : compact.startsWith('91') && compact.length === 12
+    ? compact.slice(2)
+    : compact;
+  return /^[6-9]\d{9}$/.test(stripped) ? stripped : null;
+}
+
+function parseValidStudentDob(raw: string): { date: Date; iso: string } | null {
+  const trimmed = raw.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (
+    Number.isNaN(d.getTime()) ||
+    d.getUTCFullYear() !== year ||
+    d.getUTCMonth() !== month - 1 ||
+    d.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const now = new Date();
+  let age = now.getUTCFullYear() - year;
+  const mDiff = now.getUTCMonth() - (month - 1);
+  if (mDiff < 0 || (mDiff === 0 && now.getUTCDate() < day)) age--;
+  if (age < 15 || age > 40) return null;
+  return { date: d, iso: `${match[1]}-${match[2]}-${match[3]}` };
+}
+
+export const patchMyStudentProfile = async (req: Request, res: Response) => {
+  try {
+    if (req.user!.role !== 'STUDENT') {
+      return res.status(403).json({ error: 'Only students can use this profile endpoint.' });
+    }
+    const body = req.body || {};
+    for (const lockedKey of LOCKED_STUDENT_PROFILE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(body, lockedKey) && body[lockedKey] !== undefined) {
+        return res.status(403).json({ error: `Only the admin can change "${lockedKey}".` });
+      }
+    }
+
+    const userId = req.user!.id;
+    const student = await prisma.studentProfile.findUnique({
+      where: { userId },
+      include: { user: true },
+    });
+    if (!student || student.deletedAt) {
+      return res.status(404).json({ error: 'Student profile not found' });
+    }
+
+    const nextData: Record<string, any> = {};
+    const auditEntries: Array<{ field: string; oldValue: string; newValue: string }> = [];
+
+    const recordChange = (field: string, oldVal: string | null | undefined, newVal: string | null) => {
+      const o = oldVal ?? '';
+      const n = newVal ?? '';
+      if (o !== n) {
+        auditEntries.push({ field, oldValue: o, newValue: n });
+      }
+    };
+
+    if (Object.prototype.hasOwnProperty.call(body, 'phone')) {
+      const raw = body.phone == null ? '' : String(body.phone).trim();
+      if (!raw) {
+        nextData.phone = null;
+      } else {
+        const normalized = normalizeIndianPhone(raw);
+        if (!normalized) {
+          return res.status(400).json({ error: 'Phone must be a valid 10-digit Indian mobile number (optional +91).' });
+        }
+        nextData.phone = normalized;
+      }
+      recordChange('phone', student.phone, nextData.phone);
+    }
+
+    const rawEmailInput = Object.prototype.hasOwnProperty.call(body, 'personalEmail')
+      ? body.personalEmail
+      : Object.prototype.hasOwnProperty.call(body, 'email')
+      ? body.email
+      : undefined;
+    if (rawEmailInput !== undefined) {
+      const raw = rawEmailInput == null ? '' : String(rawEmailInput).trim().toLowerCase();
+      if (!raw) {
+        nextData.personalEmail = null;
+      } else {
+        if (raw.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) || raw.endsWith('@student.local')) {
+          return res.status(400).json({ error: 'Please enter a valid personal email (max 120 characters).' });
+        }
+        nextData.personalEmail = raw;
+      }
+      recordChange('personalEmail', student.personalEmail, nextData.personalEmail);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'guardianName')) {
+      const raw = body.guardianName == null ? '' : stripHtmlTags(String(body.guardianName));
+      if (!raw) {
+        nextData.guardianName = null;
+      } else {
+        if (!/^[A-Za-z\s.'-]{2,80}$/.test(raw)) {
+          return res.status(400).json({ error: 'Guardian name must be 2-80 characters using letters, spaces, ., \', or -.' });
+        }
+        nextData.guardianName = raw;
+      }
+      recordChange('guardianName', student.guardianName, nextData.guardianName);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'guardianPhone')) {
+      const raw = body.guardianPhone == null ? '' : String(body.guardianPhone).trim();
+      if (!raw) {
+        nextData.guardianPhone = null;
+      } else {
+        const normalized = normalizeIndianPhone(raw);
+        if (!normalized) {
+          return res.status(400).json({ error: 'Guardian phone must be a valid 10-digit Indian mobile number (optional +91).' });
+        }
+        nextData.guardianPhone = normalized;
+      }
+      recordChange('guardianPhone', student.guardianPhone, nextData.guardianPhone);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'address')) {
+      const raw = body.address == null ? '' : stripHtmlTags(String(body.address));
+      if (!raw) {
+        nextData.address = null;
+      } else {
+        if (raw.length < 5 || raw.length > 300) {
+          return res.status(400).json({ error: 'Address must be between 5 and 300 characters.' });
+        }
+        nextData.address = raw;
+      }
+      recordChange('address', student.address, nextData.address);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'bloodGroup')) {
+      const raw = body.bloodGroup == null ? '' : String(body.bloodGroup).trim();
+      if (!raw) {
+        nextData.bloodGroup = null;
+      } else {
+        if (!VALID_BLOOD_GROUPS.has(raw)) {
+          return res.status(400).json({ error: 'Invalid blood group selection.' });
+        }
+        nextData.bloodGroup = raw;
+      }
+      recordChange('bloodGroup', student.bloodGroup, nextData.bloodGroup);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'hostelOrDayScholar')) {
+      const raw = body.hostelOrDayScholar == null ? '' : String(body.hostelOrDayScholar).trim().toUpperCase();
+      if (!raw) {
+        nextData.hostelOrDayScholar = null;
+      } else {
+        if (raw !== 'HOSTEL' && raw !== 'DAY_SCHOLAR') {
+          return res.status(400).json({ error: 'Residency must be HOSTEL or DAY_SCHOLAR.' });
+        }
+        nextData.hostelOrDayScholar = raw;
+      }
+      recordChange('hostelOrDayScholar', student.hostelOrDayScholar, nextData.hostelOrDayScholar);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'dob')) {
+      const raw = body.dob == null ? '' : String(body.dob).trim();
+      if (!raw) {
+        nextData.dob = null;
+        recordChange('dob', student.dob ? student.dob.toISOString().split('T')[0] : '', '');
+      } else {
+        const parsed = parseValidStudentDob(raw);
+        if (!parsed) {
+          return res.status(400).json({ error: 'Date of birth must be a valid date for age 15 to 40.' });
+        }
+        nextData.dob = parsed.date;
+        recordChange('dob', student.dob ? student.dob.toISOString().split('T')[0] : '', parsed.iso);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'photoUrl')) {
+      const raw = body.photoUrl == null ? '' : String(body.photoUrl).trim();
+      if (!raw) {
+        nextData.photoUrl = null;
+      } else {
+        if (raw.length > MAX_PHOTO_LENGTH) {
+          return res.status(400).json({ error: 'Photo exceeds 2 MB size limit.' });
+        }
+        const isAllowedImage =
+          /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(raw) ||
+          /^https?:\/\//i.test(raw);
+        if (!isAllowedImage) {
+          return res.status(400).json({ error: 'Photo must be a JPG, PNG, or WebP image (max 2 MB).' });
+        }
+        nextData.photoUrl = raw;
+      }
+      recordChange('photoUrl', student.photoUrl ? '[photo]' : '', nextData.photoUrl ? '[photo]' : '');
+    }
+
+    const updated = await runTransaction(async (tx) => {
+      const sp = await tx.studentProfile.update({
+        where: { id: student.id },
+        data: nextData,
+      });
+
+      const userUpdate: Record<string, any> = {};
+      if (Object.prototype.hasOwnProperty.call(nextData, 'phone')) userUpdate.phone = nextData.phone;
+      if (Object.prototype.hasOwnProperty.call(nextData, 'photoUrl')) userUpdate.avatarUrl = nextData.photoUrl;
+      if (Object.keys(userUpdate).length > 0) {
+        await tx.user.update({ where: { id: userId }, data: userUpdate });
+      }
+
+      if (auditEntries.length > 0) {
+        await tx.auditLog.createMany({
+          data: auditEntries.map((entry) => ({
+            userId,
+            action: 'PROFILE_SELF_EDIT',
+            details: JSON.stringify({
+              studentId: student.id,
+              registerNo: student.registerNo,
+              field: entry.field,
+              oldValue: entry.oldValue,
+              newValue: entry.newValue,
+            }),
+          })),
+        });
+      }
+      return sp;
+    });
+
+    invalidateUserAuthCache(userId);
+    emitDataUpdate(req, 'students');
+    return res.json({
+      message: 'Profile updated successfully.',
+      updatedAt: new Date().toISOString(),
+      student: updated,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to update profile' });
+  }
+};
+
+export const getStudentProfileAuditLogs = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        action: 'PROFILE_SELF_EDIT',
+        details: { contains: id },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+    });
+    const parsed = logs.map((l) => {
+      let detailObj: any = {};
+      try {
+        detailObj = l.details ? JSON.parse(l.details) : {};
+      } catch {
+        detailObj = {};
+      }
+      return {
+        id: l.id,
+        field: detailObj.field || 'profile',
+        oldValue: detailObj.oldValue ?? '',
+        newValue: detailObj.newValue ?? '',
+        createdAt: l.createdAt,
+      };
+    });
+    return res.json({ logs: parsed });
+  } catch {
+    return res.status(500).json({ error: 'Failed to load profile edit history' });
   }
 };

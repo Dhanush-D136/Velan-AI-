@@ -25,6 +25,7 @@ interface AuthState {
   isHydrating: boolean;
   initialising: boolean;
   setUser: (user: UserSummary | null, token?: string | null) => void;
+  refreshMe: () => Promise<void>;
   hydrateSession: () => Promise<void>;
   logout: (reason?: string) => void;
   getDeviceId: () => string;
@@ -63,6 +64,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       initialising: false,
     });
     authChannel?.postMessage({ type: 'SYNC_USER', user, token: nextToken });
+  },
+
+  refreshMe: async () => {
+    const token = get().token;
+    if (!token) return;
+    try {
+      const { data } = await api.get('/api/me');
+      if (data?.user) {
+        const merged = { ...(get().user || {}), ...data.user } as UserSummary;
+        localStorage.setItem('velan_user', JSON.stringify(merged));
+        set({ user: merged });
+      }
+    } catch {
+      // Never log out on transient /api/me refresh failure
+    }
   },
 
   hydrateSession: async () => {

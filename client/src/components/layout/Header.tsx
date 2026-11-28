@@ -105,9 +105,16 @@ export const Header: React.FC<HeaderProps> = ({
                 <Badge variant={getRoleBadgeVariant(user?.role)} size="sm">
                   {user?.role || 'GUEST'}
                 </Badge>
+                {(user as any)?.isCR && (
+                  <Badge variant="brand" size="sm">
+                    Class Representative
+                  </Badge>
+                )}
               </div>
               <span className="text-[11px] text-content-secondary font-mono leading-tight">
-                {user?.email}
+                {user?.email && !user.email.endsWith('@student.local')
+                  ? user.email
+                  : user?.studentProfile?.registerNo || user?.facultyProfile?.employeeId || ''}
               </span>
             </div>
           </button>
