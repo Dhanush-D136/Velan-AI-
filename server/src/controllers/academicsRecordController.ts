@@ -393,7 +393,7 @@ export const getAdviseeAcademics = async (req: Request, res: Response) => {
 
     const targetIds = classId && classId !== 'ALL' ? [String(classId)] : advisedIds;
     const students = await prisma.studentProfile.findMany({
-      where: { classId: { in: targetIds } },
+      where: { classId: { in: targetIds }, deletedAt: null },
       include: {
         user: true,
         class: true,
@@ -406,7 +406,7 @@ export const getAdviseeAcademics = async (req: Request, res: Response) => {
           select: { status: true },
         },
       },
-      orderBy: { rollNo: 'asc' },
+      orderBy: { registerNo: 'asc' },
     });
 
     const multiplier = await getCgpaMultiplierValue();

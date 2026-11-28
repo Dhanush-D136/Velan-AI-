@@ -16,6 +16,7 @@ import { presenceService } from './services/presenceService';
 import { startAuthEventFlusher, flushAuthEvents } from './services/authEventQueue';
 import { rushQueueService } from './services/rushQueueService';
 import { flagDefaultPasswordAccounts } from './services/passwordService';
+import { purgeExpiredDeletedStudents } from './services/studentBulkService';
 
 dotenv.config();
 
@@ -183,6 +184,8 @@ export async function repairSessionsMigration(): Promise<void> {
 if (process.env.NODE_ENV !== 'test') {
   void repairSessionsMigration();
   void flagDefaultPasswordAccounts();
+  void purgeExpiredDeletedStudents();
+  setInterval(() => void purgeExpiredDeletedStudents(), 24 * 60 * 60 * 1000).unref();
   // Server-side auto-close job for expired GPS attendance sessions (every 30s)
   setInterval(async () => {
     try {

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import { prisma } from '../lib/prisma';
+import { sortStudentsByRegisterNo } from '../utils/studentSort';
 
 // Export Classic Monthly Attendance Register
 export const exportMonthlyRegister = async (req: Request, res: Response) => {
@@ -10,7 +11,7 @@ export const exportMonthlyRegister = async (req: Request, res: Response) => {
     const classData = await prisma.class.findFirst({
       where: classId ? { id: String(classId) } : undefined,
       include: {
-        students: { include: { user: true }, orderBy: { rollNo: 'asc' } },
+        students: { where: { deletedAt: null }, include: { user: true } },
         sessions: {
           include: { records: true, classSubject: { include: { subject: true } } },
           orderBy: { createdAt: 'asc' },
@@ -21,6 +22,7 @@ export const exportMonthlyRegister = async (req: Request, res: Response) => {
     if (!classData) {
       return res.status(404).json({ error: 'Class not found' });
     }
+    classData.students = sortStudentsByRegisterNo(classData.students);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Velan AI College Platform';
@@ -164,7 +166,7 @@ export const exportSessionExcel = async (req: Request, res: Response) => {
     const session = await prisma.attendanceSession.findUnique({
       where: { id: sessionId },
       include: {
-        class: { include: { students: { include: { user: true }, orderBy: { rollNo: 'asc' } } } },
+        class: { include: { students: { where: { deletedAt: null }, include: { user: true } } } },
         classSubject: { include: { subject: true } },
         faculty: { include: { user: true } },
         records: true,
@@ -174,6 +176,7 @@ export const exportSessionExcel = async (req: Request, res: Response) => {
     if (!session) {
       return res.status(404).json({ error: 'Attendance session not found' });
     }
+    session.class.students = sortStudentsByRegisterNo(session.class.students);
 
     const instSetting = await prisma.setting.findUnique({ where: { key: 'INSTITUTION_NAME' } });
     const instTitle = instSetting?.value?.trim()

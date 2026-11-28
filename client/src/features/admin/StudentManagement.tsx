@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -16,6 +16,11 @@ import {
   PasswordStatusBadge,
   downloadCredentialsCsv,
 } from '@/components/ui/TempPasswordModal';
+import {
+  BulkDeleteModal,
+  BulkMoveClassModal,
+  RegisterRangeSelectModal,
+} from './StudentBulkModals';
 import {
   Plus,
   Search,
@@ -36,6 +41,11 @@ import {
   MapPin,
   Calendar,
   HeartHandshake,
+  ArrowUpDown,
+  RotateCcw,
+  FolderInput,
+  Hash,
+  X,
 } from 'lucide-react';
 
 interface StudentItem {
@@ -100,7 +110,24 @@ export const StudentManagement: React.FC = () => {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [selectedClassFilter, setSelectedClassFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortMode, setSortMode] = useState<'reg_asc' | 'reg_desc' | 'name_asc' | 'class' | 'newest'>('reg_asc');
+  const [directoryTab, setDirectoryTab] = useState<'ACTIVE' | 'RECYCLE_BIN'>('ACTIVE');
+  const [page, setPage] = useState(1);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Selection state (persists across filters, pagination, and live updates)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const lastClickedIdxRef = useRef<number | null>(null);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [classDeleteTarget, setClassDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [isBulkMoveOpen, setIsBulkMoveOpen] = useState(false);
+  const [isRangeModalOpen, setIsRangeModalOpen] = useState(false);
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+  const [undoState, setUndoState] = useState<{ ids: string[]; count: number } | null>(null);
+  const undoTimerRef = useRef<any>(null);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -148,18 +175,35 @@ export const StudentManagement: React.FC = () => {
     }
   };
 
-  const fetchStudents = async () => {
+  const fetchStudents = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params = selectedClassFilter !== 'ALL' ? { classId: selectedClassFilter } : {};
+      const params: Record<string, any> = {
+        sort: sortMode,
+        page,
+        limit: 50,
+        deleted: directoryTab === 'RECYCLE_BIN' ? 'true' : 'false',
+      };
+      if (selectedClassFilter !== 'ALL') params.classId = selectedClassFilter;
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await api.get('/api/academics/students', { params });
       setStudents(res.data.students || res.data.data || []);
+      setTotalStudents(res.data.total ?? (res.data.students?.length || 0));
+      setTotalPages(res.data.totalPages ?? 1);
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to fetch students', 'error');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedClassFilter, debouncedSearch, sortMode, page, directoryTab]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(1);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   useEffect(() => {
     fetchClasses();
@@ -167,7 +211,17 @@ export const StudentManagement: React.FC = () => {
 
   useEffect(() => {
     fetchStudents();
-  }, [selectedClassFilter]);
+  }, [fetchStudents]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedIds.size > 0) {
+        setSelectedIds(new Set());
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedIds.size]);
 
   useRealtimeSync(['data:updated'], () => {
     fetchClasses();
@@ -232,15 +286,171 @@ export const StudentManagement: React.FC = () => {
   };
 
   const handleDeleteStudent = async (student: StudentItem) => {
-    if (!confirm(`Delete student ${student.user.name}? This will remove their user account and records.`))
-      return;
+    if (!confirm(`Move ${student.user.name} (${student.registerNo}) to Recently Deleted (30-day Recycle Bin)?`)) return;
 
     try {
       const res = await api.delete(`/api/academics/students/${student.id}`);
-      showToast(res.data.message || 'Student deleted successfully', 'success');
+      showToast(res.data.message || 'Student moved to Recently Deleted', 'success');
+      triggerUndoToast([student.id], 1);
       fetchStudents();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to delete student', 'error');
+    }
+  };
+
+  const triggerUndoToast = (ids: string[], count: number) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoState({ ids, count });
+    undoTimerRef.current = setTimeout(() => setUndoState(null), 15_000);
+  };
+
+  const handleUndoDelete = async () => {
+    if (!undoState) return;
+    const ids = undoState.ids;
+    setUndoState(null);
+    try {
+      await api.post('/api/academics/students/bulk-restore', { studentIds: ids });
+      showToast(`Restored ${ids.length} student(s).`, 'success');
+      fetchStudents();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Failed to undo delete', 'error');
+    }
+  };
+
+  const toggleRowSelection = (id: string, index: number, shiftKey = false) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (shiftKey && lastClickedIdxRef.current !== null) {
+        const start = Math.min(lastClickedIdxRef.current, index);
+        const end = Math.max(lastClickedIdxRef.current, index);
+        const shouldSelect = !prev.has(id);
+        for (let i = start; i <= end; i++) {
+          const sid = students[i]?.id;
+          if (!sid) continue;
+          if (shouldSelect) next.add(sid);
+          else next.delete(sid);
+        }
+      } else {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      }
+      lastClickedIdxRef.current = index;
+      return next;
+    });
+  };
+
+  const allPageSelected = students.length > 0 && students.every((s) => selectedIds.has(s.id));
+
+  const toggleSelectPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        students.forEach((s) => next.delete(s.id));
+      } else {
+        students.forEach((s) => next.add(s.id));
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllMatching = async () => {
+    try {
+      const params: Record<string, any> = {
+        idsOnly: 'true',
+        deleted: directoryTab === 'RECYCLE_BIN' ? 'true' : 'false',
+      };
+      if (selectedClassFilter !== 'ALL') params.classId = selectedClassFilter;
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      const res = await api.get('/api/academics/students', { params });
+      const ids: string[] = res.data?.ids || [];
+      setSelectedIds(new Set(ids));
+      showToast(`Selected all ${ids.length} matching student(s).`, 'info');
+    } catch {
+      showToast('Failed to select all matching students', 'error');
+    }
+  };
+
+  const downloadExcelForIds = async (ids: string[]) => {
+    const res = await api.post('/api/academics/students/bulk-export', { studentIds: ids }, { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'Velan_Students_Selected.xlsx');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleConfirmBulkDelete = async (downloadBackupFirst: boolean) => {
+    setIsBulkSubmitting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      if (downloadBackupFirst && directoryTab === 'ACTIVE' && !classDeleteTarget && ids.length > 0) {
+        await downloadExcelForIds(ids);
+      }
+      const payload = classDeleteTarget
+        ? { classId: classDeleteTarget.id }
+        : { studentIds: ids, permanent: directoryTab === 'RECYCLE_BIN' };
+      const res = await api.post('/api/academics/students/bulk-delete', payload);
+      const count = res.data?.deletedCount ?? res.data?.purgedCount ?? ids.length;
+      showToast(res.data?.message || `${count} student(s) processed.`, 'success');
+      if (directoryTab === 'ACTIVE' && Array.isArray(res.data?.deletedIds)) {
+        triggerUndoToast(res.data.deletedIds, count);
+      }
+      setSelectedIds(new Set());
+      setIsBulkDeleteOpen(false);
+      setClassDeleteTarget(null);
+      fetchStudents();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Bulk delete failed', 'error');
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkResetPasswords = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      const res = await api.post('/api/academics/students/bulk-reset-passwords', { studentIds: ids });
+      const creds = res.data?.credentials || [];
+      if (creds.length > 0) {
+        downloadCredentialsCsv(creds, 'Bulk_Reset_Student_Credentials.csv');
+      }
+      showToast(`Generated temporary passwords for ${creds.length} student(s). CSV downloaded.`, 'success');
+      fetchStudents();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Bulk password reset failed', 'error');
+    }
+  };
+
+  const handleConfirmBulkMove = async (targetClassId: string) => {
+    setIsBulkSubmitting(true);
+    try {
+      const res = await api.post('/api/academics/students/bulk-move-class', {
+        studentIds: Array.from(selectedIds),
+        targetClassId,
+      });
+      showToast(res.data?.message || 'Students moved successfully.', 'success');
+      setSelectedIds(new Set());
+      setIsBulkMoveOpen(false);
+      fetchStudents();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Failed to move students', 'error');
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const handleRestoreSelected = async (idsToRestore: string[]) => {
+    try {
+      const res = await api.post('/api/academics/students/bulk-restore', { studentIds: idsToRestore });
+      showToast(res.data?.message || 'Students restored.', 'success');
+      setSelectedIds(new Set());
+      fetchStudents();
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Failed to restore students', 'error');
     }
   };
 
@@ -321,25 +531,59 @@ export const StudentManagement: React.FC = () => {
     }
   };
 
-  const filtered = students.filter((s) => {
-    const matchesSearch =
-      s.user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.registerNo.includes(searchTerm) ||
-      s.rollNo.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
+  // Server already returns filtered & sorted students; keep array order intact
+  const filtered = students;
 
   const columns: Column<StudentItem>[] = [
     {
+      key: 'select',
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Select all students on this page"
+          checked={allPageSelected}
+          onChange={toggleSelectPage}
+          className="w-4 h-4 rounded accent-brand-600 cursor-pointer"
+        />
+      ),
+      width: '44px',
+      render: (s) => {
+        const idx = filtered.findIndex((item) => item.id === s.id);
+        return (
+          <input
+            type="checkbox"
+            aria-label={`Select ${s.registerNo} ${s.user.name}`}
+            checked={selectedIds.has(s.id)}
+            onChange={() => {}}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleRowSelection(s.id, idx, e.shiftKey);
+            }}
+            className="w-4 h-4 rounded accent-brand-600 cursor-pointer"
+          />
+        );
+      },
+    },
+    {
       key: 'name',
-      header: 'Student',
+      header: (
+        <button
+          type="button"
+          onClick={() => setSortMode((m) => (m === 'reg_asc' ? 'reg_desc' : 'reg_asc'))}
+          className="inline-flex items-center gap-1 hover:text-brand-600 font-semibold uppercase"
+        >
+          <span>Register # / Student</span>
+          <ArrowUpDown className="w-3.5 h-3.5" />
+        </button>
+      ),
       render: (s) => (
         <div className="flex items-center gap-3">
           <Avatar name={s.user.name} size="md" />
           <div>
-            <h4 className="font-bold text-content text-sm">{s.user.name}</h4>
-            <span className="text-[11px] text-content-secondary font-mono">
-              Reg: {s.registerNo} • Roll: {s.rollNo}
+            <div className="font-mono font-bold text-content text-xs">{s.registerNo}</div>
+            <h4 className="font-semibold text-content text-sm">{s.user.name}</h4>
+            <span className="text-[11px] text-content-muted font-mono">
+              Roll / VH: {s.rollNo}
             </span>
           </div>
         </div>
@@ -417,27 +661,54 @@ export const StudentManagement: React.FC = () => {
       align: 'right',
       render: (s) => (
         <div className="flex items-center justify-end gap-1">
-          <button
-            onClick={() => setSelectedStudentForView(s)}
-            title="View Full Student Profile"
-            className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 transition"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleResetPassword(s)}
-            title="Reset Password (One-Time Temp)"
-            className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 transition"
-          >
-            <KeyRound className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleDeleteStudent(s)}
-            title="Delete Student"
-            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {directoryTab === 'RECYCLE_BIN' ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                onClick={() => handleRestoreSelected([s.id])}
+              >
+                Restore
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  setSelectedIds(new Set([s.id]));
+                  setIsBulkDeleteOpen(true);
+                }}
+              >
+                Delete Forever
+              </Button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setSelectedStudentForView(s)}
+                title="View Full Student Profile"
+                className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 transition"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleResetPassword(s)}
+                title="Reset Password (One-Time Temp)"
+                className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 transition"
+              >
+                <KeyRound className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleDeleteStudent(s)}
+                title="Move to Recently Deleted"
+                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       ),
     },
@@ -487,23 +758,78 @@ export const StudentManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <Card className="p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      {/* Tabs: Active Directory vs Recently Deleted (30-Day Recycle Bin) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setDirectoryTab('ACTIVE');
+              setSelectedIds(new Set());
+              setPage(1);
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition ${
+              directoryTab === 'ACTIVE'
+                ? 'bg-brand-gradient text-white shadow-sm'
+                : 'bg-surface-soft text-content-secondary hover:text-content'
+            }`}
+          >
+            Active Students {directoryTab === 'ACTIVE' ? `(${totalStudents})` : ''}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDirectoryTab('RECYCLE_BIN');
+              setSelectedIds(new Set());
+              setPage(1);
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition ${
+              directoryTab === 'RECYCLE_BIN'
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'bg-surface-soft text-content-secondary hover:text-content'
+            }`}
+          >
+            Recently Deleted (30d) {directoryTab === 'RECYCLE_BIN' ? `(${totalStudents})` : ''}
+          </button>
+        </div>
+
+        {directoryTab === 'ACTIVE' && selectedClassFilter !== 'ALL' && totalStudents > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            onClick={() => {
+              const clsObj = classes.find((c) => c.id === selectedClassFilter);
+              if (clsObj) {
+                setClassDeleteTarget({ id: clsObj.id, name: clsObj.name });
+                setIsBulkDeleteOpen(true);
+              }
+            }}
+          >
+            Delete ALL in Class
+          </Button>
+        )}
+      </div>
+
+      {/* Filter, Sort, Range & Search Bar */}
+      <Card className="p-4 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
         <Input
           placeholder="Search student by name, register number or roll..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           leftIcon={<Search className="w-4 h-4" />}
-          className="w-full sm:w-96 text-xs"
+          className="w-full lg:w-80 text-xs"
         />
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs font-semibold text-content-secondary whitespace-nowrap">
-            Filter Section:
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
           <select
+            aria-label="Filter Section"
             value={selectedClassFilter}
-            onChange={(e) => setSelectedClassFilter(e.target.value)}
+            onChange={(e) => {
+              setSelectedClassFilter(e.target.value);
+              setPage(1);
+            }}
             className="px-3 py-2 rounded-xl border border-border bg-white text-xs font-semibold text-content outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="ALL">All Sections</option>
@@ -513,31 +839,134 @@ export const StudentManagement: React.FC = () => {
               </option>
             ))}
           </select>
+
+          <select
+            aria-label="Sort Students"
+            value={sortMode}
+            onChange={(e) => {
+              setSortMode(e.target.value as any);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-border bg-white text-xs font-semibold text-content outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="reg_asc">Sort: Register # (Default)</option>
+            <option value="reg_desc">Sort: Register # (Desc)</option>
+            <option value="name_asc">Sort: Name A to Z</option>
+            <option value="class">Sort: Class</option>
+            <option value="newest">Sort: Newest first</option>
+          </select>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            leftIcon={<Hash className="w-3.5 h-3.5" />}
+            onClick={() => setIsRangeModalOpen(true)}
+          >
+            Range
+          </Button>
         </div>
       </Card>
 
-      {/* Table or Empty State */}
+      {/* Email-style "Select all matching filters" banner */}
+      {allPageSelected && totalStudents > students.length && selectedIds.size < totalStudents && (
+        <div className="px-4 py-2.5 rounded-2xl bg-brand-50 border border-brand-200 text-xs text-brand-900 flex flex-wrap items-center justify-between gap-2">
+          <span>
+            <strong>{students.length}</strong> students on this page selected.
+          </span>
+          <button
+            type="button"
+            onClick={handleSelectAllMatching}
+            className="font-bold text-brand-700 hover:underline"
+          >
+            Select all {totalStudents} matching your filters
+          </button>
+        </div>
+      )}
+
+      {/* Table (Desktop) + Cards (Mobile) or Empty State */}
       {students.length === 0 && !isLoading ? (
         <EmptyState
           icon={GraduationCap}
-          title="No students registered yet"
-          description="Add students manually or bulk import a class roster using an Excel spreadsheet."
-          actionLabel="Add First Student"
-          onAction={() => {
-            if (classes.length === 0) {
-              showToast('Please create at least one Class / Section first.', 'error');
-              return;
-            }
-            setIsAddModalOpen(true);
-          }}
+          title={directoryTab === 'RECYCLE_BIN' ? 'Recycle Bin is empty' : 'No students registered yet'}
+          description={
+            directoryTab === 'RECYCLE_BIN'
+              ? 'Deleted students appear here for 30 days before permanent removal.'
+              : 'Add students manually or bulk import a class roster using an Excel spreadsheet.'
+          }
+          actionLabel={directoryTab === 'ACTIVE' ? 'Add First Student' : undefined}
+          onAction={
+            directoryTab === 'ACTIVE'
+              ? () => {
+                  if (classes.length === 0) {
+                    showToast('Please create at least one Class / Section first.', 'error');
+                    return;
+                  }
+                  setIsAddModalOpen(true);
+                }
+              : undefined
+          }
         />
       ) : (
-        <Table
-          columns={columns}
-          data={filtered}
-          keyExtractor={(s) => s.id}
-          emptyMessage="No students found matching your criteria"
-        />
+        <>
+          <div className="hidden md:block">
+            <Table
+              columns={columns}
+              data={filtered}
+              keyExtractor={(s) => s.id}
+              emptyMessage="No students found matching your criteria"
+            />
+          </div>
+
+          {/* Mobile Card List (aligned, 44px checkboxes) */}
+          <div className="md:hidden space-y-2.5">
+            {filtered.map((s, idx) => {
+              const isSel = selectedIds.has(s.id);
+              return (
+                <Card key={s.id} className={`p-3.5 space-y-2.5 ${isSel ? 'ring-2 ring-brand-500 bg-brand-50/30' : ''}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <label className="min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 -mt-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => {}}
+                          onClick={(e) => toggleRowSelection(s.id, idx, e.shiftKey)}
+                          className="w-5 h-5 rounded accent-brand-600"
+                        />
+                      </label>
+                      <div className="min-w-0">
+                        <div className="font-mono font-bold text-xs text-content">{s.registerNo}</div>
+                        <div className="font-semibold text-sm text-content truncate">{s.user.name}</div>
+                        <div className="text-[11px] text-content-muted font-mono">
+                          Roll: {s.rollNo} • {s.class?.name || 'Class'}
+                        </div>
+                      </div>
+                    </div>
+                    <PasswordStatusBadge user={s.user} />
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-xs pt-2">
+              <span className="text-content-secondary">
+                Page {page} of {totalPages} ({totalStudents} total)
+              </span>
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  Previous
+                </Button>
+                <Button type="button" size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Add Student Modal */}
@@ -955,6 +1384,153 @@ export const StudentManagement: React.FC = () => {
       )}
 
       <TempPasswordModal credential={tempCred} onClose={() => setTempCred(null)} />
+
+      {/* Sticky Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-20 lg:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95vw] max-w-4xl bg-slate-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-bold">
+            <span className="px-2.5 py-1 rounded-full bg-brand-600">{selectedIds.size} selected</span>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800"
+              title="Clear selection (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {directoryTab === 'RECYCLE_BIN' ? (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                  onClick={() => handleRestoreSelected(Array.from(selectedIds))}
+                >
+                  Restore
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  className="min-h-[44px]"
+                  leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setClassDeleteTarget(null);
+                    setIsBulkDeleteOpen(true);
+                  }}
+                >
+                  Delete Forever
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  leftIcon={<KeyRound className="w-3.5 h-3.5" />}
+                  onClick={handleBulkResetPasswords}
+                >
+                  Reset Passwords
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  leftIcon={<FolderInput className="w-3.5 h-3.5" />}
+                  onClick={() => setIsBulkMoveOpen(true)}
+                >
+                  Move to Class
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  leftIcon={<Download className="w-3.5 h-3.5" />}
+                  onClick={() => downloadExcelForIds(Array.from(selectedIds))}
+                >
+                  Export Excel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  className="min-h-[44px]"
+                  leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setClassDeleteTarget(null);
+                    setIsBulkDeleteOpen(true);
+                  }}
+                >
+                  Delete
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 15-second Undo Delete Toast */}
+      {undoState && (
+        <div className="fixed bottom-4 right-4 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-semibold">
+          <span>{undoState.count} student(s) deleted.</span>
+          <button
+            type="button"
+            onClick={handleUndoDelete}
+            className="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-900 font-bold hover:bg-amber-300"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
+      <BulkDeleteModal
+        isOpen={isBulkDeleteOpen}
+        onClose={() => {
+          setIsBulkDeleteOpen(false);
+          setClassDeleteTarget(null);
+        }}
+        selectedCount={classDeleteTarget ? totalStudents : selectedIds.size}
+        previewStudents={
+          classDeleteTarget
+            ? students
+            : students.filter((s) => selectedIds.has(s.id))
+        }
+        classDeleteName={classDeleteTarget?.name}
+        isPermanent={directoryTab === 'RECYCLE_BIN'}
+        isSubmitting={isBulkSubmitting}
+        onConfirm={handleConfirmBulkDelete}
+      />
+
+      <BulkMoveClassModal
+        isOpen={isBulkMoveOpen}
+        onClose={() => setIsBulkMoveOpen(false)}
+        selectedCount={selectedIds.size}
+        classes={classes}
+        isSubmitting={isBulkSubmitting}
+        onConfirm={handleConfirmBulkMove}
+      />
+
+      <RegisterRangeSelectModal
+        isOpen={isRangeModalOpen}
+        onClose={() => setIsRangeModalOpen(false)}
+        students={students}
+        onApply={(ids) => {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            ids.forEach((id) => next.add(id));
+            return next;
+          });
+        }}
+      />
     </div>
   );
 };

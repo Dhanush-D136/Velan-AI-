@@ -204,7 +204,7 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (user.deletedAt || user.status !== 'ACTIVE') {
       enqueueAuthEvent({
         userId: user.id,
         role: user.role,
@@ -213,7 +213,7 @@ export const login = async (req: Request, res: Response) => {
         ...meta,
         details: `Account status ${user.status}`,
       });
-      return res.status(403).json({ error: 'Your account is inactive or suspended. Please contact administrator.' });
+      return res.status(403).json({ error: 'Your account is inactive or has been removed. Please contact administrator.' });
     }
 
     if (user.mustChangePassword && user.tempPasswordExpiresAt && new Date() > new Date(user.tempPasswordExpiresAt)) {

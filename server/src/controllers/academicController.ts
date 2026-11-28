@@ -4,6 +4,14 @@ import bcrypt from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { prisma } from '../lib/prisma';
 import { MAX_MENTORS_PER_CLASS } from '../utils/advisorAccess';
+import { compareRegisterNo, sortStudentsByRegisterNo } from '../utils/studentSort';
+import {
+  softDeleteStudents,
+  restoreStudents,
+  permanentDeleteStudents,
+  bulkResetStudentPasswords,
+  bulkMoveStudentsToClass,
+} from '../services/studentBulkService';
 import { generateTempPassword, setPassword } from '../services/passwordService';
 import { notifyUsers } from './notificationController';
 import {
@@ -788,19 +796,73 @@ export const resetFacultyPassword = async (req: Request, res: Response) => {
 
 export const getStudentsList = async (req: Request, res: Response) => {
   try {
-    const { classId } = req.query;
+    const { classId, search, sort = 'reg_asc', page, limit, deleted, idsOnly } = req.query;
+    const showDeleted = deleted === 'true';
+
+    const where: any = {
+      deletedAt: showDeleted ? { not: null } : null,
+    };
+    if (classId && String(classId) !== 'ALL') {
+      where.classId = String(classId);
+    }
+    if (search && String(search).trim()) {
+      const q = String(search).trim();
+      where.OR = [
+        { registerNo: { contains: q, mode: 'insensitive' } },
+        { rollNo: { contains: q, mode: 'insensitive' } },
+        { user: { name: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
 
     const students = await prisma.studentProfile.findMany({
-      where: classId ? { classId: String(classId) } : undefined,
+      where,
       include: {
         user: { include: { devices: true } },
         class: { include: { academicYear: { include: { department: true } } } },
         _count: { select: { attendanceRecords: true } },
       },
-      orderBy: { rollNo: 'asc' },
     });
 
-    return res.json({ students, data: students });
+    // Server-side permanent Register Number numeric sorting (or requested sort)
+    const sortMode = String(sort || 'reg_asc');
+    students.sort((a, b) => {
+      if (sortMode === 'reg_desc') return compareRegisterNo(a.registerNo, b.registerNo, true);
+      if (sortMode === 'name_asc') {
+        const nc = a.user.name.localeCompare(b.user.name);
+        return nc !== 0 ? nc : compareRegisterNo(a.registerNo, b.registerNo, false);
+      }
+      if (sortMode === 'class') {
+        const cc = (a.class?.name || '').localeCompare(b.class?.name || '');
+        return cc !== 0 ? cc : compareRegisterNo(a.registerNo, b.registerNo, false);
+      }
+      if (sortMode === 'newest') {
+        const tc = new Date(b.enrolledAt).getTime() - new Date(a.enrolledAt).getTime();
+        return tc !== 0 ? tc : compareRegisterNo(a.registerNo, b.registerNo, false);
+      }
+      return compareRegisterNo(a.registerNo, b.registerNo, false);
+    });
+
+    const total = students.length;
+
+    if (idsOnly === 'true') {
+      return res.json({ ids: students.map((s) => s.id), total });
+    }
+
+    let paginated = students;
+    const pageNum = page ? Math.max(1, Number(page)) : 1;
+    const limitNum = limit ? Math.max(1, Math.min(200, Number(limit))) : 0;
+    if (limitNum > 0) {
+      const start = (pageNum - 1) * limitNum;
+      paginated = students.slice(start, start + limitNum);
+    }
+
+    return res.json({
+      students: paginated,
+      data: paginated,
+      total,
+      page: pageNum,
+      totalPages: limitNum > 0 ? Math.max(1, Math.ceil(total / limitNum)) : 1,
+    });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to fetch students' });
   }
@@ -929,10 +991,152 @@ export const deleteStudent = async (req: Request, res: Response) => {
     const profile = await prisma.studentProfile.findUnique({ where: { id } });
     if (!profile) return res.status(404).json({ error: 'Student not found' });
 
-    await prisma.user.delete({ where: { id: profile.userId } });
-    return res.json({ message: 'Student account deleted successfully' });
+    await softDeleteStudents([id], req.user!.id, req.app.get('io'));
+    return res.json({ message: 'Student moved to Recently Deleted (30-day Recycle Bin)', deletedIds: [id] });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to delete student' });
+  }
+};
+
+export const bulkDeleteStudents = async (req: Request, res: Response) => {
+  try {
+    const { studentIds, classId, allMatching, search, filterClassId, permanent } = req.body || {};
+    let targetIds: string[] = Array.isArray(studentIds) ? studentIds.map(String) : [];
+
+    if (classId && targetIds.length === 0) {
+      const inClass = await prisma.studentProfile.findMany({
+        where: { classId: String(classId), deletedAt: permanent ? undefined : null },
+        select: { id: true },
+      });
+      targetIds = inClass.map((s) => s.id);
+    } else if (allMatching && targetIds.length === 0) {
+      const where: any = { deletedAt: permanent ? { not: null } : null };
+      if (filterClassId && filterClassId !== 'ALL') where.classId = String(filterClassId);
+      if (search && String(search).trim()) {
+        const q = String(search).trim();
+        where.OR = [
+          { registerNo: { contains: q, mode: 'insensitive' } },
+          { rollNo: { contains: q, mode: 'insensitive' } },
+          { user: { name: { contains: q, mode: 'insensitive' } } },
+        ];
+      }
+      const matched = await prisma.studentProfile.findMany({ where, select: { id: true } });
+      targetIds = matched.map((s) => s.id);
+    }
+
+    if (targetIds.length === 0) {
+      return res.status(400).json({ error: 'No students selected.' });
+    }
+
+    if (permanent) {
+      const result = await permanentDeleteStudents(targetIds, req.user!.id, req.app.get('io'));
+      return res.json({ message: `${result.purgedCount} student(s) permanently deleted.`, ...result });
+    }
+
+    const result = await softDeleteStudents(targetIds, req.user!.id, req.app.get('io'));
+    return res.json({
+      message: `${result.deletedCount} student(s) moved to Recently Deleted.`,
+      ...result,
+    });
+  } catch (error: any) {
+    console.error('bulkDeleteStudents error:', error);
+    return res.status(500).json({ error: 'Failed to delete selected students' });
+  }
+};
+
+export const bulkRestoreStudents = async (req: Request, res: Response) => {
+  try {
+    const { studentIds } = req.body || {};
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ error: 'studentIds array is required' });
+    }
+    const result = await restoreStudents(studentIds.map(String), req.user!.id, req.app.get('io'));
+    return res.json({ message: `${result.restoredCount} student(s) restored.`, ...result });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to restore students' });
+  }
+};
+
+export const bulkResetPasswordsHandler = async (req: Request, res: Response) => {
+  try {
+    const { studentIds } = req.body || {};
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ error: 'studentIds array is required' });
+    }
+    const credentials = await bulkResetStudentPasswords(studentIds.map(String), req.user!.id);
+    return res.json({
+      message: `Generated temporary passwords for ${credentials.length} student(s).`,
+      credentials,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to reset student passwords' });
+  }
+};
+
+export const bulkMoveClassHandler = async (req: Request, res: Response) => {
+  try {
+    const { studentIds, targetClassId } = req.body || {};
+    if (!Array.isArray(studentIds) || studentIds.length === 0 || !targetClassId) {
+      return res.status(400).json({ error: 'studentIds and targetClassId are required' });
+    }
+    const result = await bulkMoveStudentsToClass(
+      studentIds.map(String),
+      String(targetClassId),
+      req.user!.id,
+      req.app.get('io')
+    );
+    if (result.conflicts.length > 0) {
+      return res.status(409).json({
+        error: `Roll number conflict in target class for: ${result.conflicts.slice(0, 5).join(', ')}`,
+        conflicts: result.conflicts,
+      });
+    }
+    return res.json({ message: `Moved ${result.movedCount} student(s) successfully.`, ...result });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message || 'Failed to move students' });
+  }
+};
+
+export const bulkExportStudentsExcel = async (req: Request, res: Response) => {
+  try {
+    const { studentIds } = req.body || {};
+    const where: any = { deletedAt: null };
+    if (Array.isArray(studentIds) && studentIds.length > 0) {
+      where.id = { in: studentIds.map(String) };
+    }
+    const rows = await prisma.studentProfile.findMany({
+      where,
+      include: { user: { select: { name: true, email: true } }, class: { include: { academicYear: { include: { department: true } } } } },
+    });
+    const sorted = sortStudentsByRegisterNo(rows);
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Students');
+    sheet.columns = [
+      { header: 'Register Number', key: 'registerNo', width: 20 },
+      { header: 'Student Name', key: 'name', width: 28 },
+      { header: 'Roll / VH Number', key: 'rollNo', width: 16 },
+      { header: 'Class', key: 'className', width: 24 },
+      { header: 'Section', key: 'section', width: 12 },
+      { header: 'Phone', key: 'phone', width: 16 },
+    ];
+    for (const s of sorted) {
+      sheet.addRow({
+        registerNo: s.registerNo,
+        name: s.user.name,
+        rollNo: s.rollNo,
+        className: s.class?.name || '',
+        section: s.class?.section || '',
+        phone: s.phone || '',
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Velan_Students_Backup.xlsx"');
+    await workbook.xlsx.write(res);
+    return res.end();
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Failed to export students' });
   }
 };
 

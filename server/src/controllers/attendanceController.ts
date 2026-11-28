@@ -80,7 +80,7 @@ export const startSession = async (req: Request, res: Response) => {
     }
 
     const classStudents = await prisma.studentProfile.findMany({
-      where: { classId },
+      where: { classId, deletedAt: null },
       select: { userId: true },
     });
     await notifyUsers(
@@ -278,7 +278,7 @@ export const getSessionLiveBoard = async (req: Request, res: Response) => {
       include: {
         class: {
           include: {
-            students: { include: { user: true } },
+            students: { where: { deletedAt: null }, include: { user: true } },
           },
         },
         classSubject: { include: { subject: true } },

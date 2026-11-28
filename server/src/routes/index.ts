@@ -104,6 +104,11 @@ apiRouter.get('/academics/students', authenticateToken, acadCtrl.getStudentsList
 apiRouter.post('/academics/students', authenticateToken, requireRole('ADMIN'), acadCtrl.createStudent);
 apiRouter.put('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.updateStudent);
 apiRouter.delete('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteStudent);
+apiRouter.post('/academics/students/bulk-delete', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkDeleteStudents);
+apiRouter.post('/academics/students/bulk-restore', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkRestoreStudents);
+apiRouter.post('/academics/students/bulk-reset-passwords', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkResetPasswordsHandler);
+apiRouter.post('/academics/students/bulk-move-class', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkMoveClassHandler);
+apiRouter.post('/academics/students/bulk-export', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkExportStudentsExcel);
 apiRouter.post('/academics/students/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetStudentPassword);
 apiRouter.get('/academics/students/template', authenticateToken, acadCtrl.getStudentExcelTemplate);
 apiRouter.post('/academics/students/import-excel', authenticateToken, requireRole('ADMIN'), upload.single('file'), acadCtrl.importStudentsFromExcel);

@@ -31,7 +31,7 @@ export const getMonitorOverview = async (req: Request, res: Response) => {
       idleSetting,
       authRetentionSetting,
     ] = await Promise.all([
-      prisma.user.count({ where: { role: 'STUDENT', status: 'ACTIVE' } }),
+      prisma.user.count({ where: { role: 'STUDENT', status: 'ACTIVE', deletedAt: null } }),
       prisma.user.count({ where: { role: 'FACULTY', status: 'ACTIVE' } }),
       prisma.user.count({ where: { role: 'ADMIN', status: 'ACTIVE' } }),
       prisma.authEvent.findMany({ where: { timestamp: { gte: startOfToday } } }),
@@ -41,6 +41,7 @@ export const getMonitorOverview = async (req: Request, res: Response) => {
       }),
       prisma.userSession.findMany({ where: { startedAt: { gte: startOfToday } } }),
       prisma.studentProfile.findMany({
+        where: { deletedAt: null },
         select: {
           userId: true,
           registerNo: true,
@@ -334,6 +335,7 @@ export const exportNeverLoggedInExcel = async (_req: Request, res: Response) => 
     const loggedSet = new Set(logged.map((l) => l.userId));
     const [students, faculty] = await Promise.all([
       prisma.studentProfile.findMany({
+        where: { deletedAt: null },
         select: {
           userId: true,
           registerNo: true,

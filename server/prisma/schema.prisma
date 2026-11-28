@@ -26,6 +26,7 @@ model User {
   tempPasswordExpiresAt DateTime?
   passwordHistory       String?              // JSON array of last 3 bcrypt hashes
   lastRoute             String?
+  deletedAt             DateTime?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
@@ -200,6 +201,8 @@ model StudentProfile {
   canEditProfile Boolean        @default(false)
 
   enrolledAt     DateTime       @default(now())
+  deletedAt      DateTime?
+  deletedBy      String?
 
   attendanceRecords   AttendanceRecord[]
   submissions         Submission[]
@@ -210,6 +213,8 @@ model StudentProfile {
   @@unique([classId, rollNo])
   @@index([classId])
   @@index([registerNo])
+  @@index([classId, registerNo])
+  @@index([deletedAt])
 }
 
 model ProfileEditRequest {
