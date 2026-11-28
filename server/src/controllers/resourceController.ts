@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import { assignmentCreateSchema, materialCreateSchema } from '@velan/shared';
 import { notifyUsers } from './notificationController';
 import { canManageClassContent, getStudentCRInfo } from '../utils/classContentPermission';
@@ -283,7 +283,7 @@ export const updateAssignment = async (req: Request, res: Response) => {
       }
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prismaDirect.$transaction(async (tx) => {
       if (Array.isArray(links)) {
         await tx.assignmentLink.deleteMany({ where: { assignmentId: id } });
       }
@@ -543,7 +543,7 @@ export const updateMaterial = async (req: Request, res: Response) => {
       }
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prismaDirect.$transaction(async (tx) => {
       if (Array.isArray(links)) {
         await tx.materialLink.deleteMany({ where: { materialId: id } });
       }

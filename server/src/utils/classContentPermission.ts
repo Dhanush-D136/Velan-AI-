@@ -48,7 +48,7 @@ export async function canManageClassContent(
   item?: {
     createdByUserId?: string | null;
     createdByRole?: string | null;
-    classSubject?: { facultyId: string };
+    classSubject?: { facultyId: string | null };
   }
 ): Promise<{
   allowed: boolean;

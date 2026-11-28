@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import { invalidateUserAuthCache } from '../middleware/auth';
 import { notifyUsers } from './notificationController';
 
@@ -8,8 +8,8 @@ function emitDataUpdate(req: Request, type: string) {
   if (io) io.emit('data:updated', { type });
 }
 import {
-  getFacultyDependencies,
-  executeFacultyDeleteWithHandover,
+  getFacultyDeleteSummary,
+  deleteFacultyPermanently,
   setFacultyActiveStatus,
 } from '../services/facultyHandoverService';
 
@@ -26,17 +26,17 @@ function parsePrefs(raw?: string | null) {
 
 export const getFacultyDependenciesHandler = async (req: Request, res: Response) => {
   try {
-    const deps = await getFacultyDependencies(req.params.id);
+    const deps = await getFacultyDeleteSummary(req.params.id);
     if (!deps) return res.status(404).json({ error: 'Faculty not found' });
     return res.json(deps);
   } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'Failed to load faculty dependencies' });
+    return res.status(500).json({ error: 'Failed to load faculty details.' });
   }
 };
 
-export const deleteFacultyWithHandoverHandler = async (req: Request, res: Response) => {
+export const deleteFacultyPermanentHandler = async (req: Request, res: Response) => {
   try {
-    const result = await executeFacultyDeleteWithHandover(req.params.id, req.user!.id, req.body || {});
+    const result = await deleteFacultyPermanently(req.params.id, req.user!.id);
     const io = req.app.get('io');
     emitDataUpdate(req, 'faculty');
     emitDataUpdate(req, 'classes');
@@ -47,7 +47,9 @@ export const deleteFacultyWithHandoverHandler = async (req: Request, res: Respon
     return res.json(result);
   } catch (err: any) {
     const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to delete faculty', conflicts: err.conflicts });
+    return res.status(status).json({
+      error: status === 404 ? 'Faculty member not found.' : 'Could not delete this faculty member. Please try again.',
+    });
   }
 };
 
@@ -131,7 +133,7 @@ export const adminUpdateFaculty = async (req: Request, res: Response) => {
     track('emergencyContact', existing.emergencyContact, emergencyContact);
     track('bio', existing.bio, bio);
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prismaDirect.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: existing.userId },
         data: {
@@ -306,7 +308,7 @@ export const adminUpdateStudent = async (req: Request, res: Response) => {
     track('hostelOrDayScholar', existing.hostelOrDayScholar, hostelOrDayScholar);
     track('admissionYear', existing.admissionYear, admissionYear);
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prismaDirect.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: existing.userId },
         data: {
@@ -460,7 +462,7 @@ export const updateMyFacultyProfile = async (req: Request, res: Response) => {
       if (dup) return res.status(409).json({ error: `Email "${cleanEmail}" is already in use.` });
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prismaDirect.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
         data: {

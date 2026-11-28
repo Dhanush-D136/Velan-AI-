@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import { notifyUsers } from './notificationController';
 import { rushQueueService } from '../services/rushQueueService';
 import { metricsCollector } from '../services/metricsCollector';
@@ -368,7 +368,7 @@ export const submitManualAttendance = async (req: Request, res: Response) => {
       }
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prismaDirect.$transaction(async (tx) => {
       for (const r of records) {
         await tx.attendanceRecord.upsert({
           where: {
@@ -558,7 +558,7 @@ export const deleteSession = async (req: Request, res: Response) => {
       }
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prismaDirect.$transaction(async (tx) => {
       await tx.attendanceSession.delete({ where: { id: sessionId } });
       await tx.auditLog.create({
         data: {

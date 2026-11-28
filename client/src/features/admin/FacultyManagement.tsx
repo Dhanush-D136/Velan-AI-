@@ -456,7 +456,6 @@ export const FacultyManagement: React.FC = () => {
       <FacultyDeleteModal
         isOpen={!!facultyToDelete}
         faculty={facultyToDelete}
-        allFaculty={facultyList}
         onClose={() => setFacultyToDelete(null)}
         onDeleted={(msg) => {
           showToast(msg, 'success');

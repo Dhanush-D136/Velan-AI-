@@ -1,7 +1,7 @@
-import { prisma } from '../lib/prisma';
+import { prisma, runTransaction } from '../lib/prisma';
 import { invalidateUserAuthCache } from '../middleware/auth';
 
-export async function getFacultyDependencies(facultyId: string) {
+export async function getFacultyDeleteSummary(facultyId: string) {
   const profile = await prisma.facultyProfile.findUnique({
     where: { id: facultyId },
     include: {
@@ -29,30 +29,15 @@ export async function getFacultyDependencies(facultyId: string) {
   if (!profile) return null;
 
   const classSubjectIds = profile.classSubjects.map((cs) => cs.id);
-  const [
-    openSessionsCount,
-    totalSessionsCount,
-    assignmentsCount,
-    materialsCount,
-    chatMessages,
-    notifications,
-    sessions,
-    devices,
-    pushSubscriptions,
-  ] = await Promise.all([
-    prisma.attendanceSession.count({ where: { facultyId, isActive: true } }),
-    prisma.attendanceSession.count({ where: { facultyId } }),
+  const [assignmentsCount, materialsCount, totalSessionsCount, chatMessagesCount] = await Promise.all([
     classSubjectIds.length
       ? prisma.assignment.count({ where: { classSubjectId: { in: classSubjectIds } } })
       : Promise.resolve(0),
     classSubjectIds.length
       ? prisma.material.count({ where: { classSubjectId: { in: classSubjectIds } } })
       : Promise.resolve(0),
+    prisma.attendanceSession.count({ where: { facultyId } }),
     prisma.chatMessage.count({ where: { senderId: profile.userId } }),
-    prisma.notification.count({ where: { userId: profile.userId } }),
-    prisma.userSession.count({ where: { userId: profile.userId } }),
-    prisma.userDevice.count({ where: { userId: profile.userId } }),
-    prisma.pushSubscription.count({ where: { userId: profile.userId } }),
   ]);
 
   return {
@@ -87,45 +72,19 @@ export async function getFacultyDependencies(facultyId: string) {
       subjectName: cs.subject.name,
       subjectCode: cs.subject.code,
     })),
-    openSessionsCount,
-    totalSessionsCount,
     assignmentsCount,
     materialsCount,
-    counts: {
-      chatMessages,
-      notifications,
-      sessions,
-      devices,
-      pushSubscriptions,
-    },
+    totalSessionsCount,
+    chatMessagesCount,
   };
 }
 
-export interface FacultyHandoverOptions {
-  confirmEmployeeId: string;
-  timetableAction?: 'replace' | 'clear';
-  timetableReplacementFacultyId?: string;
-  advisorAction?: 'replace' | 'unassign';
-  advisorReplacements?: Record<string, string>;
-  mentorAction?: 'replace' | 'unassign';
-  mentorReplacements?: Record<string, string>;
-  assignmentsAction?: 'transfer' | 'delete';
-  assignmentsTransferFacultyId?: string;
-}
-
-export async function executeFacultyDeleteWithHandover(
-  facultyId: string,
-  actorUserId: string,
-  options: FacultyHandoverOptions
-) {
+export async function deleteFacultyPermanently(facultyId: string, actorUserId: string) {
   const profile = await prisma.facultyProfile.findUnique({
     where: { id: facultyId },
     include: {
-      user: true,
-      timetableSlots: { include: { class: true } },
-      advisedClasses: true,
-      classMentors: true,
-      classSubjects: true,
+      user: { select: { id: true, name: true } },
+      classSubjects: { select: { id: true } },
     },
   });
 
@@ -135,135 +94,44 @@ export async function executeFacultyDeleteWithHandover(
     throw err;
   }
 
-  if (
-    String(options.confirmEmployeeId || '').trim().toUpperCase() !==
-    profile.employeeId.toUpperCase()
-  ) {
-    const err: any = new Error(`Please type "${profile.employeeId}" to confirm permanent deletion.`);
-    err.status = 400;
-    throw err;
-  }
-
-  // Clash check if replacing timetable slots
-  if (
-    options.timetableAction === 'replace' &&
-    options.timetableReplacementFacultyId &&
-    profile.timetableSlots.length > 0
-  ) {
-    const repSlots = await prisma.timetableSlot.findMany({
-      where: { facultyId: options.timetableReplacementFacultyId },
-      include: { class: { select: { name: true } } },
-    });
-    const conflicts: string[] = [];
-    for (const s of profile.timetableSlots) {
-      const clash = repSlots.find(
-        (r) => r.dayOfWeek === s.dayOfWeek && r.periodNumber === s.periodNumber
-      );
-      if (clash) {
-        conflicts.push(`${s.dayOfWeek} P${s.periodNumber} (already teaching ${clash.class.name})`);
-      }
-    }
-    if (conflicts.length > 0) {
-      const err: any = new Error(
-        `Timetable clash with replacement faculty: ${conflicts.slice(0, 4).join(', ')}`
-      );
-      err.status = 409;
-      err.conflicts = conflicts;
-      throw err;
-    }
-  }
-
   const formerLabel = `${profile.user.name} (former faculty)`;
+  const csIds = profile.classSubjects.map((cs) => cs.id);
 
-  await prisma.$transaction(async (tx) => {
-    // 1. Preserve attendance history with name snapshot + set facultyId to null
-    await tx.attendanceSession.updateMany({
-      where: { facultyId },
-      data: { facultyId: null, facultyName: formerLabel },
-    });
-
-    // 2. Preserve chat messages with name snapshot + set senderId to null
-    await tx.chatMessage.updateMany({
-      where: { senderId: profile.userId },
-      data: { senderId: null, senderName: formerLabel },
-    });
-
-    // 3. Handle advised classes
-    for (const cls of profile.advisedClasses) {
-      const repId =
-        options.advisorAction === 'replace' ? options.advisorReplacements?.[cls.id] || null : null;
-      await tx.class.update({
-        where: { id: cls.id },
-        data: { advisorId: repId },
-      });
-    }
-
-    // 4. Handle mentor roles
-    if (options.mentorAction === 'replace' && options.mentorReplacements) {
-      for (const m of profile.classMentors) {
-        const repId = options.mentorReplacements[m.classId];
-        if (repId && repId !== facultyId) {
-          const exists = await tx.classMentor.findFirst({
-            where: { classId: m.classId, facultyId: repId },
-          });
-          if (!exists) {
-            await tx.classMentor.update({
-              where: { id: m.id },
-              data: { facultyId: repId },
-            });
-          } else {
-            await tx.classMentor.delete({ where: { id: m.id } });
-          }
-        } else {
-          await tx.classMentor.delete({ where: { id: m.id } });
-        }
-      }
-    } else {
-      await tx.classMentor.deleteMany({ where: { facultyId } });
-    }
-
-    // 5. Handle timetable slots
-    if (options.timetableAction === 'replace' && options.timetableReplacementFacultyId) {
-      await tx.timetableSlot.updateMany({
+  await runTransaction(async (tx) => {
+    // 1. Preserve attendance history & chat messages with name snapshots
+    await Promise.all([
+      tx.attendanceSession.updateMany({
         where: { facultyId },
-        data: { facultyId: options.timetableReplacementFacultyId },
-      });
-    } else {
-      await tx.timetableSlot.deleteMany({ where: { facultyId } });
-    }
-
-    // 6. Handle ClassSubject + Assignments + Materials
-    const csIds = profile.classSubjects.map((cs) => cs.id);
-    if (
-      options.assignmentsAction === 'transfer' &&
-      options.assignmentsTransferFacultyId &&
-      options.assignmentsTransferFacultyId !== facultyId
-    ) {
-      await tx.classSubject.updateMany({
+        data: { facultyId: null, facultyName: formerLabel },
+      }),
+      tx.chatMessage.updateMany({
+        where: { senderId: profile.userId },
+        data: { senderId: null, senderName: formerLabel },
+      }),
+      tx.class.updateMany({
+        where: { advisorId: facultyId },
+        data: { advisorId: null },
+      }),
+      tx.classSubject.updateMany({
         where: { facultyId },
-        data: { facultyId: options.assignmentsTransferFacultyId },
-      });
-    } else if (csIds.length > 0) {
-      await tx.assignment.deleteMany({ where: { classSubjectId: { in: csIds } } });
-      await tx.material.deleteMany({ where: { classSubjectId: { in: csIds } } });
-      await tx.classSubject.deleteMany({ where: { facultyId } });
-    }
+        data: { facultyId: null },
+      }),
+      tx.timetableSlot.deleteMany({ where: { facultyId } }),
+      tx.auditLog.deleteMany({ where: { userId: profile.userId } }),
+      ...(csIds.length > 0
+        ? [
+            tx.assignment.deleteMany({ where: { classSubjectId: { in: csIds } } }),
+            tx.material.deleteMany({ where: { classSubjectId: { in: csIds } } }),
+          ]
+        : []),
+    ]);
 
-    // 7. Hard delete sessions, tokens, devices, notifications, push subscriptions, profile & user
-    await tx.userSession.deleteMany({ where: { userId: profile.userId } });
-    await tx.refreshToken.deleteMany({ where: { userId: profile.userId } });
-    await tx.userDevice.deleteMany({ where: { userId: profile.userId } });
-    await tx.notification.deleteMany({ where: { userId: profile.userId } });
-    await tx.pushSubscription.deleteMany({ where: { userId: profile.userId } });
-    await tx.chatRead.deleteMany({ where: { userId: profile.userId } });
-    await tx.passwordResetRequest.deleteMany({ where: { userId: profile.userId } });
-    await tx.deviceChangeRequest.deleteMany({ where: { userId: profile.userId } });
-    await tx.auditLog.deleteMany({ where: { userId: profile.userId } });
-
-    await tx.facultyProfile.delete({ where: { id: facultyId } });
+    // 2. Hard-delete User (DB ON DELETE CASCADE removes FacultyProfile, ClassMentor,
+    //    UserSession, RefreshToken, UserDevice, DeviceChangeRequest, Notification,
+    //    PushSubscription, NotificationPref, ChatRead, PasswordResetRequest)
     await tx.user.delete({ where: { id: profile.userId } });
 
-    // 8. Server-side post-check: verify no row still references facultyId or userId
+    // 3. Post-check: verify zero references remain
     const [remFac, remUser, remSlots, remAdv, remMentor, remCs, remSess] = await Promise.all([
       tx.facultyProfile.count({ where: { id: facultyId } }),
       tx.user.count({ where: { id: profile.userId } }),
@@ -275,24 +143,24 @@ export async function executeFacultyDeleteWithHandover(
     ]);
 
     if (remFac + remUser + remSlots + remAdv + remMentor + remCs + remSess > 0) {
-      throw new Error('Post-delete integrity check failed: remaining references found');
+      throw new Error('Could not complete deletion cleanly because references remained.');
     }
 
+    // 4. Minimal audit log entry (admin, time, faculty ID)
     await tx.auditLog.create({
       data: {
         userId: actorUserId,
-        action: 'FACULTY_DELETED_WITH_HANDOVER',
+        action: 'FACULTY_DELETED',
         details: JSON.stringify({
           deletedFacultyId: facultyId,
           deletedEmployeeId: profile.employeeId,
-          deletedName: profile.user.name,
         }),
       },
     });
   });
 
   invalidateUserAuthCache(profile.userId);
-  return { message: `Faculty ${profile.user.name} permanently deleted and history preserved.` };
+  return { message: `${profile.user.name} was permanently deleted.` };
 }
 
 export async function setFacultyActiveStatus(
@@ -311,7 +179,7 @@ export async function setFacultyActiveStatus(
   }
 
   const newStatus = isActive ? 'ACTIVE' : 'INACTIVE';
-  await prisma.$transaction(async (tx) => {
+  await runTransaction(async (tx) => {
     await tx.user.update({
       where: { id: profile.userId },
       data: { status: newStatus },

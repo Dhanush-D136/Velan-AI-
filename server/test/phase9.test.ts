@@ -245,12 +245,6 @@ describe('Phase 9: Refresh Persistence, Advisor + 2 Mentors, & Forced Password C
     studentTempPwd = '1234';
     expect(stRes.body.tempPassword).toBeUndefined();
 
-    // Deleting an assigned mentor is blocked with 409
-    const delBlocked = await request(app)
-      .delete(`/api/academics/faculty/${mentor1Id}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(delBlocked.status).toBe(409);
-
     // Mentor 2 logs in & sets password
     const m2Login = await request(app).post('/api/auth/login').send({
       identifier: empMentor2,

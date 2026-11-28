@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import {
   loginSchema,
   changePasswordSchema,
@@ -777,7 +777,7 @@ export const updateMyProfile = async (req: Request, res: Response) => {
     }
 
     if (role === 'STUDENT') {
-      await prisma.$transaction(async (tx) => {
+      await prismaDirect.$transaction(async (tx) => {
         await tx.user.update({
           where: { id: userId },
           data: {
@@ -793,7 +793,7 @@ export const updateMyProfile = async (req: Request, res: Response) => {
         });
       });
     } else if (role === 'FACULTY') {
-      await prisma.$transaction(async (tx) => {
+      await prismaDirect.$transaction(async (tx) => {
         await tx.user.update({
           where: { id: userId },
           data: {

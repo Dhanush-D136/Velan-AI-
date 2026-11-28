@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import { DEFAULT_PASSWORD } from '../config/passwordDefaults';
 import { invalidateUserAuthCache } from '../middleware/auth';
 import { sortStudentsByRegisterNo } from '../utils/studentSort';
@@ -54,7 +54,7 @@ export async function softDeleteStudents(
     breakdown[cname] = (breakdown[cname] || 0) + 1;
   }
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     for (const idBatch of chunkArray(targetIds, BATCH_SIZE)) {
       await tx.studentProfile.updateMany({
         where: { id: { in: idBatch } },
@@ -129,7 +129,7 @@ export async function restoreStudents(studentIds: string[], adminUserId: string,
   const targetIds = targets.map((t) => t.id);
   const targetUserIds = targets.map((t) => t.userId);
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     for (const idBatch of chunkArray(targetIds, BATCH_SIZE)) {
       await tx.studentProfile.updateMany({
         where: { id: { in: idBatch } },
@@ -180,7 +180,7 @@ export async function permanentDeleteStudents(studentIds: string[], adminUserId:
 
   const userIds = targets.map((t) => t.userId);
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     for (const uidBatch of chunkArray(userIds, BATCH_SIZE)) {
       await tx.user.deleteMany({ where: { id: { in: uidBatch } } });
     }
@@ -235,7 +235,7 @@ export async function bulkResetStudentPasswords(studentIds: string[], adminUserI
   const defaultHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
   const userIds = targets.map((t) => t.userId);
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     for (const uidBatch of chunkArray(userIds, BATCH_SIZE)) {
       await tx.user.updateMany({
         where: { id: { in: uidBatch } },
@@ -292,7 +292,7 @@ export async function bulkMoveStudentsToClass(
     return { movedCount: 0, conflicts };
   }
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     await tx.studentProfile.updateMany({
       where: { id: { in: moving.map((m) => m.id) } },
       data: { classId: targetClassId },

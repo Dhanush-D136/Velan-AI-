@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import { DEFAULT_PASSWORD } from '../config/passwordDefaults';
 import { invalidateUserAuthCache } from '../middleware/auth';
 
@@ -40,7 +40,7 @@ export async function setDefaultPassword(
   const defaultHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
   const by = options.by || 'admin';
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
       data: {
@@ -102,7 +102,7 @@ export async function applyDefaultPasswordMigration(adminUserId: string) {
   const defaultHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
   const ids = targets.map((t) => t.id);
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     await tx.user.updateMany({
       where: { id: { in: ids } },
       data: {
@@ -157,7 +157,7 @@ export async function setPassword(
   const now = new Date();
   const expiresAt = options.mustChange ? (options.expiresAt ?? null) : null;
 
-  await prisma.$transaction(async (tx) => {
+  await prismaDirect.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
       data: {

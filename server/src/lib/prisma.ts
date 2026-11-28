@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 // Sanitize database URLs: strip surrounding quotes and whitespace if pasted with quotes
 const cleanUrl = (url?: string): string | undefined => {
@@ -27,7 +27,10 @@ if (sanitizedDirectUrl) {
   process.env.DIRECT_URL = sanitizedDirectUrl;
 }
 
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+const globalForPrisma = global as unknown as {
+  prisma: PrismaClient;
+  prismaDirect?: PrismaClient;
+};
 
 export const prisma =
   globalForPrisma.prisma ||
@@ -36,4 +39,25 @@ export const prisma =
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+// Dedicated direct connection (port 5432 / non-pooler) for interactive $transaction calls
+export const prismaDirect =
+  globalForPrisma.prismaDirect ||
+  (sanitizedDirectUrl && sanitizedDirectUrl !== sanitizedDbUrl
+    ? new PrismaClient({
+        datasources: { db: { url: sanitizedDirectUrl } },
+        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      })
+    : prisma);
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaDirect = prismaDirect;
+}
+
+export const TX_OPTIONS = { maxWait: 10000, timeout: 30000 } as const;
+
+export function runTransaction<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>
+): Promise<T> {
+  return prismaDirect.$transaction(fn, TX_OPTIONS);
+}

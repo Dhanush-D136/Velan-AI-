@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import {
   academicSemesterSaveSchema,
   gradingScaleItemSchema,
@@ -259,7 +259,7 @@ export const saveMySemester = async (req: Request, res: Response) => {
       }
     }
 
-    const saved = await prisma.$transaction(async (tx) => {
+    const saved = await prismaDirect.$transaction(async (tx) => {
       const existingSem = await tx.academicSemester.findUnique({
         where: { studentId_semesterNumber: { studentId: student.id, semesterNumber } },
       });
@@ -586,7 +586,7 @@ export const adminSaveStudentSemester = async (req: Request, res: Response) => {
       ? { gpa: existingSem.gpa, subjectsCount: existingSem.subjects.length }
       : null;
 
-    const saved = await prisma.$transaction(async (tx) => {
+    const saved = await prismaDirect.$transaction(async (tx) => {
       if (existingSem) {
         await tx.academicSubject.deleteMany({ where: { academicSemesterId: existingSem.id } });
         return tx.academicSemester.update({

@@ -8,7 +8,7 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import { prisma } from './lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from './lib/prisma';
 import { apiRouter } from './routes';
 import { setupSocketHandlers } from './sockets';
 import { metricsCollector } from './services/metricsCollector';
@@ -196,7 +196,7 @@ if (process.env.NODE_ENV !== 'test') {
       });
 
       for (const session of expiredSessions) {
-        await prisma.$transaction(async (tx) => {
+        await prismaDirect.$transaction(async (tx) => {
           await tx.attendanceSession.update({
             where: { id: session.id },
             data: { isActive: false, closedAt: now },

@@ -94,10 +94,9 @@ apiRouter.delete('/academics/assignments/:id', authenticateToken, requireRole('A
 apiRouter.get('/academics/faculty', authenticateToken, acadCtrl.getFacultyList);
 apiRouter.post('/academics/faculty', authenticateToken, requireRole('ADMIN'), acadCtrl.createFaculty);
 apiRouter.get('/academics/faculty/:id/dependencies', authenticateToken, requireRole('ADMIN'), profCtrl.getFacultyDependenciesHandler);
-apiRouter.post('/academics/faculty/:id/delete-with-handover', authenticateToken, requireRole('ADMIN'), profCtrl.deleteFacultyWithHandoverHandler);
 apiRouter.post('/academics/faculty/:id/deactivate', authenticateToken, requireRole('ADMIN'), profCtrl.toggleFacultyActiveHandler);
 apiRouter.put('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), profCtrl.adminUpdateFaculty);
-apiRouter.delete('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteFaculty);
+apiRouter.delete('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), profCtrl.deleteFacultyPermanentHandler);
 apiRouter.post('/academics/faculty/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetFacultyPassword);
 apiRouter.post('/academics/faculty/import-excel', authenticateToken, requireRole('ADMIN'), acadCtrl.importFacultyFromExcel);
 

@@ -1,5 +1,5 @@
 import { Server } from 'socket.io';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import { metricsCollector } from './metricsCollector';
 
 export interface ThirukkuralItem {
@@ -354,7 +354,7 @@ class RushQueueService {
         }
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prismaDirect.$transaction(async (tx) => {
         for (const item of batch) {
           await tx.attendanceRecord.upsert({
             where: { sessionId_studentId: { sessionId: item.sessionId, studentId: item.studentId } },

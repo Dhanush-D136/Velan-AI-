@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import ExcelJS from 'exceljs';
-import { prisma } from '../lib/prisma';
+import { prisma, prismaDirect, TX_OPTIONS } from '../lib/prisma';
 import { MAX_MENTORS_PER_CLASS } from '../utils/advisorAccess';
 import { compareRegisterNo, sortStudentsByRegisterNo } from '../utils/studentSort';
 import {
@@ -262,7 +262,7 @@ export const createClass = async (req: Request, res: Response) => {
     });
     if (existing) return res.status(409).json({ error: `Section ${section} already exists for this year.` });
 
-    const cls = await prisma.$transaction(async (tx) => {
+    const cls = await prismaDirect.$transaction(async (tx) => {
       const created = await tx.class.create({
         data: {
           academicYearId,
@@ -364,7 +364,7 @@ export const updateClass = async (req: Request, res: Response) => {
     const nextSection = section ? String(section).toUpperCase().trim() : existing.section;
     const nextName = `${existing.academicYear.department.code} – Year ${existing.academicYear.year} – ${nextSection}`;
 
-    const cls = await prisma.$transaction(async (tx) => {
+    const cls = await prismaDirect.$transaction(async (tx) => {
       const updated = await tx.class.update({
         where: { id },
         data: {
@@ -801,7 +801,7 @@ export const importFacultyFromExcel = async (req: Request, res: Response) => {
       }
 
       try {
-        const result = await prisma.$transaction(async (tx) => {
+        const result = await prismaDirect.$transaction(async (tx) => {
           const user = await tx.user.create({
             data: {
               name,
@@ -967,7 +967,7 @@ export const createStudent = async (req: Request, res: Response) => {
 
     const defaultPasswordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
-    const profile = await prisma.$transaction(async (tx) => {
+    const profile = await prismaDirect.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           name,
@@ -1079,7 +1079,7 @@ export const toggleStudentCR = async (req: Request, res: Response) => {
     const io = req.app.get('io');
 
     if (existing) {
-      await prisma.$transaction(async (tx) => {
+      await prismaDirect.$transaction(async (tx) => {
         await tx.classRepresentative.delete({ where: { id: existing.id } });
         await tx.auditLog.create({
           data: {
@@ -1106,7 +1106,7 @@ export const toggleStudentCR = async (req: Request, res: Response) => {
           error: `This class already has the maximum of ${settings.crMaxPerClass} Class Representatives.`,
         });
       }
-      await prisma.$transaction(async (tx) => {
+      await prismaDirect.$transaction(async (tx) => {
         await tx.classRepresentative.create({
           data: { classId: student.classId, studentId: id, assignedBy: req.user!.id },
         });
@@ -1539,7 +1539,7 @@ export const importStudentsFromExcel = async (req: Request, res: Response) => {
     }
 
     if (usersToCreate.length > 0) {
-      await prisma.$transaction(
+      await prismaDirect.$transaction(
         async (tx) => {
           await tx.user.createMany({ data: usersToCreate });
           await tx.studentProfile.createMany({ data: profilesToCreate });
@@ -1675,7 +1675,7 @@ export const decideProfileEdit = async (req: Request, res: Response) => {
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
     if (action === 'APPROVE') {
-      await prisma.$transaction(async (tx) => {
+      await prismaDirect.$transaction(async (tx) => {
         const field = request.field;
         const val = request.newValue;
 
@@ -2145,7 +2145,7 @@ export const updateBellSchedule = async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prismaDirect.$transaction(async (tx) => {
       await tx.bellSchedule.deleteMany({});
       await tx.bellSchedule.createMany({ data: validated });
 

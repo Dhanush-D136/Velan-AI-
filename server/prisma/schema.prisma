@@ -140,7 +140,7 @@ model Class {
   name           String         // e.g. CSE – Year 2 – A
   roomNumber     String?
   advisorId      String?
-  advisor        FacultyProfile? @relation("ClassAdvisor", fields: [advisorId], references: [id])
+  advisor        FacultyProfile? @relation("ClassAdvisor", fields: [advisorId], references: [id], onDelete: SetNull)
   mentors        ClassMentor[]
   classRepresentatives ClassRepresentative[]
   createdAt      DateTime       @default(now())
@@ -272,8 +272,8 @@ model ClassSubject {
   class      Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
   subjectId  String
   subject    Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  facultyId  String
-  faculty    FacultyProfile @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  facultyId  String?
+  faculty    FacultyProfile? @relation(fields: [facultyId], references: [id], onDelete: SetNull)
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 

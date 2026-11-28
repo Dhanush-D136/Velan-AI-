@@ -150,25 +150,13 @@ describe('Phase 13: Faculty Handover Delete, Admin Edit, & Role Profile/Settings
     expect(depRes.body.advisedClasses.length).toBe(1);
     expect(depRes.body.totalSessionsCount).toBe(1);
 
-    // Wrong confirm ID fails cleanly with 400
-    const badDel = await request(app)
-      .post(`/api/academics/faculty/${fac1Id}/delete-with-handover`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ confirmEmployeeId: 'WRONG' });
-    expect(badDel.status).toBe(400);
-
-    // Valid handover delete replaces advisor with fac2, transfers classSubject, preserves session snapshot
+    // Direct delete removes advisor/mentor links, clears subject teacher, keeps attendance snapshot
+    const startMs = Date.now();
     const okDel = await request(app)
-      .post(`/api/academics/faculty/${fac1Id}/delete-with-handover`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        confirmEmployeeId: emp1,
-        advisorAction: 'replace',
-        advisorReplacements: { [classId]: fac2Id },
-        assignmentsAction: 'transfer',
-        assignmentsTransferFacultyId: fac2Id,
-      });
+      .delete(`/api/academics/faculty/${fac1Id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(okDel.status).toBe(200);
+    expect(Date.now() - startMs).toBeLessThan(5000);
 
     const remainingFac = await prisma.facultyProfile.findUnique({ where: { id: fac1Id } });
     expect(remainingFac).toBeNull();
@@ -178,7 +166,11 @@ describe('Phase 13: Faculty Handover Delete, Admin Edit, & Role Profile/Settings
     expect(updatedSess?.facultyName).toContain('(former faculty)');
 
     const updatedClass = await prisma.class.findUnique({ where: { id: classId } });
-    expect(updatedClass?.advisorId).toBe(fac2Id);
+    expect(updatedClass?.advisorId).toBeNull();
+
+    const updatedCs = await prisma.classSubject.findUnique({ where: { id: cs.id } });
+    expect(updatedCs).toBeTruthy();
+    expect(updatedCs?.facultyId).toBeNull();
   }, 20000);
 
   it('2. Admin edit faculty/student validates uniqueness, writes audit log, and keeps sessions alive', async () => {
