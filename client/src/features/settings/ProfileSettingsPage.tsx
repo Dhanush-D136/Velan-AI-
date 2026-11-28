@@ -431,6 +431,9 @@ export const ProfileSettingsPage: React.FC = () => {
             <div className="pt-2 border-t border-border text-xs text-content-secondary space-y-1">
               <div>Class Advisor: <strong className="text-content">{sp?.class?.advisor?.user?.name || 'Unassigned'}</strong></div>
               <div>Mentors: <strong className="text-content">{sp?.class?.mentors?.map((m: any) => m.faculty?.user?.name).filter(Boolean).join(', ') || 'None'}</strong></div>
+              {(user as any)?.isCR && (
+                <div>My roles: <Badge variant="student" size="sm">Class Representative of {(user as any)?.crClassName || sp?.class?.name}</Badge></div>
+              )}
             </div>
           </Card>
 

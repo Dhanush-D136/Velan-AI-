@@ -60,6 +60,9 @@ export async function softDeleteStudents(
         where: { id: { in: idBatch } },
         data: { deletedAt: now, deletedBy: adminUserId },
       });
+      await tx.classRepresentative.deleteMany({
+        where: { studentId: { in: idBatch } },
+      });
 
       // Remove from OPEN (active) attendance sessions so live rosters/percentages update immediately
       await tx.attendanceRecord.deleteMany({
@@ -293,6 +296,9 @@ export async function bulkMoveStudentsToClass(
     await tx.studentProfile.updateMany({
       where: { id: { in: moving.map((m) => m.id) } },
       data: { classId: targetClassId },
+    });
+    await tx.classRepresentative.deleteMany({
+      where: { studentId: { in: moving.map((m) => m.id) } },
     });
     await tx.auditLog.create({
       data: {

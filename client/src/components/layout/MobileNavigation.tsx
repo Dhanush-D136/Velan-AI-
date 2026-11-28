@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { UserRole } from '@velan/shared';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { getRoleNavItems } from './navConfig';
+import { SidebarFooter } from './SidebarFooter';
 import {
   LayoutDashboard,
   CalendarCheck2,
@@ -331,6 +332,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onOp
                 Sign Out ({user?.name})
               </button>
             </div>
+            <SidebarFooter withSafeArea />
           </aside>
         </div>
       )}

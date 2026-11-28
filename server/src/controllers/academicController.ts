@@ -21,6 +21,7 @@ import {
 } from '../services/passwordService';
 import { notifyUsers } from './notificationController';
 import { invalidateUserAuthCache } from '../middleware/auth';
+import { getCRSettings } from '../utils/classContentPermission';
 import {
   departmentCreateSchema,
   academicYearCreateSchema,
@@ -79,6 +80,12 @@ export const getClasses = async (req: Request, res: Response) => {
         academicYear: { include: { department: true } },
         advisor: { include: { user: true } },
         mentors: { include: { faculty: { include: { user: true } } }, orderBy: { createdAt: 'asc' } },
+        classRepresentatives: {
+          include: {
+            student: { include: { user: { select: { name: true, status: true } } } },
+          },
+          orderBy: { assignedAt: 'asc' },
+        },
         _count: { select: { students: true, classSubjects: true } },
       },
       orderBy: { name: 'asc' },
@@ -308,13 +315,14 @@ export const createClass = async (req: Request, res: Response) => {
 export const updateClass = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { section, roomNumber, advisorId, mentor1Id, mentor2Id } = req.body;
+    const { section, roomNumber, advisorId, mentor1Id, mentor2Id, crIds, cr1Id, cr2Id } = req.body;
 
     const existing = await prisma.class.findUnique({
       where: { id },
       include: {
         academicYear: { include: { department: true } },
         mentors: true,
+        classRepresentatives: { include: { student: { select: { userId: true } } } },
       },
     });
     if (!existing) return res.status(404).json({ error: 'Class not found' });
@@ -326,6 +334,32 @@ export const updateClass = async (req: Request, res: Response) => {
 
     const roleCheck = await validateClassRoles(nextAdvisor, nextMentor1, nextMentor2);
     if (roleCheck.error) return res.status(400).json({ error: roleCheck.error });
+
+    // Validate Class Representatives if provided
+    const hasCRInput = crIds !== undefined || cr1Id !== undefined || cr2Id !== undefined;
+    let nextCRIds: string[] = existing.classRepresentatives.map((r) => r.studentId);
+    if (hasCRInput) {
+      const rawCRs: string[] = Array.isArray(crIds)
+        ? crIds.filter(Boolean).map(String)
+        : [cr1Id, cr2Id].filter(Boolean).map(String);
+      if (new Set(rawCRs).size !== rawCRs.length) {
+        return res.status(400).json({ error: 'The same student cannot be chosen twice as Class Representative.' });
+      }
+      const crSettings = await getCRSettings();
+      if (rawCRs.length > crSettings.crMaxPerClass) {
+        return res.status(400).json({ error: `Maximum ${crSettings.crMaxPerClass} Class Representatives allowed per class.` });
+      }
+      if (rawCRs.length > 0) {
+        const validStudents = await prisma.studentProfile.findMany({
+          where: { id: { in: rawCRs }, classId: id, deletedAt: null, user: { status: 'ACTIVE' } },
+          select: { id: true },
+        });
+        if (validStudents.length !== rawCRs.length) {
+          return res.status(400).json({ error: 'All Class Representatives must be active students of this class.' });
+        }
+      }
+      nextCRIds = rawCRs;
+    }
 
     const nextSection = section ? String(section).toUpperCase().trim() : existing.section;
     const nextName = `${existing.academicYear.department.code} – Year ${existing.academicYear.year} – ${nextSection}`;
@@ -349,8 +383,52 @@ export const updateClass = async (req: Request, res: Response) => {
       if (mentorRows.length > 0) {
         await tx.classMentor.createMany({ data: mentorRows });
       }
+
+      if (hasCRInput) {
+        await tx.classRepresentative.deleteMany({ where: { classId: id } });
+        if (nextCRIds.length > 0) {
+          await tx.classRepresentative.createMany({
+            data: nextCRIds.map((sid) => ({
+              classId: id,
+              studentId: sid,
+              assignedBy: req.user!.id,
+            })),
+          });
+        }
+      }
       return updated;
     });
+
+    if (hasCRInput) {
+      const oldCRSet = new Set(existing.classRepresentatives.map((r) => r.studentId));
+      const newCRSet = new Set(nextCRIds);
+      const changedCRIds = Array.from(new Set([...oldCRSet, ...newCRSet]));
+      if (changedCRIds.length > 0) {
+        const stRows = await prisma.studentProfile.findMany({
+          where: { id: { in: changedCRIds } },
+          select: { id: true, userId: true },
+        });
+        const addedCRUsers = stRows.filter((s) => !oldCRSet.has(s.id) && newCRSet.has(s.id)).map((s) => s.userId);
+        const removedCRUsers = stRows.filter((s) => oldCRSet.has(s.id) && !newCRSet.has(s.id)).map((s) => s.userId);
+        const io = req.app.get('io');
+        if (addedCRUsers.length > 0) {
+          await notifyUsers(io, addedCRUsers, {
+            title: 'Assigned as Class Representative',
+            message: `You are now Class Representative of ${cls.name}.`,
+            type: 'ROLE',
+            link: '/student',
+          });
+        }
+        if (removedCRUsers.length > 0) {
+          await notifyUsers(io, removedCRUsers, {
+            title: 'Class Representative Role Removed',
+            message: `You are no longer Class Representative of ${cls.name}.`,
+            type: 'ROLE',
+          });
+        }
+        for (const u of stRows) invalidateUserAuthCache(u.userId);
+      }
+    }
 
     const oldFacIds = new Set([...(existing.advisorId ? [existing.advisorId] : []), ...existingMentors]);
     const newFacIds = new Set([...(roleCheck.cleanAdvisor ? [roleCheck.cleanAdvisor] : []), ...roleCheck.mentorIds]);
@@ -382,6 +460,7 @@ export const updateClass = async (req: Request, res: Response) => {
     }
 
     emitDataUpdate(req, 'classes');
+    emitDataUpdate(req, 'students');
     return res.json({ message: 'Class updated successfully', class: cls, data: cls });
   } catch (error: any) {
     return res.status(500).json({ error: 'Failed to update class' });
@@ -790,7 +869,7 @@ export const resetFacultyPassword = async (req: Request, res: Response) => {
 
 export const getStudentsList = async (req: Request, res: Response) => {
   try {
-    const { classId, search, sort = 'reg_asc', page, limit, deleted, idsOnly, passwordStatus } = req.query;
+    const { classId, search, sort = 'reg_asc', page, limit, deleted, idsOnly, passwordStatus, crOnly } = req.query;
     const showDeleted = deleted === 'true';
 
     const where: any = {
@@ -798,6 +877,9 @@ export const getStudentsList = async (req: Request, res: Response) => {
     };
     if (classId && String(classId) !== 'ALL') {
       where.classId = String(classId);
+    }
+    if (crOnly === 'true') {
+      where.classRepresentatives = { some: {} };
     }
     if (passwordStatus === 'DEFAULT') {
       where.user = { ...(where.user || {}), mustChangePassword: true };
@@ -818,6 +900,7 @@ export const getStudentsList = async (req: Request, res: Response) => {
       include: {
         user: { include: { devices: true } },
         class: { include: { academicYear: { include: { department: true } } } },
+        classRepresentatives: true,
         _count: { select: { attendanceRecords: true } },
       },
     });
@@ -978,6 +1061,76 @@ export const updateStudent = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('updateStudent error:', error);
     return res.status(500).json({ error: 'Failed to update student' });
+  }
+};
+
+export const toggleStudentCR = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const student = await prisma.studentProfile.findUnique({
+      where: { id },
+      include: { user: true, class: true, classRepresentatives: true },
+    });
+    if (!student || student.deletedAt) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const existing = student.classRepresentatives.find((r) => r.classId === student.classId);
+    const io = req.app.get('io');
+
+    if (existing) {
+      await prisma.$transaction(async (tx) => {
+        await tx.classRepresentative.delete({ where: { id: existing.id } });
+        await tx.auditLog.create({
+          data: {
+            userId: req.user!.id,
+            action: 'CR_REMOVED',
+            details: JSON.stringify({ studentId: id, classId: student.classId }),
+          },
+        });
+      });
+      invalidateUserAuthCache(student.userId);
+      await notifyUsers(io, [student.userId], {
+        title: 'Class Representative Role Removed',
+        message: `You are no longer Class Representative of ${student.class.name}.`,
+        type: 'ROLE',
+      });
+      emitDataUpdate(req, 'students');
+      emitDataUpdate(req, 'classes');
+      return res.json({ isCR: false, message: `${student.user.name} removed as Class Representative.` });
+    } else {
+      const settings = await getCRSettings();
+      const currentCount = await prisma.classRepresentative.count({ where: { classId: student.classId } });
+      if (currentCount >= settings.crMaxPerClass) {
+        return res.status(400).json({
+          error: `This class already has the maximum of ${settings.crMaxPerClass} Class Representatives.`,
+        });
+      }
+      await prisma.$transaction(async (tx) => {
+        await tx.classRepresentative.create({
+          data: { classId: student.classId, studentId: id, assignedBy: req.user!.id },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: req.user!.id,
+            action: 'CR_ASSIGNED',
+            details: JSON.stringify({ studentId: id, classId: student.classId }),
+          },
+        });
+      });
+      invalidateUserAuthCache(student.userId);
+      await notifyUsers(io, [student.userId], {
+        title: 'Assigned as Class Representative',
+        message: `You are now Class Representative of ${student.class.name}.`,
+        type: 'ROLE',
+        link: '/student',
+      });
+      emitDataUpdate(req, 'students');
+      emitDataUpdate(req, 'classes');
+      return res.json({ isCR: true, message: `${student.user.name} is now Class Representative of ${student.class.name}.` });
+    }
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to update Class Representative status' });
   }
 };
 

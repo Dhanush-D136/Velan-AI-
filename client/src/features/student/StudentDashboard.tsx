@@ -94,6 +94,9 @@ export const StudentDashboard: React.FC = () => {
             {student?.class?.advisorName && (
               <Badge variant="neutral" size="sm">Advisor: {student.class.advisorName}</Badge>
             )}
+            {(user as any)?.isCR && (
+              <Badge variant="student" size="sm">Class Representative</Badge>
+            )}
             <span className="font-mono text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-200">
               Roll: {user?.studentProfile?.rollNo || '—'}
             </span>

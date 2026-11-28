@@ -49,6 +49,8 @@ export const MaterialsPage: React.FC = () => {
   const { user } = useAuthStore();
   const { showToast } = useToast();
   const isFaculty = user?.role === 'FACULTY';
+  const isCR = Boolean((user as any)?.isCR);
+  const canManage = isFaculty || isCR;
   const isAdmin = user?.role === 'ADMIN';
   const classId = user?.studentProfile?.classId;
 
@@ -78,27 +80,14 @@ export const MaterialsPage: React.FC = () => {
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
 
       const reqs: Promise<any>[] = [api.get(`/api/materials?${params.toString()}`)];
-      if (isFaculty) {
-        reqs.push(api.get('/api/timetable/my-faculty'));
+      if (canManage) {
+        reqs.push(api.get('/api/assignments/teaching-pairs'));
       }
-      const [mRes, ttRes] = await Promise.all(reqs);
+      const [mRes, pairsRes] = await Promise.all(reqs);
       setMaterials(mRes.data?.materials || []);
 
-      if (ttRes?.data?.slots) {
-        const pairMap = new Map<string, any>();
-        for (const s of ttRes.data.slots) {
-          const key = `${s.classId}_${s.classSubject?.subjectId}`;
-          if (!pairMap.has(key) && s.class && s.classSubject?.subject) {
-            pairMap.set(key, {
-              classId: s.classId,
-              className: s.class.name,
-              subjectId: s.classSubject.subjectId,
-              subjectName: s.classSubject.subject.name,
-              subjectCode: s.classSubject.subject.code,
-            });
-          }
-        }
-        const pairs = Array.from(pairMap.values());
+      if (pairsRes?.data?.pairs) {
+        const pairs = pairsRes.data.pairs;
         setTeachingPairs(pairs);
         if (pairs.length > 0 && !formClassId) {
           setFormClassId(pairs[0].classId);
@@ -110,7 +99,7 @@ export const MaterialsPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [typeFilter, subjectFilter, searchQuery, isFaculty, formClassId]);
+  }, [typeFilter, subjectFilter, searchQuery, canManage, formClassId]);
 
   useEffect(() => {
     fetchMaterials();
@@ -222,7 +211,7 @@ export const MaterialsPage: React.FC = () => {
             Study Material Library
           </h1>
           <p className="text-xs sm:text-sm text-content-secondary mt-1">
-            {isFaculty
+            {canManage
               ? 'Share notes, slides, question papers, and video lectures via Google Drive or web links.'
               : isAdmin
                 ? 'Moderate and inspect study materials shared across all classes.'
@@ -230,7 +219,7 @@ export const MaterialsPage: React.FC = () => {
           </p>
         </div>
 
-        {isFaculty && (
+        {canManage && (
           <Button onClick={openCreateModal} leftIcon={<Plus className="w-4 h-4" />}>
             Add Material
           </Button>
@@ -296,9 +285,9 @@ export const MaterialsPage: React.FC = () => {
                     </Badge>
                     {m.class?.name && <Badge variant="neutral" size="sm">{m.class.name}</Badge>}
                   </div>
-                  {(isAdmin || (isFaculty && m.faculty?.userId === user?.id)) && (
+                  {(isAdmin || isCR || (isFaculty && m.faculty?.userId === user?.id)) && (
                     <div className="flex items-center gap-1 shrink-0">
-                      {isFaculty && (
+                      {canManage && (
                         <button
                           onClick={() => openEditModal(m)}
                           className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50"
@@ -344,7 +333,11 @@ export const MaterialsPage: React.FC = () => {
                   )}
                 </div>
                 <div className="text-[11px] text-content-muted flex justify-between">
-                  <span>{m.faculty?.user?.name || 'Faculty'}</span>
+                  <span>
+                    {m.createdByRole === 'CR'
+                      ? `Posted by ${m.createdByName || 'Student'} (Class Representative)`
+                      : m.faculty?.user?.name || 'Faculty'}
+                  </span>
                   <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                 </div>
               </div>

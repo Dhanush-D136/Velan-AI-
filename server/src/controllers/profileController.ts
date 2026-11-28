@@ -343,6 +343,10 @@ export const adminUpdateStudent = async (req: Request, res: Response) => {
         include: { user: true, class: { include: { academicYear: { include: { department: true } } } } },
       });
 
+      if (targetClassId !== existing.classId) {
+        await tx.classRepresentative.deleteMany({ where: { studentId: id } });
+      }
+
       if (changes.length > 0) {
         await tx.auditLog.create({
           data: {

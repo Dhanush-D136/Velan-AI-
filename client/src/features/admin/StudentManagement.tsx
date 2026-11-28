@@ -133,6 +133,17 @@ export const StudentManagement: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedStudentForView, setSelectedStudentForView] = useState<StudentItem | null>(null);
   const [studentToEdit, setStudentToEdit] = useState<StudentItem | null>(null);
+  const [crOnlyFilter, setCrOnlyFilter] = useState(false);
+
+  const handleToggleCR = async (s: StudentItem) => {
+    try {
+      const res = await api.post(`/api/academics/students/${s.id}/toggle-cr`);
+      showToast(res.data?.message || 'Class Representative updated', 'success');
+      fetchStudents();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to update Class Representative', 'error');
+    }
+  };
 
   // Manual Add Form State
   const [isSavingStudent, setIsSavingStudent] = useState(false);
@@ -185,6 +196,7 @@ export const StudentManagement: React.FC = () => {
       };
       if (selectedClassFilter !== 'ALL') params.classId = selectedClassFilter;
       if (passwordStatusFilter !== 'ALL') params.passwordStatus = passwordStatusFilter;
+      if (crOnlyFilter) params.crOnly = 'true';
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await api.get('/api/academics/students', { params });
       setStudents(res.data.students || res.data.data || []);
@@ -195,7 +207,7 @@ export const StudentManagement: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedClassFilter, passwordStatusFilter, debouncedSearch, sortMode, page, directoryTab]);
+  }, [selectedClassFilter, passwordStatusFilter, crOnlyFilter, debouncedSearch, sortMode, page, directoryTab]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -347,6 +359,7 @@ export const StudentManagement: React.FC = () => {
       };
       if (selectedClassFilter !== 'ALL') params.classId = selectedClassFilter;
       if (passwordStatusFilter !== 'ALL') params.passwordStatus = passwordStatusFilter;
+      if (crOnlyFilter) params.crOnly = 'true';
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await api.get('/api/academics/students', { params });
       const ids: string[] = res.data?.ids || [];
@@ -596,6 +609,11 @@ export const StudentManagement: React.FC = () => {
               Pending First Login
             </Badge>
           )}
+          {(s as any).classRepresentatives?.length > 0 && (
+            <Badge variant="student" size="sm" className="ml-1">
+              CR
+            </Badge>
+          )}
         </div>
       ),
     },
@@ -672,6 +690,17 @@ export const StudentManagement: React.FC = () => {
                 className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 transition"
               >
                 <Eye className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleToggleCR(s)}
+                title={(s as any).classRepresentatives?.length > 0 ? 'Remove CR' : 'Make CR'}
+                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                  (s as any).classRepresentatives?.length > 0
+                    ? 'bg-brand-100 text-brand-700 hover:bg-brand-200'
+                    : 'bg-slate-100 text-content-secondary hover:bg-slate-200'
+                }`}
+              >
+                {(s as any).classRepresentatives?.length > 0 ? 'Remove CR' : 'Make CR'}
               </button>
               <button
                 onClick={() => setStudentToEdit(s)}
@@ -840,6 +869,21 @@ export const StudentManagement: React.FC = () => {
             <option value="DEFAULT">Default (must change)</option>
             <option value="SET">Set by user</option>
           </select>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCrOnlyFilter((prev) => !prev);
+              setPage(1);
+            }}
+            className={`px-3 py-2 rounded-xl border text-xs font-semibold transition ${
+              crOnlyFilter
+                ? 'bg-brand-600 text-white border-brand-600'
+                : 'bg-white text-content border-border hover:bg-surface-soft'
+            }`}
+          >
+            Class Representatives
+          </button>
 
           <select
             aria-label="Sort Students"

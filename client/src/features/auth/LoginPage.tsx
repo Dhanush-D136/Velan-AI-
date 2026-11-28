@@ -689,8 +689,8 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <footer className="pt-6 text-center text-[11px] text-slate-500">
-          © 2026 Velan AI. All rights reserved.
+        <footer className="pt-6 text-center text-xs leading-[1.5] text-slate-500 dark:text-slate-400">
+          © {new Date().getFullYear()} Velan AI. All rights reserved.
         </footer>
       </main>
 

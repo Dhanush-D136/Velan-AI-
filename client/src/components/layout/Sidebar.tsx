@@ -5,6 +5,7 @@ import { UserRole } from '@velan/shared';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { clsx } from 'clsx';
 import { getRoleNavItems } from './navConfig';
+import { SidebarFooter } from './SidebarFooter';
 
 export const Sidebar: React.FC = () => {
   const { user } = useAuthStore();
@@ -59,15 +60,7 @@ export const Sidebar: React.FC = () => {
         ))}
       </div>
 
-      {/* Footer Pill */}
-      <div className="p-4 border-t border-border/80 bg-surface-soft/60">
-        <div className="flex items-center justify-between text-xs text-content-secondary px-2">
-          <span>v1.0 • Enterprise</span>
-          <span className="flex items-center gap-1 text-accent-emerald font-semibold">
-            <span className="w-2 h-2 rounded-full bg-accent-emerald " /> Live System
-          </span>
-        </div>
-      </div>
+      <SidebarFooter />
     </aside>
   );
 };

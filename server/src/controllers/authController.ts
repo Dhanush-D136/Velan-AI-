@@ -864,6 +864,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
       facultyProfile: { include: { department: true } },
       studentProfile: {
         include: {
+          classRepresentatives: true,
           class: {
             include: {
               academicYear: { include: { department: true } },
@@ -878,7 +879,21 @@ export const getCurrentUser = async (req: Request, res: Response) => {
 
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  return res.json({ user });
+  const isCR = Boolean(
+    user.role === 'STUDENT' &&
+      user.studentProfile &&
+      !user.studentProfile.deletedAt &&
+      user.studentProfile.classRepresentatives?.some((r) => r.classId === user.studentProfile!.classId)
+  );
+
+  return res.json({
+    user: {
+      ...user,
+      isCR,
+      crClassId: isCR ? user.studentProfile?.classId : null,
+      crClassName: isCR ? user.studentProfile?.class?.name : null,
+    },
+  });
 };
 
 export const getMyDevices = async (req: Request, res: Response) => {

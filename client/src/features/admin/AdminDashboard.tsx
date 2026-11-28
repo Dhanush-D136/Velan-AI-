@@ -100,7 +100,7 @@ export const AdminDashboard: React.FC = () => {
               Velan AI Command Center
             </span>
             <span className="flex items-center gap-1 text-xs text-accent-cyan font-semibold">
-              <span className="w-2 h-2 rounded-full bg-accent-cyan " /> Live System Active
+              <span className="w-2 h-2 rounded-full bg-accent-cyan" /> Active Portal
             </span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-heading font-extrabold tracking-tight">

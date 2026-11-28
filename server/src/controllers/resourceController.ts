@@ -2,35 +2,48 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { assignmentCreateSchema, materialCreateSchema } from '@velan/shared';
 import { notifyUsers } from './notificationController';
+import { canManageClassContent, getStudentCRInfo } from '../utils/classContentPermission';
 
-// Helper: find or verify faculty owns (classId, subjectId) via ClassSubject or TimetableSlot
-const verifyFacultyTeaches = async (userId: string, classId: string, subjectId: string) => {
-  const faculty = await prisma.facultyProfile.findUnique({ where: { userId } });
-  if (!faculty) return { error: 'Faculty profile not found', status: 403 as const };
+// Helper: find ClassSubject for Faculty or Class Representative
+const resolveClassSubjectForActor = async (
+  user: { id: string; role: string },
+  classId: string,
+  subjectId: string
+) => {
+  if (user.role === 'FACULTY') {
+    const faculty = await prisma.facultyProfile.findUnique({ where: { userId: user.id } });
+    if (!faculty) return { error: 'Faculty profile not found', status: 403 as const };
 
-  let cs = await prisma.classSubject.findUnique({
+    const cs = await prisma.classSubject.findUnique({
+      where: { classId_subjectId: { classId, subjectId } },
+      include: { faculty: { include: { user: true } }, subject: true },
+    });
+    if (cs && cs.facultyId === faculty.id) {
+      return { classSubject: cs, isCR: false };
+    }
+
+    const slot = await prisma.timetableSlot.findFirst({
+      where: { classId, facultyId: faculty.id, classSubject: { subjectId } },
+      include: { classSubject: { include: { faculty: { include: { user: true } }, subject: true } } },
+    });
+    if (slot) return { classSubject: slot.classSubject, isCR: false };
+
+    return { error: 'You are not assigned to teach this subject for this class', status: 403 as const };
+  }
+
+  const perm = await canManageClassContent(user, classId);
+  if (!perm.allowed) {
+    return { error: perm.error || 'Forbidden', status: perm.status || (403 as const) };
+  }
+
+  const cs = await prisma.classSubject.findUnique({
     where: { classId_subjectId: { classId, subjectId } },
+    include: { faculty: { include: { user: true } }, subject: true },
   });
-
-  if (cs && cs.facultyId === faculty.id) {
-    return { faculty, classSubject: cs };
+  if (!cs) {
+    return { error: 'Subject is not assigned to this class', status: 400 as const };
   }
-
-  // Also allow if assigned via TimetableSlot
-  const slot = await prisma.timetableSlot.findFirst({
-    where: {
-      classId,
-      facultyId: faculty.id,
-      classSubject: { subjectId },
-    },
-    include: { classSubject: true },
-  });
-
-  if (slot) {
-    return { faculty, classSubject: slot.classSubject };
-  }
-
-  return { error: 'You are not assigned to teach this subject for this class', status: 403 as const };
+  return { classSubject: cs, isCR: perm.isCR };
 };
 
 // ==========================================
@@ -53,6 +66,12 @@ export const getAssignments = async (req: Request, res: Response) => {
     }
 
     if (classId && classId !== 'ALL') {
+      if (req.user!.role === 'STUDENT') {
+        const student = await prisma.studentProfile.findUnique({ where: { userId: req.user!.id } });
+        if (student && String(classId) !== student.classId) {
+          return res.status(403).json({ error: 'Access denied to another class' });
+        }
+      }
       where.classSubject = { ...(where.classSubject || {}), classId: String(classId) };
     }
     if (subjectId && subjectId !== 'ALL') {
@@ -92,6 +111,25 @@ export const getAssignments = async (req: Request, res: Response) => {
 
 export const getMyTeachingPairs = async (req: Request, res: Response) => {
   try {
+    if (req.user!.role === 'STUDENT') {
+      const crInfo = await getStudentCRInfo(req.user!.id);
+      if (!crInfo) {
+        return res.status(403).json({ error: 'Only faculty or Class Representatives can manage class content' });
+      }
+      const classSubjects = await prisma.classSubject.findMany({
+        where: { classId: crInfo.classId },
+        include: { class: true, subject: true },
+      });
+      const pairs = classSubjects.map((cs) => ({
+        classId: cs.classId,
+        className: cs.class.name,
+        subjectId: cs.subjectId,
+        subjectName: cs.subject.name,
+        subjectCode: cs.subject.code,
+      }));
+      return res.json({ pairs, isCR: true });
+    }
+
     const faculty = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
     if (!faculty) return res.status(404).json({ error: 'Faculty profile not found' });
 
@@ -129,7 +167,7 @@ export const getMyTeachingPairs = async (req: Request, res: Response) => {
       }
     }
 
-    return res.json({ pairs: Array.from(pairMap.values()) });
+    return res.json({ pairs: Array.from(pairMap.values()), isCR: false });
   } catch {
     return res.status(500).json({ error: 'Failed to load teaching assignments' });
   }
@@ -141,8 +179,10 @@ export const createAssignment = async (req: Request, res: Response) => {
     if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
 
     const { classId, subjectId, title, description, startDate, dueDate, submissionDate, links } = parse.data;
-    const auth = await verifyFacultyTeaches(req.user!.id, classId, subjectId);
+    const auth = await resolveClassSubjectForActor(req.user!, classId, subjectId);
     if ('error' in auth) return res.status(auth.status ?? 403).json({ error: auth.error });
+
+    const creatorRole = auth.isCR ? 'CR' : req.user!.role;
 
     const assignment = await prisma.assignment.create({
       data: {
@@ -152,6 +192,9 @@ export const createAssignment = async (req: Request, res: Response) => {
         startDate: new Date(startDate),
         dueDate: new Date(dueDate),
         submissionDate: submissionDate ? new Date(submissionDate) : null,
+        createdByUserId: req.user!.id,
+        createdByRole: creatorRole,
+        createdByName: req.user!.name,
         links:
           links && links.length > 0
             ? { create: links.map((l) => ({ title: l.title.trim(), url: l.url.trim() })) }
@@ -159,9 +202,19 @@ export const createAssignment = async (req: Request, res: Response) => {
       },
       include: {
         links: true,
-        classSubject: { include: { class: { include: { students: true } }, subject: true } },
+        classSubject: { include: { class: { include: { students: true } }, subject: true, faculty: true } },
       },
     });
+
+    if (auth.isCR) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'CR_CREATE_ASSIGNMENT',
+          details: JSON.stringify({ classId, assignmentId: assignment.id, title: assignment.title }),
+        },
+      });
+    }
 
     const io = req.app.get('io');
     if (io) {
@@ -182,6 +235,15 @@ export const createAssignment = async (req: Request, res: Response) => {
       'assignmentAlerts'
     );
 
+    if (auth.isCR && assignment.classSubject.faculty?.userId) {
+      await notifyUsers(io, [assignment.classSubject.faculty.userId], {
+        title: 'Class Representative Posted Assignment',
+        message: `${req.user!.name} posted "${assignment.title}" for ${assignment.classSubject.subject.name}.`,
+        type: 'ASSIGNMENT',
+        link: '/faculty/assignments',
+      });
+    }
+
     return res.status(201).json({ message: 'Assignment created successfully', assignment });
   } catch (error: any) {
     console.error('createAssignment error:', error);
@@ -194,14 +256,12 @@ export const updateAssignment = async (req: Request, res: Response) => {
     const { id } = req.params;
     const existing = await prisma.assignment.findUnique({
       where: { id },
-      include: { classSubject: { include: { class: { include: { students: true } }, subject: true } } },
+      include: { classSubject: { include: { class: { include: { students: true } }, subject: true, faculty: true } } },
     });
     if (!existing) return res.status(404).json({ error: 'Assignment not found' });
 
-    const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
-    if (!fac || existing.classSubject.facultyId !== fac.id) {
-      return res.status(403).json({ error: 'You can only edit your own assignments' });
-    }
+    const perm = await canManageClassContent(req.user!, existing.classSubject.classId, existing);
+    if (!perm.allowed) return res.status(403).json({ error: perm.error || 'Forbidden' });
 
     const { title, description, startDate, dueDate, submissionDate, isClosed, links } = req.body;
     const nextStart = startDate ? new Date(startDate) : existing.startDate;
@@ -231,7 +291,7 @@ export const updateAssignment = async (req: Request, res: Response) => {
         where: { id },
         data: {
           title: title ? String(title).trim() : existing.title,
-          description: description ? String(description).trim() : existing.description,
+          description: description !== undefined ? String(description).trim() : existing.description,
           startDate: nextStart,
           dueDate: nextDue,
           submissionDate: nextSub,
@@ -245,6 +305,25 @@ export const updateAssignment = async (req: Request, res: Response) => {
     });
 
     const io = req.app.get('io');
+    if (perm.isCR) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'CR_UPDATE_ASSIGNMENT',
+          details: JSON.stringify({ classId: existing.classSubject.classId, assignmentId: id, oldTitle: existing.title, newTitle: updated.title }),
+        },
+      });
+      const isFacultyPost = existing.createdByRole === 'FACULTY' || (!existing.createdByRole && existing.createdByUserId !== req.user!.id);
+      if (isFacultyPost && perm.settings?.crNotifyFacultyOnEdit && existing.classSubject.faculty?.userId) {
+        await notifyUsers(io, [existing.classSubject.faculty.userId], {
+          title: 'Assignment Updated by Class Representative',
+          message: `${req.user!.name} updated "${updated.title}" in ${existing.classSubject.subject.name}.`,
+          type: 'ASSIGNMENT',
+          link: '/faculty/assignments',
+        });
+      }
+    }
+
     if (io) {
       io.to(`class_${existing.classSubject.classId}`).emit('data:updated', { resource: 'assignments' });
       io.emit('data:updated', { resource: 'assignments' });
@@ -261,18 +340,34 @@ export const deleteAssignment = async (req: Request, res: Response) => {
     const { id } = req.params;
     const existing = await prisma.assignment.findUnique({
       where: { id },
-      include: { classSubject: true },
+      include: { classSubject: { include: { subject: true, faculty: true } } },
     });
     if (!existing) return res.status(404).json({ error: 'Assignment not found' });
 
-    const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
-    if (!fac || existing.classSubject.facultyId !== fac.id) {
-      return res.status(403).json({ error: 'You can only delete your own assignments' });
-    }
+    const perm = await canManageClassContent(req.user!, existing.classSubject.classId, existing);
+    if (!perm.allowed) return res.status(403).json({ error: perm.error || 'Forbidden' });
 
     await prisma.assignment.delete({ where: { id } });
 
     const io = req.app.get('io');
+    if (perm.isCR) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'CR_DELETE_ASSIGNMENT',
+          details: JSON.stringify({ classId: existing.classSubject.classId, assignmentId: id, title: existing.title }),
+        },
+      });
+      const isFacultyPost = existing.createdByRole === 'FACULTY' || (!existing.createdByRole && existing.createdByUserId !== req.user!.id);
+      if (isFacultyPost && perm.settings?.crNotifyFacultyOnEdit && existing.classSubject.faculty?.userId) {
+        await notifyUsers(io, [existing.classSubject.faculty.userId], {
+          title: 'Assignment Deleted by Class Representative',
+          message: `${req.user!.name} deleted "${existing.title}" in ${existing.classSubject.subject.name}.`,
+          type: 'ASSIGNMENT',
+        });
+      }
+    }
+
     if (io) {
       io.to(`class_${existing.classSubject.classId}`).emit('data:updated', { resource: 'assignments' });
       io.emit('data:updated', { resource: 'assignments' });
@@ -304,6 +399,12 @@ export const getMaterials = async (req: Request, res: Response) => {
     }
 
     if (classId && classId !== 'ALL') {
+      if (req.user!.role === 'STUDENT') {
+        const student = await prisma.studentProfile.findUnique({ where: { userId: req.user!.id } });
+        if (student && String(classId) !== student.classId) {
+          return res.status(403).json({ error: 'Access denied to another class' });
+        }
+      }
       where.classSubject = { ...(where.classSubject || {}), classId: String(classId) };
     }
     if (subjectId && subjectId !== 'ALL') {
@@ -350,8 +451,10 @@ export const createMaterial = async (req: Request, res: Response) => {
     if (!parse.success) return res.status(400).json({ error: parse.error.errors[0].message });
 
     const { classId, subjectId, title, description, type, links } = parse.data;
-    const auth = await verifyFacultyTeaches(req.user!.id, classId, subjectId);
+    const auth = await resolveClassSubjectForActor(req.user!, classId, subjectId);
     if ('error' in auth) return res.status(auth.status ?? 403).json({ error: auth.error });
+
+    const creatorRole = auth.isCR ? 'CR' : req.user!.role;
 
     const material = await prisma.material.create({
       data: {
@@ -361,15 +464,28 @@ export const createMaterial = async (req: Request, res: Response) => {
         type,
         fileUrl: links[0].url.trim(),
         fileType: type.toUpperCase(),
+        createdByUserId: req.user!.id,
+        createdByRole: creatorRole,
+        createdByName: req.user!.name,
         links: {
           create: links.map((l) => ({ title: l.title.trim(), url: l.url.trim() })),
         },
       },
       include: {
         links: true,
-        classSubject: { include: { class: { include: { students: true } }, subject: true } },
+        classSubject: { include: { class: { include: { students: true } }, subject: true, faculty: true } },
       },
     });
+
+    if (auth.isCR) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'CR_CREATE_MATERIAL',
+          details: JSON.stringify({ classId, materialId: material.id, title: material.title }),
+        },
+      });
+    }
 
     const io = req.app.get('io');
     if (io) {
@@ -390,6 +506,15 @@ export const createMaterial = async (req: Request, res: Response) => {
       'materialAlerts'
     );
 
+    if (auth.isCR && material.classSubject.faculty?.userId) {
+      await notifyUsers(io, [material.classSubject.faculty.userId], {
+        title: 'Class Representative Posted Material',
+        message: `${req.user!.name} posted "${material.title}" for ${material.classSubject.subject.name}.`,
+        type: 'MATERIAL',
+        link: '/faculty/materials',
+      });
+    }
+
     return res.status(201).json({ message: 'Material published successfully', material });
   } catch (error: any) {
     console.error('createMaterial error:', error);
@@ -402,14 +527,12 @@ export const updateMaterial = async (req: Request, res: Response) => {
     const { id } = req.params;
     const existing = await prisma.material.findUnique({
       where: { id },
-      include: { classSubject: true },
+      include: { classSubject: { include: { subject: true, faculty: true } } },
     });
     if (!existing) return res.status(404).json({ error: 'Material not found' });
 
-    const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
-    if (!fac || existing.classSubject.facultyId !== fac.id) {
-      return res.status(403).json({ error: 'You can only edit your own materials' });
-    }
+    const perm = await canManageClassContent(req.user!, existing.classSubject.classId, existing);
+    if (!perm.allowed) return res.status(403).json({ error: perm.error || 'Forbidden' });
 
     const { title, description, type, links } = req.body;
     if (Array.isArray(links)) {
@@ -440,6 +563,25 @@ export const updateMaterial = async (req: Request, res: Response) => {
     });
 
     const io = req.app.get('io');
+    if (perm.isCR) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'CR_UPDATE_MATERIAL',
+          details: JSON.stringify({ classId: existing.classSubject.classId, materialId: id, oldTitle: existing.title, newTitle: updated.title }),
+        },
+      });
+      const isFacultyPost = existing.createdByRole === 'FACULTY' || (!existing.createdByRole && existing.createdByUserId !== req.user!.id);
+      if (isFacultyPost && perm.settings?.crNotifyFacultyOnEdit && existing.classSubject.faculty?.userId) {
+        await notifyUsers(io, [existing.classSubject.faculty.userId], {
+          title: 'Material Updated by Class Representative',
+          message: `${req.user!.name} updated "${updated.title}" in ${existing.classSubject.subject.name}.`,
+          type: 'MATERIAL',
+          link: '/faculty/materials',
+        });
+      }
+    }
+
     if (io) {
       io.to(`class_${existing.classSubject.classId}`).emit('data:updated', { resource: 'materials' });
       io.emit('data:updated', { resource: 'materials' });
@@ -456,20 +598,34 @@ export const deleteMaterial = async (req: Request, res: Response) => {
     const { id } = req.params;
     const existing = await prisma.material.findUnique({
       where: { id },
-      include: { classSubject: true },
+      include: { classSubject: { include: { subject: true, faculty: true } } },
     });
     if (!existing) return res.status(404).json({ error: 'Material not found' });
 
-    if (req.user!.role === 'FACULTY') {
-      const fac = await prisma.facultyProfile.findUnique({ where: { userId: req.user!.id } });
-      if (!fac || existing.classSubject.facultyId !== fac.id) {
-        return res.status(403).json({ error: 'You can only delete your own materials' });
-      }
-    }
+    const perm = await canManageClassContent(req.user!, existing.classSubject.classId, existing);
+    if (!perm.allowed) return res.status(403).json({ error: perm.error || 'Forbidden' });
 
     await prisma.material.delete({ where: { id } });
 
     const io = req.app.get('io');
+    if (perm.isCR) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'CR_DELETE_MATERIAL',
+          details: JSON.stringify({ classId: existing.classSubject.classId, materialId: id, title: existing.title }),
+        },
+      });
+      const isFacultyPost = existing.createdByRole === 'FACULTY' || (!existing.createdByRole && existing.createdByUserId !== req.user!.id);
+      if (isFacultyPost && perm.settings?.crNotifyFacultyOnEdit && existing.classSubject.faculty?.userId) {
+        await notifyUsers(io, [existing.classSubject.faculty.userId], {
+          title: 'Material Deleted by Class Representative',
+          message: `${req.user!.name} deleted "${existing.title}" in ${existing.classSubject.subject.name}.`,
+          type: 'MATERIAL',
+        });
+      }
+    }
+
     if (io) {
       io.to(`class_${existing.classSubject.classId}`).emit('data:updated', { resource: 'materials' });
       io.emit('data:updated', { resource: 'materials' });

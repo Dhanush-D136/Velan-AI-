@@ -55,6 +55,8 @@ export const AssignmentsPage: React.FC = () => {
   const { user } = useAuthStore();
   const { showToast } = useToast();
   const isFaculty = user?.role === 'FACULTY';
+  const isCR = Boolean((user as any)?.isCR);
+  const canManage = isFaculty || isCR;
   const isAdmin = user?.role === 'ADMIN';
   const classId = user?.studentProfile?.classId;
 
@@ -80,7 +82,7 @@ export const AssignmentsPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     try {
       const reqs: Promise<any>[] = [api.get('/api/assignments')];
-      if (isFaculty) {
+      if (canManage) {
         reqs.push(api.get('/api/assignments/teaching-pairs'));
       }
       const [aRes, pairsRes] = await Promise.all(reqs);
@@ -98,7 +100,7 @@ export const AssignmentsPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [isFaculty, formClassId]);
+  }, [canManage, formClassId]);
 
   useEffect(() => {
     fetchData();
@@ -244,16 +246,16 @@ export const AssignmentsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-content tracking-tight">
-            {isFaculty ? 'Assignments Manager' : isAdmin ? 'All Assignments (Read-Only)' : 'My Assignments'}
+            {canManage ? 'Assignments Manager' : isAdmin ? 'All Assignments (Read-Only)' : 'My Assignments'}
           </h1>
           <p className="text-xs sm:text-sm text-content-secondary mt-1">
-            {isFaculty
+            {canManage
               ? 'Publish coursework with Google Drive / resource links and track deadlines.'
               : 'View upcoming, active, and past assignments with resource links.'}
           </p>
         </div>
 
-        {isFaculty && (
+        {canManage && (
           <Button onClick={openCreateModal} leftIcon={<Plus className="w-4 h-4" />}>
             Create Assignment
           </Button>
@@ -281,7 +283,7 @@ export const AssignmentsPage: React.FC = () => {
         <EmptyState
           icon={FileText}
           title="No assignments found"
-          description={isFaculty ? 'Create an assignment for your assigned classes.' : 'No assignments match the selected filter.'}
+          description={canManage ? 'Create an assignment for your assigned classes.' : 'No assignments match the selected filter.'}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4">
@@ -307,7 +309,7 @@ export const AssignmentsPage: React.FC = () => {
                     {a.description && <p className="text-xs text-content-secondary mt-1 whitespace-pre-line">{a.description}</p>}
                   </div>
 
-                  {isFaculty && (
+                  {canManage && (
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Button variant="ghost" size="sm" onClick={() => openEditModal(a)} leftIcon={<Edit3 className="w-3.5 h-3.5" />}>
                         Edit
@@ -342,7 +344,13 @@ export const AssignmentsPage: React.FC = () => {
                   {a.submissionDate && (
                     <span>Cutoff: <strong>{new Date(a.submissionDate).toLocaleString()}</strong></span>
                   )}
-                  {a.faculty?.user?.name && <span>By: {a.faculty.user.name}</span>}
+                  <span>
+                    {a.createdByRole === 'CR'
+                      ? `Posted by ${a.createdByName || 'Student'} (Class Representative)`
+                      : a.faculty?.user?.name
+                        ? `By: ${a.faculty.user.name}`
+                        : ''}
+                  </span>
                 </div>
 
                 {a.links?.length > 0 && (

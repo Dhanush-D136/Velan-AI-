@@ -127,6 +127,7 @@ apiRouter.get('/academics/default-password/summary', authenticateToken, requireR
 apiRouter.get('/academics/default-password/migration-preview', authenticateToken, requireRole('ADMIN'), acadCtrl.previewDefaultMigration);
 apiRouter.post('/academics/default-password/migrate', authenticateToken, requireRole('ADMIN'), acadCtrl.applyDefaultMigration);
 apiRouter.post('/academics/students/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetStudentPassword);
+apiRouter.post('/academics/students/:id/toggle-cr', authenticateToken, requireRole('ADMIN'), acadCtrl.toggleStudentCR);
 apiRouter.get('/academics/students/template', authenticateToken, acadCtrl.getStudentExcelTemplate);
 apiRouter.post('/academics/students/import-excel', authenticateToken, requireRole('ADMIN'), upload.single('file'), acadCtrl.importStudentsFromExcel);
 apiRouter.get('/academics/students/:id/devices', authenticateToken, requireRole('ADMIN'), acadCtrl.getStudentDevices);
@@ -184,17 +185,17 @@ apiRouter.post('/ai/ask', authenticateToken, aiCtrl.askAI);
 apiRouter.get('/export/monthly-register', authenticateToken, expCtrl.exportMonthlyRegister);
 apiRouter.get('/export/session/:sessionId', authenticateToken, requireRole('ADMIN', 'FACULTY'), expCtrl.exportSessionExcel);
 
-// Assignments & Material Library
+// Assignments & Material Library (Faculty, Admin, or Class Representative of own class)
 apiRouter.get('/assignments', authenticateToken, resCtrl.getAssignments);
-apiRouter.get('/assignments/teaching-pairs', authenticateToken, requireRole('FACULTY'), resCtrl.getMyTeachingPairs);
-apiRouter.post('/assignments', authenticateToken, requireRole('FACULTY'), resCtrl.createAssignment);
-apiRouter.put('/assignments/:id', authenticateToken, requireRole('FACULTY'), resCtrl.updateAssignment);
-apiRouter.delete('/assignments/:id', authenticateToken, requireRole('FACULTY'), resCtrl.deleteAssignment);
+apiRouter.get('/assignments/teaching-pairs', authenticateToken, resCtrl.getMyTeachingPairs);
+apiRouter.post('/assignments', authenticateToken, resCtrl.createAssignment);
+apiRouter.put('/assignments/:id', authenticateToken, resCtrl.updateAssignment);
+apiRouter.delete('/assignments/:id', authenticateToken, resCtrl.deleteAssignment);
 
 apiRouter.get('/materials', authenticateToken, resCtrl.getMaterials);
-apiRouter.post('/materials', authenticateToken, requireRole('FACULTY'), resCtrl.createMaterial);
-apiRouter.put('/materials/:id', authenticateToken, requireRole('FACULTY'), resCtrl.updateMaterial);
-apiRouter.delete('/materials/:id', authenticateToken, requireRole('FACULTY', 'ADMIN'), resCtrl.deleteMaterial);
+apiRouter.post('/materials', authenticateToken, resCtrl.createMaterial);
+apiRouter.put('/materials/:id', authenticateToken, resCtrl.updateMaterial);
+apiRouter.delete('/materials/:id', authenticateToken, resCtrl.deleteMaterial);
 
 // General Student Requests & Replies
 apiRouter.post('/requests', authenticateToken, reqCtrl.createStudentRequest);
