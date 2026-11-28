@@ -201,7 +201,7 @@ export const exportSessionExcel = async (req: Request, res: Response) => {
     sheet.mergeCells('A2:H2');
     const subCell = sheet.getCell('A2');
     const sessionDate = new Date(session.createdAt).toLocaleString();
-    subCell.value = `Class: ${session.class.name} | Subject: ${session.classSubject.subject.code} - ${session.classSubject.subject.name} | Faculty: ${session.faculty.user.name} | Date: ${sessionDate}`;
+    subCell.value = `Class: ${session.class.name} | Subject: ${session.classSubject.subject.code} - ${session.classSubject.subject.name} | Faculty: ${session.faculty?.user?.name || session.facultyName || 'Former faculty'} | Date: ${sessionDate}`;
     subCell.font = { name: 'Arial', size: 10, italic: true };
     subCell.alignment = { horizontal: 'center' };
 

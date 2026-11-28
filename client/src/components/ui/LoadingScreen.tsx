@@ -59,9 +59,19 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
   errorDetails,
 }) => {
   const [showDetails, setShowDetails] = useState(false);
+  const [vpHeight, setVpHeight] = useState<number | null>(null);
   const fallbackMsg = getContextMessage(context, role);
   const primary = statusTitle || fallbackMsg.primary;
   const helper = helperText || fallbackMsg.helper;
+
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () => setVpHeight(vv.height);
+    update();
+    vv.addEventListener('resize', update);
+    return () => vv.removeEventListener('resize', update);
+  }, []);
 
   return (
     <div
@@ -71,12 +81,13 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       )}
       style={{
+        minHeight: vpHeight ? `${vpHeight}px` : '100dvh',
         paddingTop: 'max(1.5rem, env(safe-area-inset-top, 0px))',
         paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
       }}
     >
-      <div className="w-full max-w-[360px] flex flex-col items-center text-center">
-        {/* 1. Real Velan AI logo (36-40px) + "Velan AI" (Bricolage Grotesque 800, 22px) ABOVE the leaf */}
+      <div className="w-full max-w-[320px] mx-auto flex flex-col items-center text-center gap-6">
+        {/* 1. Real Velan AI logo + "Velan AI" centred */}
         <div className="flex items-center justify-center gap-2.5">
           <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm ring-1 ring-border bg-white shrink-0">
             <img
@@ -95,30 +106,30 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 
         {stage !== 'error' ? (
           <>
-            {/* 2. 12px gap, then palm-leaf animation */}
-            <div className="w-full mt-3">
+            {/* 2. Palm-leaf animation */}
+            <div className="w-full flex justify-center">
               <LeafLoader size="full" />
             </div>
 
-            {/* 3. 20px gap, then flowing line */}
-            <div className="w-full mt-5">
+            {/* 3. Fixed 200px wide flowing line track centred under the logo */}
+            <div className="w-[200px] mx-auto">
               <FlowLine />
             </div>
 
-            {/* 4. 16px gap, then status text (primary + helper) */}
+            {/* 4. Status text (primary + helper) centred with reserved height */}
             <div
               role="status"
               aria-live="polite"
-              className="mt-4 min-h-[3.75rem] flex flex-col items-center justify-start transition-opacity duration-200"
+              className="min-h-[4rem] w-full flex flex-col items-center justify-start text-center transition-opacity duration-200"
             >
               <p
-                className="text-[16px] sm:text-[17px] font-semibold text-content leading-snug"
+                className="text-[16px] sm:text-[17px] font-semibold text-content leading-snug [text-wrap:balance]"
                 style={{ fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif" }}
               >
                 {primary}
               </p>
               <p
-                className="text-[13.5px] font-normal text-content-secondary mt-1 leading-relaxed"
+                className="text-[13.5px] font-normal text-content-secondary mt-1 leading-relaxed [text-wrap:balance]"
                 style={{ fontFamily: "'Figtree', 'Inter', sans-serif" }}
               >
                 {helper}

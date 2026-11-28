@@ -11,7 +11,9 @@ import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
 import { PasswordStatusBadge } from '@/components/ui/TempPasswordModal';
-import { Plus, Search, KeyRound, Trash2, Users, AlertCircle } from 'lucide-react';
+import { FacultyDeleteModal } from './FacultyDeleteModal';
+import { PersonEditDrawer } from './PersonEditDrawer';
+import { Plus, Search, KeyRound, Trash2, Users, AlertCircle, Pencil, UserX, UserCheck } from 'lucide-react';
 
 interface FacultyMember {
   id: string;
@@ -155,17 +157,23 @@ export const FacultyManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteFaculty = async (fac: FacultyMember) => {
-    const facName = fac.user?.name || fac.name || fac.employeeId;
-    if (!confirm(`Are you sure you want to delete faculty member ${facName}? This will remove their user account.`))
-      return;
+  const [facultyToDelete, setFacultyToDelete] = useState<FacultyMember | null>(null);
+  const [facultyToEdit, setFacultyToEdit] = useState<FacultyMember | null>(null);
 
+  const handleDeleteFaculty = (fac: FacultyMember) => {
+    setFacultyToDelete(fac);
+  };
+
+  const handleToggleActive = async (fac: FacultyMember) => {
+    const currentlyActive = fac.user?.status !== 'INACTIVE';
     try {
-      const res = await api.delete(`/api/academics/faculty/${fac.id}`);
-      showToast(res.data.message || 'Faculty deleted successfully', 'success');
+      const res = await api.post(`/api/academics/faculty/${fac.id}/deactivate`, {
+        active: !currentlyActive,
+      });
+      showToast(res.data?.message || 'Status updated', 'success');
       fetchData();
     } catch (err: any) {
-      showToast(err.response?.data?.error || err.response?.data?.message || 'Failed to delete faculty', 'error');
+      showToast(err.response?.data?.error || 'Failed to update status', 'error');
     }
   };
 
@@ -252,24 +260,41 @@ export const FacultyManagement: React.FC = () => {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      render: (f) => (
-        <div className="flex items-center justify-end gap-1">
-          <button
-            onClick={() => handleResetPassword(f)}
-            title="Reset Password (One-Time Temp)"
-            className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition"
-          >
-            <KeyRound className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleDeleteFaculty(f)}
-            title="Delete Faculty"
-            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      ),
+      render: (f) => {
+        const isInactive = f.user?.status === 'INACTIVE';
+        return (
+          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setFacultyToEdit(f)}
+              title="Edit Faculty Details"
+              className="p-2 rounded-lg text-brand-600 hover:bg-brand-50 transition"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleResetPassword(f)}
+              title="Reset Password to 1234"
+              className="p-2 rounded-lg text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleToggleActive(f)}
+              title={isInactive ? 'Reactivate Faculty' : 'Deactivate Faculty'}
+              className={`p-2 rounded-lg transition ${isInactive ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-500 hover:bg-slate-100'}`}
+            >
+              {isInactive ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => handleDeleteFaculty(f)}
+              title="Delete Faculty"
+              className="p-2 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -427,6 +452,29 @@ export const FacultyManagement: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      <FacultyDeleteModal
+        isOpen={!!facultyToDelete}
+        faculty={facultyToDelete}
+        allFaculty={facultyList}
+        onClose={() => setFacultyToDelete(null)}
+        onDeleted={(msg) => {
+          showToast(msg, 'success');
+          fetchData();
+        }}
+      />
+
+      <PersonEditDrawer
+        isOpen={!!facultyToEdit}
+        mode="faculty"
+        person={facultyToEdit}
+        departments={departments}
+        onClose={() => setFacultyToEdit(null)}
+        onSaved={(msg) => {
+          showToast(msg, 'success');
+          fetchData();
+        }}
+      />
     </div>
   );
 };

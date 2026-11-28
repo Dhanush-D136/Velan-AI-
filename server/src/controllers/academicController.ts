@@ -20,6 +20,7 @@ import {
   applyDefaultPasswordMigration,
 } from '../services/passwordService';
 import { notifyUsers } from './notificationController';
+import { invalidateUserAuthCache } from '../middleware/auth';
 import {
   departmentCreateSchema,
   academicYearCreateSchema,
@@ -1512,43 +1513,93 @@ export const decidePasswordReset = async (req: Request, res: Response) => {
 export const decideProfileEdit = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { action } = req.body; // 'APPROVE' | 'REJECT'
+    const { action, adminReply } = req.body; // 'APPROVE' | 'REJECT'
 
-    const request = await prisma.profileEditRequest.findUnique({ where: { id } });
+    const request = await prisma.profileEditRequest.findUnique({
+      where: { id },
+      include: { student: { include: { user: true } } },
+    });
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
     if (action === 'APPROVE') {
-      await prisma.studentProfile.update({
-        where: { id: request.studentId },
-        data: {
-          canEditProfile: true, // Unlocks for one edit
-        },
+      await prisma.$transaction(async (tx) => {
+        const field = request.field;
+        const val = request.newValue;
+
+        if (field && val !== null && val !== undefined) {
+          if (field === 'name') {
+            await tx.user.update({ where: { id: request.student.userId }, data: { name: val } });
+          } else if (field === 'email') {
+            await tx.user.update({ where: { id: request.student.userId }, data: { email: val.toLowerCase() } });
+            await tx.studentProfile.update({ where: { id: request.studentId }, data: { personalEmail: val.toLowerCase() } });
+          } else if (field === 'phone') {
+            await tx.user.update({ where: { id: request.student.userId }, data: { phone: val } });
+            await tx.studentProfile.update({ where: { id: request.studentId }, data: { phone: val } });
+          } else if (field === 'dob') {
+            await tx.studentProfile.update({ where: { id: request.studentId }, data: { dob: new Date(val) } });
+          } else if (['guardianName', 'guardianPhone', 'address', 'bloodGroup', 'hostelOrDayScholar', 'registerNo', 'rollNo'].includes(field)) {
+            await tx.studentProfile.update({ where: { id: request.studentId }, data: { [field]: val } });
+          }
+        } else {
+          await tx.studentProfile.update({
+            where: { id: request.studentId },
+            data: { canEditProfile: true },
+          });
+        }
+
+        await tx.profileEditRequest.update({
+          where: { id },
+          data: {
+            status: 'APPROVED',
+            adminReply: adminReply || null,
+            decidedAt: new Date(),
+            decidedBy: req.user!.name,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: req.user!.id,
+            action: 'PROFILE_CHANGE_APPROVED',
+            details: JSON.stringify({ requestId: id, studentId: request.studentId, field, oldValue: request.oldValue, newValue: val }),
+          },
+        });
       });
 
-      await prisma.profileEditRequest.update({
-        where: { id },
-        data: {
-          status: 'APPROVED',
-          decidedAt: new Date(),
-          decidedBy: req.user!.name,
-        },
+      invalidateUserAuthCache(request.student.userId);
+      await notifyUsers(req.app.get('io'), [request.student.userId], {
+        title: 'Profile Change Approved',
+        message: request.field
+          ? `Your ${request.field} update was approved and applied.`
+          : 'Your profile edit request was approved.',
+        type: 'PROFILE',
       });
+      emitDataUpdate(req, 'students');
+      emitDataUpdate(req, 'requests');
 
-      return res.json({ message: 'Profile unlocked for one edit.' });
+      return res.json({ message: request.field ? 'Change approved and applied automatically.' : 'Profile unlocked for one edit.' });
     } else {
       await prisma.profileEditRequest.update({
         where: { id },
         data: {
           status: 'REJECTED',
+          adminReply: adminReply || null,
           decidedAt: new Date(),
           decidedBy: req.user!.name,
         },
       });
 
+      await notifyUsers(req.app.get('io'), [request.student.userId], {
+        title: 'Profile Change Rejected',
+        message: adminReply ? `Your profile request was rejected: ${adminReply}` : 'Your profile change request was rejected.',
+        type: 'PROFILE',
+      });
+      emitDataUpdate(req, 'requests');
+
       return res.json({ message: 'Profile edit request rejected.' });
     }
   } catch (error: any) {
-    return res.status(500).json({ error: 'Failed to process edit request' });
+    return res.status(500).json({ error: error.message || 'Failed to process edit request' });
   }
 };
 
@@ -1762,7 +1813,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         className: s.class.name,
         subjectName: s.classSubject.subject.name,
         subjectCode: s.classSubject.subject.code,
-        facultyName: s.faculty.user.name,
+        facultyName: s.faculty?.user?.name || s.facultyName || 'Former faculty',
         periodNumber: s.periodNumber,
         radiusMeters: s.radiusMeters,
         expiresAt: s.expiresAt,
@@ -1859,7 +1910,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         className: s.class.name,
         subjectName: s.classSubject.subject.name,
         subjectCode: s.classSubject.subject.code,
-        facultyName: s.faculty.user.name,
+        facultyName: s.faculty?.user?.name || s.facultyName || 'Former faculty',
         createdAt: s.createdAt,
         closedAt: s.closedAt,
         presentCount: present,

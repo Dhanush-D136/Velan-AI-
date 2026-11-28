@@ -63,7 +63,8 @@ export const AdminRequestsPage: React.FC = () => {
 
   const handleProfileDecision = async (id: string, action: 'APPROVE' | 'REJECT') => {
     try {
-      const res = await api.post(`/api/academics/requests/profile-edit/${id}/decision`, { action });
+      const adminReply = action === 'REJECT' ? (window.prompt('Optional reason for rejection:') || undefined) : undefined;
+      const res = await api.post(`/api/academics/requests/profile-edit/${id}/decision`, { action, adminReply });
       showToast(res.data.message || `Profile request ${action.toLowerCase()}d`, 'success');
       fetchRequests();
     } catch (err: any) {
@@ -213,7 +214,7 @@ export const AdminRequestsPage: React.FC = () => {
                 onClick={() => handleProfileDecision(r.id, 'APPROVE')}
                 leftIcon={<Check className="w-3.5 h-3.5" />}
               >
-                Unlock for 1 Edit
+                {r.field ? 'Approve & Apply' : 'Unlock for 1 Edit'}
               </Button>
             </>
           ) : (

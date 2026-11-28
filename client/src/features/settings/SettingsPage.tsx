@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
 import { RushWaitingScreen } from '@/components/attendance/RushWaitingScreen';
+import { ProfileSettingsPage } from './ProfileSettingsPage';
 import {
   Smartphone,
   ShieldCheck,
@@ -30,6 +31,14 @@ const REQUEST_TYPES = [
 ];
 
 export const SettingsPage: React.FC = () => {
+  const { user } = useAuthStore();
+  if (user?.role !== 'ADMIN') {
+    return <ProfileSettingsPage />;
+  }
+  return <AdminSettingsInner />;
+};
+
+const AdminSettingsInner: React.FC = () => {
   const { user, deviceId, setUser } = useAuthStore();
   const { showToast } = useToast();
 

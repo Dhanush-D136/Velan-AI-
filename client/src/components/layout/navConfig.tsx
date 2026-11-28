@@ -56,6 +56,7 @@ export const getRoleNavItems = (role?: UserRole): NavItem[] => {
         { to: '/faculty/materials', label: 'Study Materials', icon: <FolderOpen className="w-5 h-5" /> },
         { to: '/chat', label: 'Class Chat', icon: <MessageSquare className="w-5 h-5" /> },
         { to: '/ai-insights', label: 'AI Insights', icon: <Sparkles className="w-5 h-5" /> },
+        { to: '/settings', label: 'Profile & Settings', icon: <Settings className="w-5 h-5" /> },
       ];
     case UserRole.STUDENT:
     default:
@@ -70,6 +71,7 @@ export const getRoleNavItems = (role?: UserRole): NavItem[] => {
         { to: '/student/materials', label: 'Materials Library', icon: <FolderOpen className="w-5 h-5" /> },
         { to: '/chat', label: 'Class Chat', icon: <MessageSquare className="w-5 h-5" /> },
         { to: '/ai-assistant', label: 'AI Study Assistant', icon: <Sparkles className="w-5 h-5" /> },
+        { to: '/settings', label: 'Profile & Settings', icon: <Settings className="w-5 h-5" /> },
       ];
   }
 };

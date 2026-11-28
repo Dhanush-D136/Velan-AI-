@@ -20,11 +20,12 @@ interface MobileNavigationProps {
   isOpen: boolean;
   onOpen: () => void;
   onClose: () => void;
+  hideBottomBar?: boolean;
 }
 
 const DRAWER_TRANSITION_MS = 200;
 
-export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onOpen, onClose }) => {
+export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onOpen, onClose, hideBottomBar = false }) => {
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const role = user?.role || UserRole.STUDENT;
@@ -197,10 +198,12 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onOp
   return (
     <>
       {/* Mobile Floating Bottom Bar */}
-      <nav
-        aria-label="Mobile navigation"
-        className="lg:hidden fixed bottom-4 inset-x-4 z-40 touch-manipulation"
-      >
+      {!hideBottomBar && (
+        <nav
+          aria-label="Mobile navigation"
+          className="lg:hidden fixed inset-x-4 z-40 touch-manipulation"
+          style={{ bottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
+        >
         <div className="flex items-center justify-around px-2 py-2 bg-white/95 backdrop-blur-xl border border-border/90 rounded-full shadow-2xl max-w-md mx-auto">
           {bottomLinks.map((link) => (
             <NavLink
@@ -237,7 +240,8 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onOp
             <span className="text-[10px] mt-0.5 font-medium">All</span>
           </button>
         </div>
-      </nav>
+        </nav>
+      )}
 
       {/* Mobile Full Navigation Drawer */}
       {isRendered && (

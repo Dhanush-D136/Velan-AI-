@@ -26,6 +26,7 @@ model User {
   tempPasswordExpiresAt DateTime?
   passwordHistory       String?              // JSON array of last 3 bcrypt hashes
   lastRoute             String?
+  preferences           String?              // JSON user preferences (theme, lang, radius, duration, etc.)
   deletedAt             DateTime?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
@@ -163,10 +164,17 @@ model FacultyProfile {
   employeeId     String         @unique // Login identifier
   departmentId   String
   department     Department     @relation(fields: [departmentId], references: [id])
-  designation    String         // Professor, Associate Professor, Assistant Professor
-  qualification  String?
-  bio            String?
-  joinedAt       DateTime       @default(now())
+  designation      String         // Professor, Associate Professor, Assistant Professor
+  qualification    String?
+  specialization   String?
+  experienceYears  Int?
+  officeRoom       String?
+  dateOfBirth      DateTime?
+  address          String?
+  emergencyContact String?
+  photoUrl         String?
+  bio              String?
+  joinedAt         DateTime       @default(now())
 
   advisedClasses Class[]        @relation("ClassAdvisor")
   classMentors   ClassMentor[]
@@ -196,6 +204,8 @@ model StudentProfile {
   address        String?
   guardianName   String?
   guardianPhone  String?
+  hostelOrDayScholar String?    // HOSTEL, DAY_SCHOLAR
+  admissionYear  Int?
   photoUrl       String?
   isProfileLocked Boolean       @default(false)
   canEditProfile Boolean        @default(false)
@@ -221,7 +231,12 @@ model ProfileEditRequest {
   id          String         @id @default(uuid())
   studentId   String
   student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  field       String?        // e.g. phone, personalEmail, address, guardianName, ...
+  oldValue    String?
+  newValue    String?
   reason      String
+  proofUrl    String?
+  adminReply  String?
   status      String         @default("PENDING") // PENDING, APPROVED, REJECTED
   requestedAt DateTime       @default(now())
   decidedAt   DateTime?
@@ -308,8 +323,9 @@ model AttendanceSession {
   class           Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
   classSubjectId  String
   classSubject    ClassSubject   @relation(fields: [classSubjectId], references: [id], onDelete: Cascade)
-  facultyId       String
-  faculty         FacultyProfile @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  facultyId       String?
+  faculty         FacultyProfile? @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  facultyName     String?         // Snapshot preserved when faculty is deleted ("Dr. X (former faculty)")
   timetableSlotId String?
   periodNumber    Int?
   anchorLat       Float
@@ -547,8 +563,9 @@ model ChatMessage {
   id             String    @id @default(uuid())
   roomId         String
   room           ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  senderId       String
-  sender         User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderId       String?
+  sender         User?     @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  senderName     String?   // Snapshot preserved when user is deleted ("Name (former faculty)")
   content        String
   type           String    @default("TEXT") // TEXT, IMAGE, FILE, ANNOUNCEMENT
   attachmentUrl  String?

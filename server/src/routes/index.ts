@@ -21,6 +21,7 @@ import * as skipCtrl from '../controllers/skipController';
 import * as acadRecCtrl from '../controllers/academicsRecordController';
 import * as monCtrl from '../controllers/monitorController';
 import * as rushCtrl from '../controllers/rushQueueController';
+import * as profCtrl from '../controllers/profileController';
 
 const deviceRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -92,17 +93,30 @@ apiRouter.delete('/academics/assignments/:id', authenticateToken, requireRole('A
 // ==========================================
 apiRouter.get('/academics/faculty', authenticateToken, acadCtrl.getFacultyList);
 apiRouter.post('/academics/faculty', authenticateToken, requireRole('ADMIN'), acadCtrl.createFaculty);
-apiRouter.put('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.updateFaculty);
+apiRouter.get('/academics/faculty/:id/dependencies', authenticateToken, requireRole('ADMIN'), profCtrl.getFacultyDependenciesHandler);
+apiRouter.post('/academics/faculty/:id/delete-with-handover', authenticateToken, requireRole('ADMIN'), profCtrl.deleteFacultyWithHandoverHandler);
+apiRouter.post('/academics/faculty/:id/deactivate', authenticateToken, requireRole('ADMIN'), profCtrl.toggleFacultyActiveHandler);
+apiRouter.put('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), profCtrl.adminUpdateFaculty);
 apiRouter.delete('/academics/faculty/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteFaculty);
 apiRouter.post('/academics/faculty/:id/reset-password', authenticateToken, requireRole('ADMIN'), acadCtrl.resetFacultyPassword);
 apiRouter.post('/academics/faculty/import-excel', authenticateToken, requireRole('ADMIN'), acadCtrl.importFacultyFromExcel);
+
+// ==========================================
+// PROFILE & SETTINGS (FACULTY DIRECT, STUDENT REQUEST)
+// ==========================================
+apiRouter.get('/profile/me', authenticateToken, profCtrl.getMyFullProfile);
+apiRouter.put('/profile/me', authenticateToken, profCtrl.updateMyFacultyProfile);
+apiRouter.put('/profile/preferences', authenticateToken, profCtrl.updateMyPreferences);
+apiRouter.post('/profile/change-requests', authenticateToken, profCtrl.createStudentChangeRequest);
+apiRouter.get('/profile/my-requests', authenticateToken, profCtrl.getMyChangeRequests);
 
 // ==========================================
 // STUDENT MANAGEMENT & EXCEL IMPORT
 // ==========================================
 apiRouter.get('/academics/students', authenticateToken, acadCtrl.getStudentsList);
 apiRouter.post('/academics/students', authenticateToken, requireRole('ADMIN'), acadCtrl.createStudent);
-apiRouter.put('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.updateStudent);
+apiRouter.get('/academics/students/:id/move-preview', authenticateToken, requireRole('ADMIN'), profCtrl.adminGetStudentMovePreview);
+apiRouter.put('/academics/students/:id', authenticateToken, requireRole('ADMIN'), profCtrl.adminUpdateStudent);
 apiRouter.delete('/academics/students/:id', authenticateToken, requireRole('ADMIN'), acadCtrl.deleteStudent);
 apiRouter.post('/academics/students/bulk-delete', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkDeleteStudents);
 apiRouter.post('/academics/students/bulk-restore', authenticateToken, requireRole('ADMIN'), acadCtrl.bulkRestoreStudents);

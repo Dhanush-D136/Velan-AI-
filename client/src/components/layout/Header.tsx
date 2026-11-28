@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
@@ -19,6 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   unreadNotificationsCount = 2,
 }) => {
   const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
 
   const getRoleBadgeVariant = (role?: UserRole) => {
     switch (role) {
@@ -79,26 +81,33 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {/* User Profile Pill */}
-        <div className="flex items-center gap-3 pl-2 sm:border-l border-border">
-          <Avatar
-            name={user?.name || 'User'}
-            src={user?.avatarUrl}
-            size="sm"
-            className="ring-2 ring-brand-500/20"
-          />
-          <div className="hidden sm:flex flex-col text-left">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold text-content leading-tight">
-                {user?.name || 'Velan User'}
+        <div className="flex items-center gap-2 pl-2 sm:border-l border-border">
+          <button
+            type="button"
+            onClick={() => navigate('/settings')}
+            title="Profile & Settings"
+            className="flex items-center gap-3 rounded-2xl px-1.5 py-1 hover:bg-surface-muted transition-colors text-left"
+          >
+            <Avatar
+              name={user?.name || 'User'}
+              src={user?.avatarUrl}
+              size="sm"
+              className="ring-2 ring-brand-500/20"
+            />
+            <div className="hidden sm:flex flex-col text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-bold text-content leading-tight">
+                  {user?.name || 'Velan User'}
+                </span>
+                <Badge variant={getRoleBadgeVariant(user?.role)} size="sm">
+                  {user?.role || 'GUEST'}
+                </Badge>
+              </div>
+              <span className="text-[11px] text-content-secondary font-mono leading-tight">
+                {user?.email}
               </span>
-              <Badge variant={getRoleBadgeVariant(user?.role)} size="sm">
-                {user?.role || 'GUEST'}
-              </Badge>
             </div>
-            <span className="text-[11px] text-content-secondary font-mono leading-tight">
-              {user?.email}
-            </span>
-          </div>
+          </button>
 
           <button
             onClick={() => logout()}

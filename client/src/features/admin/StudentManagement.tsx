@@ -17,6 +17,7 @@ import {
   BulkMoveClassModal,
   RegisterRangeSelectModal,
 } from './StudentBulkModals';
+import { PersonEditDrawer } from './PersonEditDrawer';
 import {
   Plus,
   Search,
@@ -42,6 +43,7 @@ import {
   FolderInput,
   Hash,
   X,
+  Pencil,
 } from 'lucide-react';
 
 interface StudentItem {
@@ -130,6 +132,7 @@ export const StudentManagement: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedStudentForView, setSelectedStudentForView] = useState<StudentItem | null>(null);
+  const [studentToEdit, setStudentToEdit] = useState<StudentItem | null>(null);
 
   // Manual Add Form State
   const [isSavingStudent, setIsSavingStudent] = useState(false);
@@ -669,6 +672,13 @@ export const StudentManagement: React.FC = () => {
                 className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 transition"
               >
                 <Eye className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setStudentToEdit(s)}
+                title="Edit Student Details"
+                className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition"
+              >
+                <Pencil className="w-4 h-4" />
               </button>
               <button
                 onClick={() => handleResetPassword(s)}
@@ -1528,6 +1538,18 @@ export const StudentManagement: React.FC = () => {
             ids.forEach((id) => next.add(id));
             return next;
           });
+        }}
+      />
+
+      <PersonEditDrawer
+        isOpen={!!studentToEdit}
+        mode="student"
+        person={studentToEdit}
+        classes={classes}
+        onClose={() => setStudentToEdit(null)}
+        onSaved={(msg) => {
+          showToast(msg, 'success');
+          fetchStudents();
         }}
       />
     </div>

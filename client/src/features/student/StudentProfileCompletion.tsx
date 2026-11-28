@@ -6,16 +6,13 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
-import {
-  Lock,
-  Unlock,
-  CheckCircle2,
-  AlertCircle,
-  Camera,
-  ShieldCheck,
-  FileEdit,
-  User,
-} from 'lucide-react';
+import { Lock, Unlock, FileEdit } from 'lucide-react';
+
+const scrollFieldIntoView = (e: React.FocusEvent<HTMLElement>) => {
+  window.setTimeout(() => {
+    e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 150);
+};
 
 export const StudentProfileCompletion: React.FC<{ onComplete?: () => void }> = ({ onComplete }) => {
   const { user, setUser } = useAuthStore();
@@ -41,6 +38,7 @@ export const StudentProfileCompletion: React.FC<{ onComplete?: () => void }> = (
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setIsLoading(true);
 
     try {
@@ -80,7 +78,7 @@ export const StudentProfileCompletion: React.FC<{ onComplete?: () => void }> = (
 
   const handleRequestEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!requestReason.trim()) return;
+    if (!requestReason.trim() || isRequesting) return;
 
     setIsRequesting(true);
     try {
@@ -95,161 +93,210 @@ export const StudentProfileCompletion: React.FC<{ onComplete?: () => void }> = (
     }
   };
 
+  const fieldCls = 'text-base min-h-[48px]';
+  const selectCls =
+    'w-full min-h-[48px] px-3.5 py-2.5 rounded-2xl border border-border bg-white text-base outline-none font-medium disabled:bg-slate-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-brand-500';
+
   return (
-    <Card className="p-6 sm:p-8 max-w-3xl mx-auto shadow-glass relative">
-      <div className="flex items-start justify-between border-b border-border pb-4 mb-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-heading font-extrabold text-content">
-              Student Profile Information
-            </h2>
-            {isLocked ? (
-              <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5 text-slate-500" /> Profile Locked
-              </span>
-            ) : (
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200 flex items-center gap-1">
-                <Unlock className="w-3.5 h-3.5 text-accent-amber" /> Incomplete / Editable
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-content-secondary mt-1">
-            Official institutional record for <strong className="text-content">{user?.name}</strong> (Register: {profile?.registerNo})
-          </p>
-        </div>
-
-        {isLocked && (
-          <Button
-            size="sm"
-            variant="soft"
-            onClick={() => setIsRequestModalOpen(true)}
-            leftIcon={<FileEdit className="w-3.5 h-3.5" />}
-          >
-            Request Edit Permission
-          </Button>
-        )}
-      </div>
-
-      {isLocked && (
-        <div className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 flex items-start gap-3">
-          <ShieldCheck className="w-5 h-5 text-accent-emerald shrink-0 mt-0.5" />
+    <div className="max-w-2xl mx-auto space-y-4 pb-24 sm:pb-8">
+      {/* Header */}
+      <Card className="p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <span className="font-bold">Permanent Academic Record Locked:</span> Your submitted personal and guardian details have been committed. To modify any field, click "Request Edit Permission" to receive a single-edit unlock from your administrator.
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-heading font-extrabold text-content">
+                Student Profile Information
+              </h2>
+              {isLocked ? (
+                <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 inline-flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5 text-slate-500" /> Profile Locked
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200 inline-flex items-center gap-1">
+                  <Unlock className="w-3.5 h-3.5 text-accent-amber" /> Complete Your Details
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-content-secondary mt-1">
+              {isLocked
+                ? 'Your profile is verified. Contact the admin if any detail needs correction.'
+                : 'Fill in all sections below to complete your student record.'}
+            </p>
           </div>
-        </div>
-      )}
-
-      <form onSubmit={handleSaveProfile} className="space-y-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input
-            label="Personal Gmail / Email"
-            type="email"
-            required
-            disabled={isLocked}
-            value={personalEmail}
-            onChange={(e) => setPersonalEmail(e.target.value)}
-            placeholder="yourname@gmail.com"
-          />
-          <Input
-            label="Mobile Phone Number"
-            type="tel"
-            required
-            disabled={isLocked}
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+91 98401 00000"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Input
-            label="Date of Birth"
-            type="date"
-            required
-            disabled={isLocked}
-            value={dob}
-            onChange={(e) => setDob(e.target.value)}
-          />
-
-          <div>
-            <label className="block text-xs font-semibold text-content-secondary uppercase mb-1.5">
-              Gender
-            </label>
-            <select
-              disabled={isLocked}
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
+          {isLocked && (
+            <Button
+              size="sm"
+              variant="secondary"
+              leftIcon={<FileEdit className="w-4 h-4" />}
+              onClick={() => setIsRequestModalOpen(true)}
             >
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
+              Request Edit
+            </Button>
+          )}
+        </div>
+      </Card>
 
-          <div>
-            <label className="block text-xs font-semibold text-content-secondary uppercase mb-1.5">
-              Blood Group
-            </label>
-            <select
+      <form id="student-profile-form" onSubmit={handleSaveProfile} className="space-y-4">
+        {/* Section 1: Personal */}
+        <Card className="p-4 sm:p-6 space-y-4">
+          <h3 className="text-sm font-bold text-content uppercase tracking-wide border-b border-border pb-2">
+            1. Personal Details
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Date of Birth"
+              type="date"
+              autoComplete="bday"
+              required
               disabled={isLocked}
-              value={bloodGroup}
-              onChange={(e) => setBloodGroup(e.target.value)}
-              className="w-full p-3 rounded-2xl border border-border bg-white text-sm outline-none font-medium disabled:bg-slate-100 disabled:cursor-not-allowed"
-            >
-              <option value="A+">A+</option>
-              <option value="A-">A-</option>
-              <option value="B+">B+</option>
-              <option value="B-">B-</option>
-              <option value="O+">O+</option>
-              <option value="O-">O-</option>
-              <option value="AB+">AB+</option>
-              <option value="AB-">AB-</option>
-            </select>
+              className={fieldCls}
+              onFocus={scrollFieldIntoView}
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
+            />
+            <div>
+              <label className="block text-xs font-semibold text-content-secondary uppercase mb-1.5">
+                Gender
+              </label>
+              <select
+                disabled={isLocked}
+                value={gender}
+                onFocus={scrollFieldIntoView}
+                onChange={(e) => setGender(e.target.value)}
+                className={selectCls}
+              >
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-content-secondary uppercase mb-1.5">
+                Blood Group
+              </label>
+              <select
+                disabled={isLocked}
+                value={bloodGroup}
+                onFocus={scrollFieldIntoView}
+                onChange={(e) => setBloodGroup(e.target.value)}
+                className={selectCls}
+              >
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="O+">O+</option>
+                <option value="O-">O-</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+              </select>
+            </div>
+            <Input
+              label="Photo URL (Optional)"
+              type="url"
+              inputMode="url"
+              disabled={isLocked}
+              className={fieldCls}
+              onFocus={scrollFieldIntoView}
+              value={photoUrl}
+              onChange={(e) => setPhotoUrl(e.target.value)}
+              placeholder="https://..."
+            />
           </div>
-        </div>
+        </Card>
 
-        <Input
-          label="Residential Address"
-          required
-          disabled={isLocked}
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Street address, City, District, PIN code"
-        />
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Section 2: Contact */}
+        <Card className="p-4 sm:p-6 space-y-4">
+          <h3 className="text-sm font-bold text-content uppercase tracking-wide border-b border-border pb-2">
+            2. Contact Information
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Personal Email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              required
+              disabled={isLocked}
+              className={fieldCls}
+              onFocus={scrollFieldIntoView}
+              value={personalEmail}
+              onChange={(e) => setPersonalEmail(e.target.value)}
+              placeholder="yourname@gmail.com"
+            />
+            <Input
+              label="Mobile Phone Number"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              required
+              disabled={isLocked}
+              className={fieldCls}
+              onFocus={scrollFieldIntoView}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+91 98401 00000"
+            />
+          </div>
           <Input
-            label="Parent / Guardian Name"
+            label="Residential Address"
+            autoComplete="street-address"
             required
             disabled={isLocked}
-            value={guardianName}
-            onChange={(e) => setGuardianName(e.target.value)}
-            placeholder="Father / Mother / Guardian full name"
+            className={fieldCls}
+            onFocus={scrollFieldIntoView}
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Street address, City, District, PIN code"
           />
-          <Input
-            label="Parent / Guardian Contact Phone"
-            required
-            type="tel"
-            disabled={isLocked}
-            value={guardianPhone}
-            onChange={(e) => setGuardianPhone(e.target.value)}
-            placeholder="+91 94432 00000"
-          />
-        </div>
+        </Card>
 
-        <Input
-          label="Photo URL (Optional)"
-          disabled={isLocked}
-          value={photoUrl}
-          onChange={(e) => setPhotoUrl(e.target.value)}
-          placeholder="https://..."
-        />
+        {/* Section 3: Guardian */}
+        <Card className="p-4 sm:p-6 space-y-4">
+          <h3 className="text-sm font-bold text-content uppercase tracking-wide border-b border-border pb-2">
+            3. Parent / Guardian Details
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Parent / Guardian Name"
+              required
+              disabled={isLocked}
+              className={fieldCls}
+              onFocus={scrollFieldIntoView}
+              value={guardianName}
+              onChange={(e) => setGuardianName(e.target.value)}
+              placeholder="Father / Mother / Guardian full name"
+            />
+            <Input
+              label="Parent / Guardian Contact Phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              required
+              disabled={isLocked}
+              className={fieldCls}
+              onFocus={scrollFieldIntoView}
+              value={guardianPhone}
+              onChange={(e) => setGuardianPhone(e.target.value)}
+              placeholder="+91 94432 00000"
+            />
+          </div>
+        </Card>
 
+        {/* Sticky Bottom Action Bar above Safe Area */}
         {!isLocked && (
-          <div className="pt-4 border-t border-border flex items-center justify-end">
-            <Button type="submit" size="md" isLoading={isLoading} className="font-bold">
-              Save & Lock Profile
+          <div
+            className="sticky bottom-0 z-20 bg-white/95 backdrop-blur-md border-t border-border p-3 sm:p-4 rounded-2xl shadow-lg flex items-center justify-end"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+          >
+            <Button
+              type="submit"
+              size="md"
+              isLoading={isLoading}
+              loadingLabel="Saving..."
+              className="w-full sm:w-auto min-h-[48px] font-bold"
+            >
+              Save &amp; Lock Profile
             </Button>
           </div>
         )}
@@ -258,7 +305,7 @@ export const StudentProfileCompletion: React.FC<{ onComplete?: () => void }> = (
       {/* Request Edit Permission Modal */}
       <Modal
         isOpen={isRequestModalOpen}
-        onClose={() => setIsRequestModalOpen(false)}
+        onClose={() => !isRequesting && setIsRequestModalOpen(false)}
         title="Request Profile Edit Authorization"
         description="Provide a valid reason for updating your permanent student profile details."
       >
@@ -266,6 +313,7 @@ export const StudentProfileCompletion: React.FC<{ onComplete?: () => void }> = (
           <Input
             label="Reason for Modification"
             required
+            className={fieldCls}
             value={requestReason}
             onChange={(e) => setRequestReason(e.target.value)}
             placeholder="e.g. Changed address / updated phone number"
@@ -275,16 +323,17 @@ export const StudentProfileCompletion: React.FC<{ onComplete?: () => void }> = (
               type="button"
               variant="secondary"
               size="sm"
+              disabled={isRequesting}
               onClick={() => setIsRequestModalOpen(false)}
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" isLoading={isRequesting}>
+            <Button type="submit" size="sm" isLoading={isRequesting} loadingLabel="Sending your request...">
               Submit Request
             </Button>
           </div>
         </form>
       </Modal>
-    </Card>
+    </div>
   );
 };

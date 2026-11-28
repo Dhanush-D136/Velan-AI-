@@ -30,8 +30,20 @@ export const AppLayout: React.FC = () => {
   const [commandQuery, setCommandQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const openMobileMenu = useCallback(() => setIsMobileMenuOpen(true), []);
   const closeMobileMenu = useCallback(() => setIsMobileMenuOpen(false), []);
+
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const onResize = () => {
+      const keyboardLikely = window.innerHeight - vv.height > 150;
+      setIsKeyboardOpen(keyboardLikely);
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
   const [isServerWaking, setIsServerWaking] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -236,7 +248,7 @@ export const AppLayout: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-white flex flex-col antialiased">
+    <div className="h-[100dvh] overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible bg-white flex flex-col antialiased overflow-x-hidden">
       <TopBar active={isReconnecting || isServerWaking} />
 
       {/* Reconnecting banner on transient network/5xx errors */}
@@ -255,12 +267,12 @@ export const AppLayout: React.FC = () => {
         </div>
       )}
 
-      <div className="flex-1 flex max-w-[1920px] w-full mx-auto">
+      <div className="flex-1 flex max-w-[1920px] w-full mx-auto min-h-0 overflow-hidden lg:overflow-visible">
         {/* Desktop Floating Sidebar */}
         <Sidebar />
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 pb-24 lg:pb-10">
+        {/* Main Content Area (only scrollable region on mobile) */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <Header
             onOpenCommandPalette={() => setIsCommandOpen(true)}
             onOpenNotifications={() => {
@@ -271,7 +283,10 @@ export const AppLayout: React.FC = () => {
             unreadNotificationsCount={unreadCount}
           />
 
-          <main className="flex-1 px-4 sm:px-8 py-6 portal-pattern-grid">
+          <main
+            className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-8 pt-5 pb-28 lg:pb-10 portal-pattern-grid"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 6 }}
@@ -289,6 +304,7 @@ export const AppLayout: React.FC = () => {
         isOpen={isMobileMenuOpen}
         onOpen={openMobileMenu}
         onClose={closeMobileMenu}
+        hideBottomBar={isKeyboardOpen}
       />
 
       {/* Command Palette (Ctrl+K) */}

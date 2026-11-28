@@ -115,7 +115,7 @@ export const getChatRooms = async (req: Request, res: Response) => {
           className: cls.name,
           roomId: room?.id || null,
           lastMessage: lastMsg ? lastMsg.content : null,
-          lastMessageSender: lastMsg ? lastMsg.sender.name : null,
+          lastMessageSender: lastMsg ? (lastMsg.sender?.name || lastMsg.senderName || 'Former faculty') : null,
           lastMessageAt: lastMsg ? lastMsg.createdAt : null,
           unreadCount,
         };
