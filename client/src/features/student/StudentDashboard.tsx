@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { InlineLoader } from '@/components/ui/LoadingScreen';
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -76,12 +76,7 @@ export const StudentDashboard: React.FC = () => {
   const { student, activeSession, todaysSlots, stats, subjectBreakdown, dayWiseAttendance = [] } = data;
 
   if (isLoading) {
-    return (
-      <InlineLoader
-        label="Please wait, loading your Student Dashboard..."
-        subtext="Checking active GPS sessions, timetable, and attendance from Supabase"
-      />
-    );
+    return <LoadingScreen role="STUDENT" context="dashboard" />;
   }
 
   return (

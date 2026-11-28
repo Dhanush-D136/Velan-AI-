@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { UserRole } from '@velan/shared';
 import { api } from '@/lib/api';
+import {
+  ELAPSED_STAGE_MESSAGES,
+  getAppLanguage,
+  getContextMessage,
+  LoadingContext,
+} from '@/config/loadingMessages';
+import { LOADING_TIMING } from '@/config/loadingSizes';
 
 export type LoadingStage = 'workspace' | 'data' | 'waking' | 'slow' | 'error';
 
@@ -12,6 +19,8 @@ export interface LoadingErrorDetails {
 
 export interface UseLoadingStageOptions {
   isLoading: boolean;
+  context?: LoadingContext;
+  scope?: 'full' | 'inpage';
   role?: UserRole | string;
   hasError?: boolean;
   errorDetails?: LoadingErrorDetails | null;
@@ -21,6 +30,7 @@ export interface UseLoadingStageOptions {
 
 export interface UseLoadingStageResult {
   visible: boolean;
+  showTopLine: boolean;
   isFadingOut: boolean;
   stage: LoadingStage;
   elapsedSeconds: number;
@@ -31,28 +41,22 @@ export interface UseLoadingStageResult {
   errorDetails?: LoadingErrorDetails | null;
 }
 
-function getWorkspaceTitle(role?: UserRole | string): string {
-  switch (role) {
-    case UserRole.STUDENT:
-      return 'Loading your attendance';
-    case UserRole.FACULTY:
-      return 'Loading your classes';
-    case UserRole.ADMIN:
-      return 'Loading the admin dashboard';
-    default:
-      return 'Loading your workspace';
-  }
-}
+export function useLoadingStage(
+  options: UseLoadingStageOptions
+): UseLoadingStageResult {
+  const {
+    isLoading,
+    context = 'dashboard',
+    scope = 'full',
+    role,
+    hasError = false,
+    errorDetails = null,
+    enableHealthPing = false,
+    onRetry,
+  } = options;
 
-export function useLoadingStage({
-  isLoading,
-  role,
-  hasError = false,
-  errorDetails = null,
-  enableHealthPing = false,
-  onRetry,
-}: UseLoadingStageOptions): UseLoadingStageResult {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showTopLine, setShowTopLine] = useState(false);
   const [visible, setVisible] = useState(false);
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [serverSlowEarly, setServerSlowEarly] = useState(false);
@@ -61,11 +65,11 @@ export function useLoadingStage({
   );
 
   const shownAtRef = useRef<number | null>(null);
+  const topLineTimerRef = useRef<number | null>(null);
   const showTimerRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
 
-  // Track online/offline status & auto-retry on reconnect
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
@@ -82,38 +86,49 @@ export function useLoadingStage({
     };
   }, [onRetry]);
 
-  // Anti-flicker visibility: delay 200ms before showing, keep >=500ms once shown, fade out 250ms
+  // 0-200ms: nothing | 200ms-1s: top line only | >1s: full/in-page loader (min 600ms + 250ms fade)
   useEffect(() => {
+    if (topLineTimerRef.current) window.clearTimeout(topLineTimerRef.current);
     if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     if (fadeTimerRef.current) window.clearTimeout(fadeTimerRef.current);
 
     if (isLoading || hasError) {
       setIsFadingOut(false);
+      if (!showTopLine) {
+        topLineTimerRef.current = window.setTimeout(() => {
+          setShowTopLine(true);
+        }, hasError ? 0 : LOADING_TIMING.topLineThresholdMs);
+      }
       if (!visible) {
+        const delay = hasError
+          ? 0
+          : scope === 'full'
+            ? LOADING_TIMING.delayBeforeShowMs
+            : LOADING_TIMING.fullOrInlineThresholdMs;
         showTimerRef.current = window.setTimeout(() => {
           shownAtRef.current = Date.now();
           setVisible(true);
-        }, hasError ? 0 : 200);
+        }, delay);
       }
       return;
     }
 
+    setShowTopLine(false);
     if (visible) {
-      const elapsedVisible = shownAtRef.current ? Date.now() - shownAtRef.current : 500;
-      const remainingMin = Math.max(0, 500 - elapsedVisible);
+      const elapsedVisible = shownAtRef.current ? Date.now() - shownAtRef.current : LOADING_TIMING.minDisplayMs;
+      const remainingMin = Math.max(0, LOADING_TIMING.minDisplayMs - elapsedVisible);
       hideTimerRef.current = window.setTimeout(() => {
         setIsFadingOut(true);
         fadeTimerRef.current = window.setTimeout(() => {
           setVisible(false);
           setIsFadingOut(false);
           shownAtRef.current = null;
-        }, 250);
+        }, LOADING_TIMING.fadeOutMs);
       }, remainingMin);
     }
-  }, [isLoading, hasError, visible]);
+  }, [isLoading, hasError, visible, showTopLine, scope]);
 
-  // Elapsed timer while loading
   useEffect(() => {
     if (!isLoading) {
       setElapsedSeconds(0);
@@ -123,14 +138,13 @@ export function useLoadingStage({
 
     const startedAt = Date.now();
     const interval = window.setInterval(() => {
-      const secs = Math.floor((Date.now() - startedAt) / 1000);
-      setElapsedSeconds(secs);
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
     }, 500);
 
     return () => window.clearInterval(interval);
   }, [isLoading]);
 
-  // Optional startup health ping: if /api/health takes >3s, jump to 'waking' stage
+  // Startup health ping: if /api/health takes > 3s, jump to 'waking' stage immediately
   useEffect(() => {
     if (!enableHealthPing || !isLoading) return;
     let cancelled = false;
@@ -138,7 +152,7 @@ export function useLoadingStage({
 
     const slowTimer = window.setTimeout(() => {
       if (!cancelled) setServerSlowEarly(true);
-    }, 3000);
+    }, LOADING_TIMING.healthSlowMs);
 
     const ping = async () => {
       try {
@@ -185,32 +199,34 @@ export function useLoadingStage({
     stage = 'data';
   }
 
-  let statusTitle = getWorkspaceTitle(role);
-  let helperText = 'Just a moment.';
+  const lang = getAppLanguage();
+  const baseMsg = getContextMessage(context, role, lang);
+  const elapsedMsgs = ELAPSED_STAGE_MESSAGES[lang];
+
+  let statusTitle = baseMsg.primary;
+  let helperText = baseMsg.helper;
 
   if (isOffline) {
-    statusTitle = 'You are offline. Reconnecting...';
-    helperText = 'Waiting for your internet connection to come back.';
+    statusTitle = elapsedMsgs.offline.primary;
+    helperText = elapsedMsgs.offline.helper;
   } else if (stage === 'data') {
-    statusTitle = 'Getting your data ready';
-    helperText = 'Fetching your classes and attendance.';
+    statusTitle = elapsedMsgs.data.primary;
+    helperText = elapsedMsgs.data.helper;
   } else if (stage === 'waking') {
-    statusTitle = 'Waking up the server';
-    helperText = 'Free servers can take a little while to start.';
+    statusTitle = elapsedMsgs.waking.primary;
+    helperText = elapsedMsgs.waking.helper;
   } else if (stage === 'slow') {
-    statusTitle = 'Still working on it';
-    helperText = 'The server is slow right now. This can take up to a minute.';
+    statusTitle = elapsedMsgs.slow.primary;
+    helperText = elapsedMsgs.slow.helper;
   } else if (stage === 'error') {
-    statusTitle = isOffline
-      ? 'You are offline'
-      : elapsedSeconds >= 30
-        ? 'This is taking too long'
-        : 'We could not reach the server';
-    helperText = 'Your session is safe. Please try again in a moment.';
+    const errPair = elapsedSeconds >= 30 ? elapsedMsgs.error_timeout : elapsedMsgs.error_reach;
+    statusTitle = isOffline ? elapsedMsgs.offline.primary : errPair.primary;
+    helperText = errPair.helper;
   }
 
   return {
     visible,
+    showTopLine,
     isFadingOut,
     stage,
     elapsedSeconds,

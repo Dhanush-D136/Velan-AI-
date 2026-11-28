@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { InlineLoader } from '@/components/ui/LoadingScreen';
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
@@ -63,12 +63,7 @@ export const FacultyDashboard: React.FC = () => {
   const { stats, todaysSlots, activeSession, recentSessions } = data;
 
   if (isLoading) {
-    return (
-      <InlineLoader
-        label="Please wait, loading your Faculty Hub..."
-        subtext="Syncing your timetable and assigned classes from Supabase"
-      />
-    );
+    return <LoadingScreen role="FACULTY" context="dashboard" />;
   }
 
   return (

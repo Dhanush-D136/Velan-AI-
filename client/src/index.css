@@ -30,15 +30,21 @@
   --velan-login-surface: #FBFAFF;
   --velan-brand-violet: #7C3AED;
   --velan-brand-magenta: #DB2777;
+  --velan-brand-gold: #F59E0B;
   --velan-brand-tint: rgba(124, 58, 237, 0.14);
+  --edu-leaf1: #d9c57f;
+  --edu-leaf2: #b8a65a;
+  --edu-vein: rgba(86, 66, 18, 0.14);
+  --edu-ink: #2b1a0a;
+  --edu-cord: #6a4724;
 }
 
-@keyframes velan-line-sweep {
+@keyframes velan-flow-sweep {
   0% {
-    transform: translateX(0%);
+    transform: translateX(-100%);
   }
   100% {
-    transform: translateX(150%);
+    transform: translateX(250%);
   }
 }
 
@@ -60,16 +66,197 @@
   }
 }
 
-.velan-loading-bar {
+.velan-flow-bar {
   width: 40%;
-  background: linear-gradient(90deg, var(--velan-brand-violet) 0%, var(--velan-brand-magenta) 100%);
-  animation: velan-line-sweep 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  background: linear-gradient(
+    90deg,
+    var(--velan-brand-violet) 0%,
+    var(--velan-brand-magenta) 60%,
+    var(--velan-brand-gold) 100%
+  );
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.35);
+  animation: velan-flow-sweep 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   will-change: transform;
 }
 
 .velan-spinner {
   animation: velan-spinner-rotate 0.9s linear infinite;
   will-change: transform;
+}
+
+/* Palm-leaf (ஏடு) writing animation — transparent background, soft neutral shadow */
+.edu-stack {
+  position: relative;
+  width: 340px;
+  height: 106px;
+  perspective: 1200px;
+  transform-origin: center center;
+  transform: translateX(var(--tx, 0px)) scale(var(--s, 1));
+  transition: transform 0.9s cubic-bezier(0.5, 0, 0.25, 1);
+  font-family: "Noto Serif Tamil", "Latha", "Nirmala UI", serif;
+}
+.edu-stack::before,
+.edu-stack::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px 14px 14px 8px;
+  background: linear-gradient(180deg, #bba95e, #9c8d48);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.14);
+}
+.edu-stack::before {
+  transform: translate(5px, 7px) rotate(0.9deg);
+  z-index: 0;
+}
+.edu-stack::after {
+  transform: translate(-4px, 12px) rotate(-0.7deg);
+  z-index: 0;
+  filter: brightness(0.88);
+}
+
+.edu-leaf {
+  position: absolute;
+  inset: 0;
+  transform-origin: 6.5% 50%;
+  transform-style: preserve-3d;
+}
+.edu-leaf-back {
+  z-index: 2;
+}
+.edu-leaf-front {
+  z-index: 3;
+}
+.edu-turned {
+  z-index: 1;
+  transition: transform 0.8s cubic-bezier(0.5, 0, 0.25, 1), opacity 0.6s;
+}
+.edu-face,
+.edu-rev {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 0 11%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  border-radius: 8px 14px 14px 8px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background:
+    repeating-linear-gradient(0deg, var(--edu-vein) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, var(--edu-leaf1), var(--edu-leaf2));
+  box-shadow:
+    inset 0 0 18px rgba(90, 60, 10, 0.38),
+    inset 0 2px 0 rgba(255, 245, 200, 0.35),
+    0 8px 18px rgba(15, 23, 42, 0.16);
+}
+.edu-rev {
+  transform: rotateY(180deg);
+  filter: brightness(0.94);
+}
+.edu-rev-title {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--edu-ink);
+  letter-spacing: 0.05em;
+  line-height: 1.6;
+  text-shadow: 0 1px 0 rgba(255, 240, 190, 0.45), 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.edu-hole {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #150d06 45%, #7c6a30 70%);
+  box-shadow: 0 1px 0 rgba(255, 240, 190, 0.4);
+}
+.edu-hole-a {
+  left: 6.5%;
+}
+.edu-hole-b {
+  left: 93.5%;
+}
+.edu-cord {
+  position: absolute;
+  z-index: 4;
+  width: 2px;
+  top: -14px;
+  bottom: -14px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(180deg, var(--edu-cord) 0 3px, #8d6836 3px 5px);
+  box-shadow: 1px 0 2px rgba(0, 0, 0, 0.25);
+}
+.edu-cord-a {
+  left: 6.5%;
+}
+.edu-cord-b {
+  left: 93.5%;
+}
+
+.edu-line {
+  position: relative;
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  font-size: 13.5px;
+  line-height: 2;
+  font-weight: 600;
+  color: var(--edu-ink);
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 0 rgba(255, 240, 190, 0.45), 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+.edu-line span {
+  display: block;
+  white-space: nowrap;
+  clip-path: inset(-30% 100% -30% 0);
+}
+
+.edu-pen {
+  position: absolute;
+  top: 68%;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  animation: edu-scratch 0.22s ease-in-out infinite alternate;
+}
+.edu-pen i {
+  position: absolute;
+  left: -2.5px;
+  bottom: 0;
+  width: 5px;
+  height: 66px;
+  transform-origin: 50% 100%;
+  transform: rotate(30deg);
+  background: linear-gradient(90deg, #4b2c12, #7b4f27 50%, #3b2210);
+  clip-path: polygon(0 0, 100% 0, 100% 90%, 50% 100%, 0 90%);
+  border-radius: 3px 3px 0 0;
+  filter: drop-shadow(1px 2px 1.5px rgba(0, 0, 0, 0.35));
+}
+.edu-pen i::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 42%;
+  background: linear-gradient(90deg, #7f858b, #e3e7ea 45%, #6b7176);
+  clip-path: polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%);
+}
+@keyframes edu-scratch {
+  from {
+    margin-top: -1.5px;
+  }
+  to {
+    margin-top: 1.5px;
+  }
 }
 
 @keyframes sunrise-drift {
@@ -183,9 +370,16 @@
     transform: none !important;
     width: 100% !important;
   }
-  .velan-loading-bar {
+  .velan-flow-bar {
     width: 100% !important;
+    box-shadow: none !important;
     animation: velan-line-fill-reduced 3s linear infinite !important;
+  }
+  .edu-pen {
+    display: none !important;
+  }
+  .edu-stack {
+    transition: none !important;
   }
 }
 

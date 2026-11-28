@@ -174,7 +174,7 @@ export const AttendanceHistoryEditorPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto">
-        <InlineLoader label="Loading saved attendance sessions..." subtext="Syncing class records from Supabase" />
+        <InlineLoader context="history" label="Loading attendance history" subtext="Fetching saved class sessions." />
       </div>
     );
   }

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { Spinner } from '@/components/ui/LoadingScreen';
 import { api } from '@/lib/api';
 import { LOGIN_KURAL_CONFIG } from './kuralLoginConfig';
 import {
@@ -94,11 +95,15 @@ export const LoginPage: React.FC = () => {
   const [forgotVerify, setForgotVerify] = useState('');
   const [forgotReason, setForgotReason] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
+  const [isForgotSending, setIsForgotSending] = useState(false);
+  const [forgotError, setForgotError] = useState('');
 
   // Device Lock Modal
   const [showDeviceLockBlocked, setShowDeviceLockBlocked] = useState(false);
   const [deviceRequestReason, setDeviceRequestReason] = useState('');
   const [deviceRequestSent, setDeviceRequestSent] = useState(false);
+  const [isDeviceSending, setIsDeviceSending] = useState(false);
+  const [deviceReqError, setDeviceReqError] = useState('');
   const [deviceResetId, setDeviceResetId] = useState('');
   const [deviceLimitBanner, setDeviceLimitBanner] = useState('');
   const [isDeviceLimitError, setIsDeviceLimitError] = useState(false);
@@ -219,8 +224,10 @@ export const LoginPage: React.FC = () => {
 
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forgotId.trim()) return;
+    if (!forgotId.trim() || isForgotSending) return;
 
+    setIsForgotSending(true);
+    setForgotError('');
     try {
       await api.post('/auth/forgot-password', {
         identifier: forgotId.trim(),
@@ -228,19 +235,23 @@ export const LoginPage: React.FC = () => {
         reason: forgotReason.trim() || undefined,
       });
       setForgotSubmitted(true);
-      toast.success('Request received. If an account matches, an administrator will review it.');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || err.message || 'Failed to submit reset request');
+    } catch {
+      setForgotError('We could not send your request. Check your connection and try again.');
+    } finally {
+      setIsForgotSending(false);
     }
   };
 
   const handleDeviceChangeRequest = async () => {
+    if (isDeviceSending) return;
     const idToSend = (deviceResetId || identifier).trim();
     if (!idToSend) {
-      toast.error('Please enter your Register Number or Roll Number.');
+      setDeviceReqError('Please enter your Register Number or Roll Number.');
       return;
     }
 
+    setIsDeviceSending(true);
+    setDeviceReqError('');
     try {
       await api.post('/auth/device-request', {
         identifier: idToSend,
@@ -250,9 +261,10 @@ export const LoginPage: React.FC = () => {
         platform: navigator.platform || 'Web',
       });
       setDeviceRequestSent(true);
-      toast.success('Device reset request submitted to admin.');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || err.message || 'Failed to submit device reset request');
+    } catch {
+      setDeviceReqError('We could not send your request. Check your connection and try again.');
+    } finally {
+      setIsDeviceSending(false);
     }
   };
 
@@ -663,8 +675,8 @@ export const LoginPage: React.FC = () => {
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                  <span>Signing in...</span>
+                  <Spinner size={18} aria-hidden="true" />
+                  <span>Signing you in</span>
                 </>
               ) : (
                 <>
@@ -736,56 +748,68 @@ export const LoginPage: React.FC = () => {
       {/* FORGOT PASSWORD MODAL */}
       <Modal
         isOpen={showForgotPassword}
-        onClose={() => setShowForgotPassword(false)}
+        onClose={() => {
+          if (!isForgotSending) {
+            setForgotError('');
+            setShowForgotPassword(false);
+          }
+        }}
         title="Reset Password Request"
-        description="Submit your Register Number, Employee ID, or Username. An administrator will generate a one-time temporary password if verified."
+        description="Submit your Register Number, Employee ID, or Username. The admin will reset your password to the default (1234)."
       >
         {!forgotSubmitted ? (
           <form onSubmit={handleForgotSubmit} className="space-y-4">
             <Input
               label="Account Identifier"
               required
+              disabled={isForgotSending}
               value={forgotId}
               onChange={(e) => setForgotId(e.target.value)}
               placeholder="e.g. 710024104001 or FAC001 or Vel"
             />
             <Input
               label="Verification (Register No / Last 4 digits of phone)"
+              disabled={isForgotSending}
               value={forgotVerify}
               onChange={(e) => setForgotVerify(e.target.value)}
               placeholder="Optional verification detail"
             />
             <Input
               label="Note for Admin (Optional)"
+              disabled={isForgotSending}
               value={forgotReason}
               onChange={(e) => setForgotReason(e.target.value)}
               placeholder="e.g. Forgot password after device change"
             />
+            {forgotError && (
+              <p className="text-xs text-accent-rose font-medium flex items-center gap-1.5" role="alert">
+                <AlertCircle className="w-4 h-4 shrink-0" /> {forgotError}
+              </p>
+            )}
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button
                 variant="secondary"
                 size="sm"
                 type="button"
+                disabled={isForgotSending}
                 onClick={() => setShowForgotPassword(false)}
               >
                 Cancel
               </Button>
-              <Button size="sm" type="submit">
-                Submit Request
+              <Button size="sm" type="submit" isLoading={isForgotSending} loadingLabel="Sending your request...">
+                {forgotError ? 'Try again' : 'Submit Request'}
               </Button>
             </div>
           </form>
         ) : (
           <div className="text-center py-4 space-y-3">
             <CheckCircle2 className="w-10 h-10 text-accent-emerald mx-auto" />
-            <p className="text-xs font-semibold text-content">
-              If an account matching that identifier exists, a password reset request has been submitted to the administrator.
-            </p>
-            <p className="text-[11px] text-content-secondary">
-              Once approved, the administrator will share a one-time temporary password with you. You will be prompted to set a new password on your next login.
+            <p className="text-sm font-bold text-content">Request sent</p>
+            <p className="text-xs text-content-secondary leading-relaxed">
+              The admin will reset your password to the default (1234). Once it is done, sign in and choose a new password.
             </p>
             <Button size="sm" onClick={() => setShowForgotPassword(false)}>
-              Done
+              Back to sign in
             </Button>
           </div>
         )}
@@ -794,7 +818,12 @@ export const LoginPage: React.FC = () => {
       {/* DEVICE LOCK MODAL */}
       <Modal
         isOpen={showDeviceLockBlocked}
-        onClose={() => setShowDeviceLockBlocked(false)}
+        onClose={() => {
+          if (!isDeviceSending) {
+            setDeviceReqError('');
+            setShowDeviceLockBlocked(false);
+          }
+        }}
         title="2-Device Limit Reached"
         description={
           deviceLimitBanner ||
@@ -809,33 +838,41 @@ export const LoginPage: React.FC = () => {
             <Input
               label="Student ID / Register Number"
               required
+              disabled={isDeviceSending}
               value={deviceResetId}
               onChange={(e) => setDeviceResetId(e.target.value)}
               placeholder="e.g. 113024243032"
             />
             <Input
               label="Optional Note / Reason"
+              disabled={isDeviceSending}
               value={deviceRequestReason}
               onChange={(e) => setDeviceRequestReason(e.target.value)}
               placeholder="e.g. Switched to a new phone"
             />
+            {deviceReqError && (
+              <p className="text-xs text-accent-rose font-medium flex items-center gap-1.5" role="alert">
+                <AlertCircle className="w-4 h-4 shrink-0" /> {deviceReqError}
+              </p>
+            )}
             <div className="flex items-center justify-end gap-2 pt-2">
-              <Button variant="secondary" size="sm" onClick={() => setShowDeviceLockBlocked(false)}>
+              <Button variant="secondary" size="sm" disabled={isDeviceSending} onClick={() => setShowDeviceLockBlocked(false)}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={handleDeviceChangeRequest}>
-                Request device reset
+              <Button size="sm" isLoading={isDeviceSending} loadingLabel="Sending your request..." onClick={handleDeviceChangeRequest}>
+                {deviceReqError ? 'Try again' : 'Request device reset'}
               </Button>
             </div>
           </div>
         ) : (
           <div className="text-center py-4 space-y-3">
             <CheckCircle2 className="w-10 h-10 text-accent-emerald mx-auto" />
-            <p className="text-xs font-bold text-content">
-              Device change request submitted to admin for authorization.
+            <p className="text-sm font-bold text-content">Request sent</p>
+            <p className="text-xs text-content-secondary leading-relaxed">
+              The admin will review it and remove an old device. You will be able to sign in on this device afterwards.
             </p>
             <Button size="sm" onClick={() => setShowDeviceLockBlocked(false)}>
-              Close
+              Back to sign in
             </Button>
           </div>
         )}

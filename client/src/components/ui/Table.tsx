@@ -1,6 +1,7 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { InlineLoader, TopBar } from './LoadingScreen';
 
 export interface Column<T> {
   key: string;
@@ -16,6 +17,7 @@ export interface TableProps<T> {
   keyExtractor: (row: T) => string;
   emptyMessage?: string;
   isLoading?: boolean;
+  loadingLabel?: string;
   className?: string;
   onRowClick?: (row: T) => void;
 }
@@ -26,11 +28,13 @@ export function Table<T>({
   keyExtractor,
   emptyMessage = 'No records found',
   isLoading = false,
+  loadingLabel = 'Loading records',
   className,
   onRowClick,
 }: TableProps<T>) {
   return (
     <div className={twMerge('w-full overflow-hidden rounded-3xl border border-border bg-white shadow-subtle', className)}>
+      <TopBar active={isLoading && data.length > 0} />
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -50,16 +54,12 @@ export function Table<T>({
             </tr>
           </thead>
           <tbody className="divide-y divide-border text-sm">
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}>
-                  {columns.map((col) => (
-                    <td key={col.key} className="px-6 py-4">
-                      <div className="h-4 bg-slate-200/70 rounded-md w-3/4"></div>
-                    </td>
-                  ))}
-                </tr>
-              ))
+            {isLoading && data.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="p-4">
+                  <InlineLoader showBlocks={false} label={loadingLabel} />
+                </td>
+              </tr>
             ) : data.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-6 py-12 text-center text-content-secondary">

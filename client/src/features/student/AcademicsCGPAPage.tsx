@@ -356,9 +356,11 @@ export const AcademicsCGPAPage: React.FC = () => {
           />
 
           {isParsing && (
-            <div className="p-4 rounded-2xl bg-slate-50 border border-border text-xs font-semibold text-content">
-              Extracting courses, credits, and grades in your browser...
-            </div>
+            <InlineLoader
+              compact
+              showBlocks={false}
+              label="Reading your result sheet. This stays on your device."
+            />
           )}
 
           {identityError && (

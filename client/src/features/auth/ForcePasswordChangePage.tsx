@@ -136,7 +136,7 @@ export const ForcePasswordChangePage: React.FC = () => {
             </div>
           )}
 
-          <Button type="submit" className="w-full" isLoading={isSaving}>
+          <Button type="submit" className="w-full" isLoading={isSaving} loadingLabel="Saving your new password">
             Save New Password &amp; Continue
           </Button>
         </form>

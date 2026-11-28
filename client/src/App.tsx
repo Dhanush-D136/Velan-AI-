@@ -7,7 +7,7 @@ import { BrandLogo } from './components/ui/BrandLogo';
 import { LoginPage } from './features/auth/LoginPage';
 import { ForcePasswordChangePage } from './features/auth/ForcePasswordChangePage';
 import { AppLayout } from './components/layout/AppLayout';
-import { LoadingScreen, InlineLoader, TopBar } from './components/ui/LoadingScreen';
+import { LoadingScreen, TopBar } from './components/ui/LoadingScreen';
 import { useLoadingStage } from './hooks/useLoadingStage';
 
 // Chunk-load retry helper for lazy-loaded routes
@@ -85,9 +85,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 const RouteFallback: React.FC = () => (
   <>
     <TopBar active />
-    <div className="p-4 sm:p-8 max-w-6xl mx-auto">
-      <InlineLoader label="Loading page..." />
-    </div>
+    <LoadingScreen context="route" />
   </>
 );
 
@@ -128,6 +126,8 @@ export default function App() {
   const { user, isAuthenticated, initialising, hydrateSession } = useAuthStore();
   const loadingState = useLoadingStage({
     isLoading: initialising,
+    context: 'app_start',
+    scope: 'full',
     role: user?.role,
     enableHealthPing: true,
     onRetry: hydrateSession,
@@ -153,17 +153,27 @@ export default function App() {
 
   if (initialising) {
     if (!loadingState.visible) {
-      return <div className="min-h-screen bg-surface" />;
+      return (
+        <>
+          <TopBar active={loadingState.showTopLine} />
+          <div className="min-h-[100dvh] bg-surface" />
+        </>
+      );
     }
     return (
-      <LoadingScreen
-        stage={loadingState.stage}
-        statusTitle={loadingState.statusTitle}
-        helperText={loadingState.helperText}
-        isOffline={loadingState.isOffline}
-        isFadingOut={loadingState.isFadingOut}
-        onRetry={loadingState.retry}
-      />
+      <>
+        <TopBar active={loadingState.showTopLine} />
+        <LoadingScreen
+          role={user?.role}
+          context="app_start"
+          stage={loadingState.stage}
+          statusTitle={loadingState.statusTitle}
+          helperText={loadingState.helperText}
+          isOffline={loadingState.isOffline}
+          isFadingOut={loadingState.isFadingOut}
+          onRetry={loadingState.retry}
+        />
+      </>
     );
   }
 

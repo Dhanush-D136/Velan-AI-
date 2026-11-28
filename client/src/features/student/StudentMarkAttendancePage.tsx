@@ -237,8 +237,8 @@ export const StudentMarkAttendancePage: React.FC = () => {
                 {isScanning ? (
                   <>
                     <Radio className="w-10 h-10 animate-spin mb-1 text-white" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Acquiring GPS</span>
-                    <span className="text-[10px] text-white/80">Verifying Geofence...</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">Getting your location</span>
+                    <span className="text-[10px] text-white/80">Verifying your location...</span>
                   </>
                 ) : result === 'SUCCESS' ? (
                   <>

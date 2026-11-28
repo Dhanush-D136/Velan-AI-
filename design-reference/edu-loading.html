@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ஏடு – Loading</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Tamil:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1b130d; --glow:rgba(214,160,70,.22);
+  --leaf1:#d9c57f; --leaf2:#b8a65a; --vein:rgba(86,66,18,.14); --ink:#2b1a0a; --cord:#6a4724;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#efe4cc;--glow:rgba(190,140,60,.25)}}
+:root[data-theme="dark"]{--bg:#1b130d;--glow:rgba(214,160,70,.22)}
+html,body{height:100%;margin:0}
+body{
+  background:radial-gradient(ellipse 60% 40% at 50% 48%,var(--glow),transparent 70%),var(--bg);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  font-family:"Noto Serif Tamil","Latha","Nirmala UI",serif;
+}
+
+/* scene: the right-hand leaf stack; turned leaves collect on its left */
+.stack{position:relative;width:340px;height:106px;perspective:1200px;
+  transform:translateX(var(--tx,0px)) scale(var(--s,1));transition:transform .9s cubic-bezier(.5,0,.25,1)}
+.stack::before,.stack::after{content:"";position:absolute;inset:0;border-radius:8px 14px 14px 8px;
+  background:linear-gradient(180deg,#bba95e,#9c8d48);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.stack::before{transform:translate(5px,7px) rotate(.9deg);z-index:0}
+.stack::after{transform:translate(-4px,12px) rotate(-.7deg);z-index:0;filter:brightness(.85)}
+
+.leaf{position:absolute;inset:0;transform-origin:6.5% 50%;transform-style:preserve-3d}
+.leaf.back{z-index:2}
+.leaf.front{z-index:3}
+.leaf.turned{z-index:1;transition:transform .8s cubic-bezier(.5,0,.25,1),opacity .6s}
+.face,.rev{
+  position:absolute;inset:0;box-sizing:border-box;padding:0 11%;
+  display:flex;flex-direction:column;justify-content:center;text-align:center;
+  border-radius:8px 14px 14px 8px;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  background:
+    repeating-linear-gradient(0deg,var(--vein) 0 1px,transparent 1px 6px),
+    linear-gradient(180deg,var(--leaf1),var(--leaf2));
+  box-shadow:inset 0 0 20px rgba(90,60,10,.45),inset 0 2px 0 rgba(255,245,200,.35),0 12px 26px rgba(0,0,0,.3);
+}
+.rev{transform:rotateY(180deg);filter:brightness(.93)}
+.rev .title{font-size:19px;font-weight:600;color:var(--ink);letter-spacing:.05em;line-height:1.6;
+  text-shadow:0 1px 0 rgba(255,240,190,.45),0 -1px 0 rgba(0,0,0,.25)}
+
+.hole{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;
+  background:radial-gradient(circle,#150d06 45%,#7c6a30 70%);box-shadow:0 1px 0 rgba(255,240,190,.4)}
+.hole.a{left:6.5%}.hole.b{left:93.5%}
+.cord{position:absolute;z-index:4;width:2px;top:-18px;bottom:-18px;margin-left:-1px;border-radius:2px;
+  background:repeating-linear-gradient(180deg,var(--cord) 0 3px,#8d6836 3px 5px);box-shadow:1px 0 2px rgba(0,0,0,.4)}
+.cord.a{left:6.5%}.cord.b{left:93.5%}
+
+/* writing */
+.line{position:relative;display:block;width:fit-content;margin:0 auto;font-size:13.5px;
+  line-height:2;font-weight:600;color:var(--ink);letter-spacing:.01em;
+  text-shadow:0 1px 0 rgba(255,240,190,.45),0 -1px 0 rgba(0,0,0,.25)}
+.line span{display:block;white-space:nowrap;clip-path:inset(-30% 100% -30% 0)}
+
+/* ezhuthani */
+.pen{position:absolute;top:68%;left:0;width:0;height:0;z-index:5;pointer-events:none;opacity:0;
+  animation:scratch .22s ease-in-out infinite alternate}
+.pen i{position:absolute;left:-2.5px;bottom:0;width:5px;height:66px;
+  transform-origin:50% 100%;transform:rotate(30deg);
+  background:linear-gradient(90deg,#4b2c12,#7b4f27 50%,#3b2210);
+  clip-path:polygon(0 0,100% 0,100% 90%,50% 100%,0 90%);border-radius:3px 3px 0 0;
+  filter:drop-shadow(1px 2px 1.5px rgba(0,0,0,.35))}
+.pen i::after{content:"";position:absolute;left:0;right:0;bottom:0;height:42%;
+  background:linear-gradient(90deg,#7f858b,#e3e7ea 45%,#6b7176);
+  clip-path:polygon(0 0,100% 0,100% 78%,50% 100%,0 78%)}
+@keyframes scratch{from{margin-top:-1.5px}to{margin-top:1.5px}}
+@media (prefers-reduced-motion:reduce){.pen{display:none}.stack{transition:none}}
+</style>
+</head>
+<body>
+  <div class="stack" role="status" aria-label="ஏற்றுகிறது">
+    <div class="cord a"></div><div class="cord b"></div>
+    <div class="leaf back"><div class="face"><div class="hole a"></div><div class="hole b"></div></div></div>
+    <div class="leaf front">
+      <div class="face">
+        <div class="hole a"></div><div class="hole b"></div>
+        <div class="line"><span></span><div class="pen"><i></i></div></div>
+        <div class="line"><span></span><div class="pen"><i></i></div></div>
+      </div>
+      <div class="rev">
+        <div class="hole a"></div><div class="hole b"></div>
+        <div class="title">திருக்குறள்</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// Thirukkural 391, 1, 2, 314 – two lines each
+const K=[
+ ["கற்க கசடறக் கற்பவை கற்றபின்","நிற்க அதற்குத் தக"],
+ ["அகர முதல எழுத்தெல்லாம் ஆதி","பகவன் முதற்றே உலகு"],
+ ["கற்றதனால் ஆய பயனென்கொல்","வாலறிவன் நற்றாள் தொழாஅர் எனின்"],
+ ["இன்னா செய்தாரை ஒறுத்தல் அவர்நாண","நன்னயம் செய்து விடல்"]
+];
+const scene=document.querySelector('.stack'),front=scene.querySelector('.front');
+const lines=[...front.querySelectorAll('.face .line')];
+const faceSp=[...front.querySelectorAll('.face .line span')];
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),EASE='cubic-bezier(.45,.05,.4,1)';
+const turned=[];let hasTurned=false;
+
+// write the kural, shrinking the type so both lines sit between the two cords
+const AVAIL=250;
+const setText=k=>{
+  k.forEach((t,i)=>faceSp[i].textContent=t);
+  lines.forEach(l=>l.style.fontSize='13.5px');
+  const w=Math.max(...lines.map(l=>l.offsetWidth));
+  const fs=Math.min(13.5,13.5*AVAIL/w);
+  lines.forEach(l=>l.style.fontSize=fs+'px');
+};
+
+// keep the leaf + turned leaves on screen at any width
+function layout(){
+  const W=340,vw=innerWidth;let s=(vw-16)/(1.87*W),tx=0;
+  if(s>=.75){s=Math.min(1,s);if(hasTurned)tx=.435*W*s;}          // whole spread visible
+  else{s=Math.min(1,(vw-16-70)/W);if(hasTurned)tx=vw/2-8-s*W/2;} // narrow: turned leaf peeks in at left
+  scene.style.setProperty('--s',s);scene.style.setProperty('--tx',tx+'px');
+}
+addEventListener('resize',layout);
+
+async function writeLine(line){
+  const s=line.firstElementChild,pen=line.querySelector('.pen');
+  const d=Math.max(1100,s.textContent.length*95),o={duration:d,easing:EASE,fill:'forwards'};
+  s.animate([{clipPath:'inset(-30% 100% -30% 0)'},{clipPath:'inset(-30% -3% -30% 0)'}],o);
+  pen.animate([{left:'0%',opacity:0,offset:0},{left:'0%',opacity:1,offset:.04},{left:'100%',opacity:1,offset:1}],o);
+  await wait(d);
+  await pen.animate([{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-14px)'}],
+    {duration:350,fill:'forwards'}).finished;
+}
+async function flip(){
+  hasTurned=true;layout();                         // scene slides so the spread stays centred
+  setTimeout(()=>front.style.zIndex=1,480);        // once past vertical, drop under the right leaf
+  await front.animate([
+    {transform:'translateY(0) rotateY(0deg)',offset:0},
+    {transform:'translateY(-8px) rotateY(-90deg)',offset:.5},
+    {transform:'translateY(0) rotateY(-180deg)',offset:1}
+  ],{duration:1100,easing:'cubic-bezier(.55,0,.3,1)',fill:'forwards'}).finished;
+}
+function land(){                                   // leave the written leaf lying on the left
+  const c=front.cloneNode(true);
+  c.classList.add('turned');c.style.zIndex=1;c.style.transform='rotateY(-180deg)';
+  scene.appendChild(c);turned.unshift(c);
+  turned.forEach((t,i)=>t.style.transform=`translate(${-i*6}px,${i*4}px) rotateY(-180deg)`);
+  if(turned.length>3){const o=turned.pop();o.style.opacity=0;setTimeout(()=>o.remove(),700);}
+  front.style.zIndex='';
+  front.getAnimations({subtree:true}).forEach(a=>a.cancel()); // fresh blank leaf on the stack
+}
+async function main(){
+  layout();
+  await document.fonts.ready;
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches){
+    setText(K[0]);faceSp.forEach(s=>s.style.clipPath='none');return;
+  }
+  await wait(400);
+  for(let i=0;;i++){
+    setText(K[i%K.length]);
+    for(const l of lines){await writeLine(l);await wait(250);}
+    await wait(1100);
+    await flip();land();
+    await wait(150);
+  }
+}
+main();
+</script>
+</body>
+</html>

@@ -58,7 +58,7 @@ export const StudentAttendanceHistoryPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto">
-        <InlineLoader label="Loading your attendance history..." subtext="Syncing subject percentages from Supabase" />
+        <InlineLoader context="attendance_history" label="Loading your attendance" subtext="Fetching subject-wise percentages." />
       </div>
     );
   }

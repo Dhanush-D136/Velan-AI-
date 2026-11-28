@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Table, Column } from '@/components/ui/Table';
+import { InlineLoader } from '@/components/ui/LoadingScreen';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -904,6 +905,8 @@ export const StudentManagement: React.FC = () => {
               columns={columns}
               data={filtered}
               keyExtractor={(s) => s.id}
+              isLoading={isLoading}
+              loadingLabel="Loading students"
               emptyMessage="No students found matching your criteria"
             />
           </div>
@@ -1157,6 +1160,14 @@ export const StudentManagement: React.FC = () => {
                 </table>
               </div>
             </div>
+          )}
+
+          {isCommittingImport && previewData && (
+            <InlineLoader
+              compact
+              showBlocks={false}
+              label={`Importing ${previewData.validCount} students`}
+            />
           )}
 
           <div className="pt-4 flex items-center justify-end gap-2 border-t border-border">

@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { clsx } from 'clsx';
-import { RefreshCw, RotateCcw, ChevronDown, ChevronUp, WifiOff } from 'lucide-react';
+import { RefreshCw, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import { LoadingStage, LoadingErrorDetails } from '@/hooks/useLoadingStage';
+import { getContextMessage, LoadingContext } from '@/config/loadingMessages';
+import { LeafLoader } from './LeafLoader';
+import { FlowLine, TopBar } from './FlowLine';
+
+export { TopBar, FlowLine, LeafLoader };
 
 export const Spinner: React.FC<{ size?: number; className?: string }> = ({
-  size = 28,
+  size = 20,
   className,
 }) => (
   <svg
@@ -24,32 +29,19 @@ export const Spinner: React.FC<{ size?: number; className?: string }> = ({
     />
     <path
       d="M14 3a11 11 0 0 1 11 11"
-      stroke="var(--velan-brand-violet, #7C3AED)"
+      stroke="currentColor"
       strokeWidth="2.5"
       strokeLinecap="round"
     />
   </svg>
 );
 
-export const TopBar: React.FC<{ active: boolean }> = ({ active }) => {
-  if (!active) return null;
-  return (
-    <div
-      role="progressbar"
-      aria-label="Loading page"
-      aria-busy="true"
-      className="fixed top-0 inset-x-0 z-[60] h-[3px] overflow-hidden bg-[var(--velan-brand-tint)] pointer-events-none"
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-    >
-      <div className="h-full velan-loading-bar rounded-full" />
-    </div>
-  );
-};
-
 interface LoadingScreenProps {
-  stage: LoadingStage;
-  statusTitle: string;
-  helperText: string;
+  role?: string;
+  context?: LoadingContext;
+  stage?: LoadingStage;
+  statusTitle?: string;
+  helperText?: string;
   isOffline?: boolean;
   isFadingOut?: boolean;
   onRetry?: () => void;
@@ -57,21 +49,25 @@ interface LoadingScreenProps {
 }
 
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({
-  stage,
+  role,
+  context = 'app_start',
+  stage = 'workspace',
   statusTitle,
   helperText,
-  isOffline = false,
   isFadingOut = false,
   onRetry,
   errorDetails,
 }) => {
   const [showDetails, setShowDetails] = useState(false);
+  const fallbackMsg = getContextMessage(context, role);
+  const primary = statusTitle || fallbackMsg.primary;
+  const helper = helperText || fallbackMsg.helper;
 
   return (
     <div
       aria-busy={stage !== 'error'}
       className={clsx(
-        'min-h-screen w-full bg-surface flex flex-col items-center justify-center px-6 transition-opacity duration-200',
+        'min-h-[100dvh] w-full bg-surface flex flex-col items-center justify-center px-6 transition-opacity duration-200',
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       )}
       style={{
@@ -80,42 +76,52 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
       }}
     >
       <div className="w-full max-w-[360px] flex flex-col items-center text-center">
-        {/* Still real Velan AI logo (~72px) */}
-        <div className="w-[72px] h-[72px] rounded-2xl overflow-hidden shadow-md ring-1 ring-border bg-white shrink-0">
-          <img
-            src="/logo.png"
-            alt="Velan AI"
-            className="w-full h-full object-cover"
-          />
+        {/* 1. Real Velan AI logo (36-40px) + "Velan AI" (Bricolage Grotesque 800, 22px) ABOVE the leaf */}
+        <div className="flex items-center justify-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm ring-1 ring-border bg-white shrink-0">
+            <img
+              src="/logo.png"
+              alt="Velan AI"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <span
+            className="text-[22px] font-extrabold tracking-tight text-content leading-none"
+            style={{ fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif" }}
+          >
+            Velan AI
+          </span>
         </div>
 
         {stage !== 'error' ? (
           <>
-            {/* Indeterminate 4px loading bar */}
-            <div className="w-full h-1 rounded-full bg-[var(--velan-brand-tint)] overflow-hidden mt-7">
-              <div className="h-full rounded-full velan-loading-bar" />
+            {/* 2. 12px gap, then palm-leaf animation */}
+            <div className="w-full mt-3">
+              <LeafLoader size="full" />
             </div>
 
-            {/* 28px spinner */}
-            <div className="mt-6 flex items-center justify-center">
-              {isOffline ? (
-                <WifiOff className="w-7 h-7 text-amber-600" aria-hidden="true" />
-              ) : (
-                <Spinner size={28} />
-              )}
+            {/* 3. 20px gap, then flowing line */}
+            <div className="w-full mt-5">
+              <FlowLine />
             </div>
 
-            {/* Status & helper lines with reserved height to avoid layout shift */}
+            {/* 4. 16px gap, then status text (primary + helper) */}
             <div
               role="status"
               aria-live="polite"
               className="mt-4 min-h-[3.75rem] flex flex-col items-center justify-start transition-opacity duration-200"
             >
-              <p className="text-[16px] font-medium text-content leading-snug">
-                {statusTitle}
+              <p
+                className="text-[16px] sm:text-[17px] font-semibold text-content leading-snug"
+                style={{ fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif" }}
+              >
+                {primary}
               </p>
-              <p className="text-[13px] text-content-secondary mt-1 leading-relaxed">
-                {helperText}
+              <p
+                className="text-[13.5px] font-normal text-content-secondary mt-1 leading-relaxed"
+                style={{ fontFamily: "'Figtree', 'Inter', sans-serif" }}
+              >
+                {helper}
               </p>
             </div>
           </>
@@ -123,13 +129,19 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
           <div
             role="status"
             aria-live="polite"
-            className="w-full mt-7 p-6 bg-surface-soft border border-border rounded-3xl text-center shadow-subtle"
+            className="w-full mt-6 p-6 bg-surface-soft border border-border rounded-3xl text-center shadow-subtle"
           >
-            <h2 className="text-base font-heading font-bold text-content">
-              {statusTitle}
+            <h2
+              className="text-[17px] font-semibold text-content"
+              style={{ fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif" }}
+            >
+              {primary}
             </h2>
-            <p className="text-[13px] text-content-secondary mt-1.5 leading-relaxed">
-              {helperText}
+            <p
+              className="text-[13.5px] text-content-secondary mt-1.5 leading-relaxed"
+              style={{ fontFamily: "'Figtree', 'Inter', sans-serif" }}
+            >
+              {helper}
             </p>
 
             <div className="mt-5 flex flex-col sm:flex-row gap-2.5 justify-center">
@@ -180,14 +192,68 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 interface InlineLoaderProps {
   label?: string;
   subtext?: string;
+  context?: LoadingContext;
+  compact?: boolean;
+  showBlocks?: boolean;
   className?: string;
 }
 
 export const InlineLoader: React.FC<InlineLoaderProps> = ({
-  label = 'Loading...',
+  label,
   subtext,
+  context,
+  compact = false,
+  showBlocks = true,
   className,
 }) => {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const id = window.setInterval(() => {
+      setElapsed(Math.floor((Date.now() - started) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const ctxMsg = context ? getContextMessage(context) : null;
+  let primary = label || ctxMsg?.primary || 'Loading...';
+  let helper = subtext ?? ctxMsg?.helper;
+
+  if (elapsed >= 15) {
+    primary = 'Still working on it';
+    helper = 'The server is slow right now. This can take up to a minute.';
+  } else if (elapsed >= 8) {
+    primary = 'Waking up the server';
+    helper = 'Free servers can take a little while to start.';
+  }
+
+  if (compact) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        className={clsx(
+          'w-full py-4 px-4 flex flex-col items-center justify-center text-center bg-surface border border-border rounded-2xl',
+          className
+        )}
+      >
+        <div className="w-full max-w-[160px]">
+          <LeafLoader size="compact" />
+        </div>
+        <div className="w-full max-w-[200px] mt-2">
+          <FlowLine />
+        </div>
+        <p
+          className="text-xs font-semibold text-content mt-2"
+          style={{ fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif" }}
+        >
+          {primary}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       role="status"
@@ -195,19 +261,36 @@ export const InlineLoader: React.FC<InlineLoaderProps> = ({
       aria-busy="true"
       className={clsx('w-full space-y-4', className)}
     >
-      {/* Static light layout blocks (no pulsing) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="h-20 bg-slate-100 rounded-2xl border border-border/50" />
-        <div className="h-20 bg-slate-100 rounded-2xl border border-border/50" />
-        <div className="h-20 bg-slate-100 rounded-2xl border border-border/50" />
-      </div>
+      {/* Static light-gray layout blocks (no animation) */}
+      {showBlocks && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="h-20 bg-slate-100 rounded-2xl border border-border/50" />
+          <div className="h-20 bg-slate-100 rounded-2xl border border-border/50" />
+          <div className="h-20 bg-slate-100 rounded-2xl border border-border/50" />
+        </div>
+      )}
 
-      {/* Centered calm spinner + noun label */}
-      <div className="w-full py-12 px-6 flex flex-col items-center justify-center text-center bg-surface border border-border rounded-3xl shadow-subtle">
-        <Spinner size={28} />
-        <p className="text-[15px] font-medium text-content mt-3.5">{label}</p>
-        {subtext && (
-          <p className="text-[13px] text-content-secondary mt-1 max-w-xs">{subtext}</p>
+      {/* Centered palm-leaf + flowing line + status (NO logo, NO "Velan AI") */}
+      <div className="w-full py-10 px-6 flex flex-col items-center justify-center text-center bg-surface border border-border rounded-3xl shadow-subtle">
+        <div className="w-full max-w-[260px]">
+          <LeafLoader size="inpage" />
+        </div>
+        <div className="w-full max-w-[260px] mt-4">
+          <FlowLine />
+        </div>
+        <p
+          className="text-[16px] sm:text-[17px] font-semibold text-content mt-4 leading-snug"
+          style={{ fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif" }}
+        >
+          {primary}
+        </p>
+        {helper && (
+          <p
+            className="text-[13.5px] font-normal text-content-secondary mt-1 max-w-xs leading-relaxed"
+            style={{ fontFamily: "'Figtree', 'Inter', sans-serif" }}
+          >
+            {helper}
+          </p>
         )}
       </div>
     </div>
