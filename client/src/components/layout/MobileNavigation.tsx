@@ -5,6 +5,7 @@ import { UserRole } from '@velan/shared';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { getRoleNavItems } from './navConfig';
 import { SidebarFooter } from './SidebarFooter';
+import { acquireScrollLock } from '@/utils/scrollLock';
 import {
   LayoutDashboard,
   CalendarCheck2,
@@ -92,15 +93,11 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onOp
   // Body scroll lock, Escape key, focus trap, and phone Back button (popstate)
   useEffect(() => {
     if (!isOpen) {
-      if (document.body.style.overflow === 'hidden') {
-        document.body.style.overflow = '';
-      }
       pushedHistoryRef.current = false;
       return;
     }
 
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseLock = acquireScrollLock();
 
     if (!pushedHistoryRef.current && !window.history.state?.velanMobileMenu) {
       window.history.pushState({ velanMobileMenu: true }, '');
@@ -146,7 +143,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onOp
 
     return () => {
       window.clearTimeout(focusTimer);
-      document.body.style.overflow = prevOverflow === 'hidden' ? '' : prevOverflow;
+      releaseLock();
       window.removeEventListener('popstate', onPopState);
       window.removeEventListener('keydown', onKeyDown);
     };

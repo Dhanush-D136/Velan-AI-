@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { acquireScrollLock } from '@/utils/scrollLock';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -22,13 +23,18 @@ export const Modal: React.FC<ModalProps> = ({
   showCloseButton = true,
 }) => {
   useEffect(() => {
+    if (!isOpen) return;
+    const releaseLock = acquireScrollLock();
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      releaseLock();
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen, onClose]);
 
   const sizeStyles = {

@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { useRealtimeSync } from '@/lib/socket';
 import { useToast } from '@/components/ui/Toast';
 import { TopBar } from '@/components/ui/LoadingScreen';
+import { resetAllScrollLocks } from '@/utils/scrollLock';
 import { clsx } from 'clsx';
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -247,8 +248,12 @@ export const AppLayout: React.FC = () => {
     c.label.toLowerCase().includes(commandQuery.toLowerCase())
   );
 
+  useEffect(() => {
+    resetAllScrollLocks();
+  }, [location.pathname, location.search]);
+
   return (
-    <div className="h-[100dvh] overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible bg-white flex flex-col antialiased overflow-x-hidden">
+    <div className="min-h-screen bg-white flex flex-col antialiased">
       <TopBar active={isReconnecting || isServerWaking} />
 
       {/* Reconnecting banner on transient network/5xx errors */}
@@ -267,12 +272,12 @@ export const AppLayout: React.FC = () => {
         </div>
       )}
 
-      <div className="flex-1 flex max-w-[1920px] w-full mx-auto min-h-0 overflow-hidden lg:overflow-visible">
+      <div className="flex-1 flex max-w-[1920px] w-full mx-auto">
         {/* Desktop Floating Sidebar */}
         <Sidebar />
 
-        {/* Main Content Area (only scrollable region on mobile) */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* Main Content Area (native document scroll on mobile) */}
+        <div className="flex-1 flex flex-col min-w-0 pb-4 lg:pb-10">
           <Header
             onOpenCommandPalette={() => setIsCommandOpen(true)}
             onOpenNotifications={() => {
@@ -283,10 +288,7 @@ export const AppLayout: React.FC = () => {
             unreadNotificationsCount={unreadCount}
           />
 
-          <main
-            className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-8 pt-5 pb-28 lg:pb-10 portal-pattern-grid"
-            style={{ WebkitOverflowScrolling: 'touch' }}
-          >
+          <main className="flex-1 max-w-full overflow-x-hidden lg:overflow-x-visible px-4 sm:px-8 mobile-content-pad lg:py-6 portal-pattern-grid">
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 6 }}

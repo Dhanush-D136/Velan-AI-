@@ -35,7 +35,7 @@ export function Table<T>({
   return (
     <div className={twMerge('w-full overflow-hidden rounded-3xl border border-border bg-white shadow-subtle', className)}>
       <TopBar active={isLoading && data.length > 0} />
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-border bg-surface-soft/80 text-content-secondary uppercase text-[11px] font-semibold tracking-wider">

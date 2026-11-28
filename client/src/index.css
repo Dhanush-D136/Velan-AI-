@@ -10,20 +10,32 @@
     @apply bg-white text-content font-sans antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
   }
   @media (max-width: 1023px) {
     html,
-    body {
-      height: 100dvh;
-      overflow: hidden;
-      overscroll-behavior-y: none;
+    body,
+    #root {
+      height: auto !important;
+      min-height: 100dvh;
+      overflow: visible !important;
+      overflow-y: auto !important;
+      position: static !important;
+      touch-action: pan-x pan-y pinch-zoom !important;
+      overscroll-behavior: auto !important;
+    }
+    .mobile-content-pad {
+      padding-top: calc(var(--topbar-h, 64px) + env(safe-area-inset-top, 0px) + 12px);
+      padding-bottom: calc(var(--bottomnav-h, 84px) + env(safe-area-inset-bottom, 0px) + 12px);
     }
   }
   button,
   nav {
     user-select: none;
     -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  a {
+    touch-action: manipulation;
   }
   img {
     -webkit-touch-callout: none;
@@ -35,6 +47,8 @@
 
 /* Kural 391 Login Sunrise Palette (CSS Variables) */
 :root {
+  --topbar-h: 64px;
+  --bottomnav-h: 84px;
   --velan-login-indigo: #1E1B4B;
   --velan-login-royal: #5B21B6;
   --velan-login-violet: #7C3AED;

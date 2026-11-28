@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { api } from '@/lib/api';
+import { acquireScrollLock } from '@/utils/scrollLock';
 import { X, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface PersonEditDrawerProps {
@@ -27,6 +28,11 @@ export const PersonEditDrawer: React.FC<PersonEditDrawerProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [movePreview, setMovePreview] = useState<any>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return acquireScrollLock();
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !person) return;

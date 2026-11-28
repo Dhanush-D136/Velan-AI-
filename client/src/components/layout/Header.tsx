@@ -36,7 +36,10 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-3.5 bg-white/80 backdrop-blur-md border-b border-border/80 transition-all">
+    <header
+      className="fixed top-0 inset-x-0 lg:sticky lg:top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-3.5 bg-white/85 backdrop-blur-md border-b border-border/80 transition-all"
+      style={{ paddingTop: 'max(0.875rem, env(safe-area-inset-top, 0px))' }}
+    >
       {/* Mobile Menu + Search / Command Palette Trigger */}
       <div className="flex items-center gap-2 sm:gap-3">
         <button
